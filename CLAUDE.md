@@ -1,0 +1,71 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What This Is
+
+Whetstone is an installer/configuration framework that brings three token optimization tools to Claude Code:
+
+- **Headroom** — HTTP proxy between Claude Code and the Anthropic API (50-90% context compression)
+- **RTK** — Hook that rewrites CLI commands to compress output before entering context (60-90% savings)
+- **MemStack** — Persistent memory system with 77 skills, SQLite DB, and session hooks
+
+Users install by running `setup-whetstone.sh` from inside a git project. Global tools (Headroom, RTK) install once; MemStack skills and supporting files are copied per-project.
+
+**Bundled layout** in this repo:
+- `.claude/skills/` — 28 skill directories only (copied to project's `.claude/skills/`)
+- `.claude/memstack/` — hooks, rules, commands, db, config (copied to project's `.claude/` directly)
+
+## Commands
+
+```bash
+just setup           # Run setup-whetstone.sh
+just check-scripts   # Syntax-check all shell scripts (bash -n)
+just uninstall       # Run uninstall.sh
+```
+
+There are no build steps, tests, or linters beyond `bash -n` syntax checking.
+
+## Architecture
+
+```
+User → Claude Code
+         ├── Bash calls → [RTK Hook] → rtk <cmd> → compressed output
+         ├── Context    → [Headroom Proxy :8787] → Anthropic API
+         └── Memory     → [MemStack] → SQLite + skills
+```
+
+**Setup flow** (`setup-whetstone.sh`, the core of the project):
+1. Preflight: verify Python 3.10+, git, jq, uv; confirm inside git repo
+2. Install Headroom globally via `uv tool install "headroom-ai[proxy,code,mcp]"`
+3. Install RTK from GitHub (detects name collision with Rust Type Kit)
+4. Configure RTK hook globally + set `ANTHROPIC_BASE_URL` in shell profile
+5. Install whetstone/whetstone-rtk CLI wrappers to `~/.local/bin`
+6. Optionally copy bundled skills to `.claude/skills/`, supporting files (db, rules, commands) to `.claude/`, init SQLite
+7. Merge all hooks into `~/.claude/settings.json` (backed up with timestamp first)
+8. Generate `STACK-SETUP.md`
+
+**Hook system** — registered in `~/.claude/settings.json`:
+
+| Event | What Fires | Source |
+|-------|-----------|--------|
+| PreToolUse (Bash) | RTK rewrites command | RTK |
+| PreToolUse (Write/Edit/Bash) | TTS notification | MemStack |
+| PreToolUse (Bash, git push) | Build check + secrets scan | MemStack |
+| PostToolUse (git commit) | Debug artifact scan | MemStack |
+| SessionStart | Headroom auto-start + indexing | MemStack |
+| SessionStop | Session reporting | MemStack |
+
+## Key Design Decisions
+
+- **Idempotent**: setup skips already-installed components; safe to rerun
+- **Absolute paths in hooks**: avoids PATH/shell-state issues
+- **Global tools, per-project config**: RTK/Headroom installed globally; MemStack and config are per-project
+- **Backup before modify**: `settings.json` backed up with timestamp before any merge
+- **All scripts use `set -euo pipefail`**
+
+## Shell Script Conventions
+
+All scripts use colored output helpers (`info`, `ok`, `warn`, `fail`). The setup script auto-installs jq if missing (via pacman/apt/brew). Non-interactive mode (no TTY) auto-accepts MemStack install for CI use.
+
+`bin/whetstone` is the user-facing CLI: bare `whetstone` runs `headroom wrap claude`; subcommands (`proxy`, `rtk`, `claude`) dispatch to the appropriate tool with `ANTHROPIC_BASE_URL` set.

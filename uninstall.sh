@@ -47,12 +47,13 @@ remove_headroom() {
 }
 
 remove_project_memstack() {
-    local skills="$PROJECT_DIR/.claude/skills"
-    if [[ ! -d "$skills" ]]; then
+    local claude="$PROJECT_DIR/.claude"
+    if [[ ! -d "$claude/skills" ]]; then
         info "No .claude/skills in $PROJECT_DIR"
         return 0
     fi
-    rm -rf "$skills"
+    rm -rf "$claude/skills" "$claude/db" "$claude/rules" "$claude/commands"
+    rm -f "$claude/MEMSTACK.md" "$claude/config.local.json"
     rm -f "$PROJECT_DIR/STACK-SETUP.md"
     ok "Project MemStack files removed"
 }

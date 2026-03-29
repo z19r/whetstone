@@ -1,0 +1,29 @@
+{
+  "version": "3.2.2",
+  "author": "Your Name or Company",
+  "projects": {
+    "my-app": {
+      "dir": "C:\\Projects\\my-app",
+      "claude_md": "C:\\Projects\\my-app\\CLAUDE.md",
+      "deploy_target": "netlify",
+      "repo": "github.com/youruser/my-app"
+    },
+    "another-project": {
+      "dir": "C:\\Projects\\another-project",
+      "claude_md": "C:\\Projects\\another-project\\CLAUDE.md",
+      "deploy_target": "railway",
+      "repo": "github.com/youruser/another-project"
+    }
+  },
+  "cc_monitor": {
+    "api_url": "https://your-admin-dashboard.com/api/cc-sessions/report",
+    "api_key": ""
+  },
+  "headroom": {
+    "auto_start": true,
+    "port": 8787,
+    "health_url": "http://127.0.0.1:8787/health",
+    "startup_flags": "--llmlingua-device cpu",
+    "required_extras": ["[code]"]
+  }
+}

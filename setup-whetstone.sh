@@ -295,21 +295,41 @@ prompt_memstack_install() {
 install_memstack() {
     info "Step 5: Installing MemStack into project"
 
-    local skills_dir="$PROJECT_DIR/.claude/skills"
+    local claude_dir="$PROJECT_DIR/.claude"
+    local skills_dir="$claude_dir/skills"
+    local bundled_skills="$REPO_ROOT/.claude/skills"
+    local bundled_memstack="$REPO_ROOT/.claude/memstack"
 
-    if [[ -d "$skills_dir/skills" ]]; then
-        ok "MemStack already installed at $skills_dir"
+    # Copy skills (the 28 skill directories)
+    if [[ -d "$skills_dir" ]] && ls "$skills_dir"/*/ >/dev/null 2>&1; then
+        ok "Skills already installed at $skills_dir"
     else
-        info "Cloning MemStack into .claude/skills/..."
-        mkdir -p "$PROJECT_DIR/.claude"
-        git clone https://github.com/cwinvestments/memstack.git "$skills_dir"
-        ok "MemStack cloned"
+        if [[ -d "$bundled_skills" ]]; then
+            info "Copying skills into .claude/skills/..."
+            mkdir -p "$skills_dir"
+            cp -a "$bundled_skills"/* "$skills_dir/"
+            ok "Skills copied"
+        else
+            fail "Bundled skills not found at $bundled_skills — is your Whetstone clone intact?"
+        fi
+    fi
+
+    # Copy MemStack supporting files (rules, commands, db)
+    for subdir in rules commands db; do
+        if [[ -d "$bundled_memstack/$subdir" ]] && [[ ! -d "$claude_dir/$subdir" ]]; then
+            cp -a "$bundled_memstack/$subdir" "$claude_dir/$subdir"
+        fi
+    done
+
+    # Copy MEMSTACK.md
+    if [[ -f "$bundled_memstack/MEMSTACK.md" ]] && [[ ! -f "$claude_dir/MEMSTACK.md" ]]; then
+        cp "$bundled_memstack/MEMSTACK.md" "$claude_dir/"
     fi
 
     # Create config.local.json
     local project_name
     project_name=$(basename "$PROJECT_DIR")
-    cat > "$skills_dir/config.local.json" <<CONF
+    cat > "$claude_dir/config.local.json" <<CONF
 {
   "version": "3.2.3",
   "author": "$(git config user.name 2>/dev/null || echo 'User')",
@@ -333,9 +353,9 @@ CONF
     ok "Created config.local.json for project '$project_name'"
 
     # Initialize database
-    if [[ -f "$skills_dir/db/memstack-db.py" ]]; then
+    if [[ -f "$claude_dir/db/memstack-db.py" ]]; then
         info "Initializing MemStack database..."
-        if (cd "$skills_dir" && python3 db/memstack-db.py init \
+        if (cd "$claude_dir" && python3 db/memstack-db.py init \
             2>/dev/null); then
             ok "Database initialized"
         else
@@ -362,7 +382,7 @@ merge_hooks() {
     mkdir -p "$hooks_dir"
 
     # Copy memstack hook scripts into ~/.claude/hooks/
-    local skills_hooks="$PROJECT_DIR/.claude/skills/.claude/hooks"
+    local skills_hooks="$REPO_ROOT/.claude/memstack/hooks"
     if [[ -d "$skills_hooks" ]]; then
         for hook in \
             pre-tool-notify.sh pre-push.sh post-commit.sh \
@@ -637,10 +657,10 @@ management.
 
 **Database CLI:**
 ```bash
-python .claude/skills/db/memstack-db.py stats       # DB statistics
-python .claude/skills/db/memstack-db.py search "q"   # Search sessions
-python .claude/skills/db/memstack-db.py get-sessions  # List sessions
-python .claude/skills/db/memstack-db.py export-md     # Export to markdown
+python .claude/db/memstack-db.py stats       # DB statistics
+python .claude/db/memstack-db.py search "q"   # Search sessions
+python .claude/db/memstack-db.py get-sessions  # List sessions
+python .claude/db/memstack-db.py export-md     # Export to markdown
 ```
 
 ## Hooks (What Fires When)
@@ -660,8 +680,8 @@ python .claude/skills/db/memstack-db.py export-md     # Export to markdown
 |------|---------|
 | `~/.claude/settings.json` | Hook registrations (global) |
 | `~/.claude/hooks/rtk-rewrite.sh` | RTK command rewriter |
-| `.claude/skills/config.local.json` | MemStack project config |
-| `.claude/skills/db/memstack.db` | MemStack SQLite database |
+| `.claude/config.local.json` | MemStack project config |
+| `.claude/db/memstack.db` | MemStack SQLite database |
 | `~/.headroom/models.json` | Headroom model config (optional) |
 
 ## Environment Variables
@@ -691,23 +711,23 @@ headroom proxy                # Start it manually
 
 ### MemStack skills not loading
 ```bash
-ls .claude/skills/MEMSTACK.md          # Is it cloned?
-ls .claude/skills/.claude/rules/       # Are rules present?
-python .claude/skills/db/memstack-db.py stats  # Is DB initialized?
+ls .claude/MEMSTACK.md                 # Is it installed?
+ls .claude/rules/                      # Are rules present?
+python .claude/db/memstack-db.py stats # Is DB initialized?
 ```
 
 ### Hooks not firing
 ```bash
 cat ~/.claude/settings.json | jq '.hooks'  # Check hook config
 # Verify hook scripts are executable:
-ls -la .claude/skills/.claude/hooks/
+ls -la ~/.claude/hooks/
 ```
 
 ## Uninstall
 
 ### Remove MemStack (per-project)
 ```bash
-rm -rf .claude/skills
+rm -rf .claude/skills .claude/db .claude/rules .claude/commands .claude/MEMSTACK.md .claude/config.local.json
 rm STACK-SETUP.md
 ```
 
