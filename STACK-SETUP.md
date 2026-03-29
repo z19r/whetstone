@@ -1,6 +1,8 @@
 # Claude Code Optimization Stack
 
-This project has been configured with three complementary tools that optimize Claude Code's token usage and provide structured project management.
+This project has been configured with three complementary tools that
+optimize Claude Code's token usage and provide structured project
+management.
 
 ## Architecture
 
@@ -23,9 +25,12 @@ You (prompt) ──> Claude Code
 ```
 
 **Token flow:**
-1. **RTK** compresses CLI output *before* it enters Claude's context (60-90% savings)
-2. **Headroom** compresses the entire context *before* it hits the API (50-90% savings)
-3. **MemStack** provides structured memory + skills so Claude works more efficiently
+1. **RTK** compresses CLI output *before* it enters Claude's context
+   (60-90% savings)
+2. **Headroom** compresses the entire context *before* it hits the API
+   (50-90% savings)
+3. **MemStack** provides structured memory + skills so Claude works more
+   efficiently
 
 ## Quick Start
 
@@ -50,7 +55,8 @@ claude   # RTK hooks and MemStack skills still active
 
 ### RTK (CLI Compression)
 
-RTK is transparent — it runs via a Claude Code hook that rewrites bash commands automatically.
+RTK is transparent — it runs via a Claude Code hook that rewrites bash
+commands automatically.
 
 **Verify it's working:**
 ```bash
@@ -109,7 +115,8 @@ headroom learn --apply      # Write learnings to CLAUDE.md
 
 ### MemStack (Skills & Memory)
 
-MemStack provides 77 specialist skills, persistent memory, and session management.
+MemStack provides 77 specialist skills, persistent memory, and session
+management.
 
 **Key skills (trigger by keyword):**
 | Skill | Trigger Words | What It Does |
@@ -161,7 +168,7 @@ python .claude/skills/db/memstack-db.py export-md     # Export to markdown
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
-| `ANTHROPIC_BASE_URL` | `http://127.0.0.1:8787` | Route Claude Code through Headroom proxy |
+| `ANTHROPIC_BASE_URL` | `http://127.0.0.1:8787` | Headroom proxy URL |
 | `HEADROOM_LOG_LEVEL` | `INFO` (default) | Headroom logging verbosity |
 | `OPENAI_API_KEY` | (optional) | Higher-quality embeddings for MemStack Echo |
 
@@ -212,7 +219,7 @@ rm ~/.local/bin/rtk        # Remove binary
 
 ### Remove Headroom (global)
 ```bash
-pip uninstall headroom-ai
+uv pip uninstall headroom-ai
 # Remove from shell profile:
 # Delete the ANTHROPIC_BASE_URL line from ~/.bashrc or ~/.zshrc
 ```

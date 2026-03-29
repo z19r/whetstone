@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Whetstone: Claude via Headroom; rtk subcommand keeps ANTHROPIC_BASE_URL.
+set -euo pipefail
+
+DEFAULT_PROXY="http://127.0.0.1:8787"
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-$DEFAULT_PROXY}"
+
+usage() {
+    cat <<'USAGE'
+Whetstone — Headroom + RTK helpers for Claude Code
+
+  whetstone                 headroom wrap claude
+  whetstone claude [args]   headroom wrap claude [args]
+  whetstone proxy [args]    headroom proxy [args]
+  whetstone rtk [args]      rtk [args] (API traffic via Headroom URL)
+  whetstone help            this message
+
+Also: whetstone-rtk — same as whetstone rtk (PATH entry).
+USAGE
+}
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        exec headroom wrap claude
+    fi
+    case "$1" in
+        -h|--help|help)
+            usage
+            ;;
+        claude|code)
+            shift
+            exec headroom wrap claude "$@"
+            ;;
+        proxy)
+            shift
+            exec headroom proxy "$@"
+            ;;
+        rtk)
+            shift
+            exec rtk "$@"
+            ;;
+        *)
+            exec headroom wrap claude "$@"
+            ;;
+    esac
+}
+
+main "$@"

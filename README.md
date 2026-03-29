@@ -1,43 +1,60 @@
-# AI Tooling Stack
+# Whetstone
 
-Token optimization and project management for AI coding assistants.
-
-Three tools, one setup script. Run `setup-stack.sh` from any git project to install and configure everything.
+Token optimization and project memory for AI coding assistants (Claude Code
+first). One remote installer or a local setup script; project hooks and skills
+land in whatever git repo you run it from.
 
 ```
-setup-stack.sh ─── installs & configures ──┬── Headroom  (context compression proxy)
-                                           ├── RTK       (CLI output compression)
-                                           └── MemStack  (skills + persistent memory)
+install.sh / setup-whetstone.sh ──┬── Headroom (context compression proxy)
+                                  ├── RTK (CLI output compression)
+                                  ├── whetstone + whetstone-rtk (PATH)
+                                  └── MemStack (skills + persistent memory)
 ```
 
 ---
 
 ## Install
 
-**One-liner** (clone + run in your project):
+**One-liner** (run from your git project root; clones/upgrades
+`~/.whetstone`, then runs setup in the current directory):
 
 ```bash
-git clone https://github.com/z19r/ai-tooling.git ~/.ai-tooling
 cd ~/my-project
-bash ~/.ai-tooling/setup-stack.sh
+curl -fsSL https://raw.githubusercontent.com/z19r/whetstone/main/install.sh \
+  | bash
 ```
 
-**Or just grab the script:**
+Host the same `install.sh` at `https://example.com/install.sh` if you prefer.
+Override clone source with `WHETSTONE_REPO` or install path with
+`WHETSTONE_HOME`.
+
+**Clone and run:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/z19r/ai-tooling/main/setup-stack.sh -o /tmp/setup-stack.sh
+git clone https://github.com/z19r/whetstone.git ~/.whetstone
 cd ~/my-project
-bash /tmp/setup-stack.sh
+bash ~/.whetstone/setup-whetstone.sh
 ```
 
-**Add to more projects later:**
+**Or fetch only the setup script:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/z19r/whetstone/main/setup-whetstone.sh -o /tmp/setup-whetstone.sh
+cd ~/my-project
+bash /tmp/setup-whetstone.sh
+```
+
+`setup-stack.sh` remains as a thin wrapper around `setup-whetstone.sh`.
+
+**Another project later:**
 
 ```bash
 cd ~/another-project
-bash ~/.ai-tooling/setup-stack.sh
+bash ~/.whetstone/setup-whetstone.sh
 ```
 
-The script is idempotent — global tools (Headroom, RTK, hooks) are installed once, MemStack is cloned per-project.
+Idempotent: global tools install once; MemStack is per-project under
+`.claude/skills/`.
 
 ---
 
@@ -128,7 +145,7 @@ The script is idempotent — global tools (Headroom, RTK, hooks) are installed o
 | Git | any | `git --version` |
 | jq | any | `jq --version` |
 | curl | any | `curl --version` |
-| pip | any | `pip --version` |
+| uv | any | `uv --version` |
 
 The setup script will attempt to install `jq` via your package manager if missing.
 
@@ -139,20 +156,21 @@ The setup script will attempt to install `jq` via your package manager if missin
 If you just want everything working in 60 seconds:
 
 ```bash
-# 1. Clone this repo (or just grab the script)
-git clone <this-repo> ~/ai-tooling
+# 1. Clone this repo (or curl install.sh | bash from your host)
+git clone https://github.com/z19r/whetstone.git ~/.whetstone
 
-# 2. Go to your project
+# 2. Go to your project (must be a git repo)
 cd ~/my-project
 
 # 3. Run setup
-bash ~/ai-tooling/setup-stack.sh
+bash ~/.whetstone/setup-whetstone.sh
 
-# 4. Start coding with full optimization
-headroom wrap claude
+# 4. Start Claude Code through Headroom (PATH)
+whetstone
 ```
 
-That's it. RTK hooks, Headroom proxy, and MemStack are all configured.
+RTK hooks, Headroom, `whetstone` / `whetstone-rtk`, and MemStack (optional)
+are configured.
 
 ---
 
@@ -164,25 +182,27 @@ mkdir my-new-project && cd my-new-project
 git init
 
 # Run the stack setup
-bash /path/to/setup-stack.sh
+bash /path/to/setup-whetstone.sh
 
 # Verify
-rtk --version                    # RTK installed
-headroom --version               # Headroom installed
-ls .claude/skills/MEMSTACK.md    # MemStack installed
+whetstone help
+rtk --version
+headroom --version
+ls .claude/skills/MEMSTACK.md    # if you opted into MemStack
 ```
 
 The script will:
 1. Verify you're in a git repo (aborts if not)
-2. Install Headroom globally via pip (if missing)
-3. Install RTK globally via install script (if missing)
-4. Configure the RTK PreToolUse hook in `~/.claude/settings.json`
-5. Add `ANTHROPIC_BASE_URL` to your shell profile
-6. Clone MemStack into `.claude/skills/`
-7. Initialize the MemStack SQLite database
-8. Install semantic search dependencies (lancedb, sentence-transformers)
-9. Merge all hooks into `~/.claude/settings.json`
-10. Generate `STACK-SETUP.md` in your project root
+2. Install Headroom globally via uv (if missing)
+3. Install RTK from GitHub into `~/.local/bin` (if missing)
+4. Install `whetstone` and `whetstone-rtk` into `~/.local/bin`
+5. Configure the RTK PreToolUse hook in `~/.claude/settings.json`
+6. Add `ANTHROPIC_BASE_URL` to your shell profile
+7. Optionally clone MemStack into `.claude/skills/`
+8. Initialize the MemStack SQLite database (if MemStack on)
+9. Install semantic search dependencies (lancedb, sentence-transformers)
+10. Merge hooks into `~/.claude/settings.json` (if MemStack on)
+11. Generate `STACK-SETUP.md` in your project root (if MemStack on)
 
 ---
 
@@ -192,7 +212,7 @@ Identical process — the script is idempotent:
 
 ```bash
 cd ~/existing-project
-bash /path/to/setup-stack.sh
+bash /path/to/setup-whetstone.sh
 ```
 
 If components are already installed, the script skips them. If `.claude/skills/` already exists with MemStack, it skips the clone.
@@ -209,7 +229,8 @@ If components are already installed, the script skips them. If `.claude/skills/`
 
 ```bash
 # Option A: One command (recommended)
-headroom wrap claude
+whetstone
+# same idea: headroom wrap claude
 
 # Option B: Manual
 headroom proxy --port 8787 &
@@ -240,7 +261,7 @@ headroom mcp status
 **Full stack support.** The VS Code extension uses the same CLI and configuration.
 
 **Setup:**
-1. Run `setup-stack.sh` from your project root (terminal)
+1. Run `setup-whetstone.sh` from your project root (terminal)
 2. The extension reads the same `~/.claude/settings.json` hooks
 3. RTK and MemStack hooks work identically to CLI
 
@@ -272,7 +293,7 @@ Or use the [systemd service](#running-headroom-as-a-service) to have it always r
 
 **Full stack support.** Same as VS Code — the JetBrains extension uses the same CLI backend.
 
-1. Run `setup-stack.sh` from your project terminal
+1. Run `setup-whetstone.sh` from your project terminal
 2. Hooks are shared via `~/.claude/settings.json`
 3. Start Headroom proxy before your session, or use the systemd service
 
@@ -635,7 +656,7 @@ Legend: full = fully supported, manual = requires manual configuration, -- = not
 | `.claude/skills/` | MemStack | Skills framework (cloned repo) |
 | `.claude/skills/config.local.json` | MemStack | Project-specific configuration |
 | `.claude/skills/db/memstack.db` | MemStack | Session/memory database |
-| `STACK-SETUP.md` | setup-stack.sh | Per-project quick reference |
+| `STACK-SETUP.md` | setup-whetstone.sh | Per-project quick reference |
 | `CLAUDE.md` | Claude Code | Project-specific instructions |
 
 ### Environment Variables
@@ -726,7 +747,7 @@ rtk lint                  # ESLint
 ### "headroom: command not found"
 
 ```bash
-pip install "headroom-ai[proxy,code,mcp]"
+uv tool install "headroom-ai[proxy,code,mcp]"
 # If installed but not on PATH:
 python3 -m headroom proxy --port 8787
 ```
@@ -831,10 +852,10 @@ HEADROOM_DEFAULT_MODE=audit headroom proxy --port 8787
 
 ```bash
 # Check deps
-pip show lancedb sentence-transformers
+uv pip show lancedb sentence-transformers 2>/dev/null || true
 
 # Re-install
-pip install lancedb sentence-transformers
+uv pip install lancedb sentence-transformers
 
 # Index existing sessions
 python .claude/skills/skills/echo/index-sessions.py
@@ -845,6 +866,14 @@ python .claude/skills/skills/echo/index-sessions.py
 ---
 
 ## Uninstall
+
+From the Whetstone repo (or a copy of `uninstall.sh`):
+
+```bash
+cd /path/to/your/project   # optional: project to clean MemStack from
+bash /path/to/whetstone/uninstall.sh
+# non-interactive: WHETSTONE_UNINSTALL_YES=1 bash uninstall.sh
+```
 
 ### Remove MemStack (per-project)
 
@@ -864,7 +893,8 @@ rm -rf ~/.local/share/rtk      # Remove tracking database
 ### Remove Headroom (global)
 
 ```bash
-pip uninstall headroom-ai
+uv pip uninstall headroom-ai
+# or: uv tool uninstall headroom-ai
 
 # Remove systemd service (if created)
 systemctl --user disable --now headroom
@@ -878,7 +908,7 @@ systemctl --user daemon-reload
 ### Restore original settings.json
 
 ```bash
-# List backups (created by setup-stack.sh)
+# List backups (created by setup-whetstone.sh)
 ls -lt ~/.claude/settings.json.bak.* | head -5
 
 # Restore
@@ -899,10 +929,14 @@ rm -rf ~/.local/share/rtk
 # 3. Remove Headroom
 systemctl --user disable --now headroom 2>/dev/null
 rm -f ~/.config/systemd/user/headroom.service
-pip uninstall -y headroom-ai
+uv pip uninstall -y headroom-ai 2>/dev/null || true
+uv tool uninstall headroom-ai 2>/dev/null || true
 
-# 4. Remove semantic search deps
-pip uninstall -y lancedb sentence-transformers
+# 4. Remove semantic search deps (if installed)
+uv pip uninstall -y lancedb sentence-transformers 2>/dev/null || true
+
+# 4b. Remove whetstone wrappers
+rm -f ~/.local/bin/whetstone ~/.local/bin/whetstone-rtk
 
 # 5. Clean shell profile (edit manually)
 #    Remove: export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
