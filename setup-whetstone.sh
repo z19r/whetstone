@@ -300,17 +300,17 @@ install_memstack() {
     local bundled_skills="$REPO_ROOT/.claude/skills"
     local bundled_memstack="$REPO_ROOT/.claude/memstack"
 
-    # Copy skills (the 28 skill directories)
+    # Copy skills (the 20 skill directories)
     if [[ -d "$skills_dir" ]] && ls "$skills_dir"/*/ >/dev/null 2>&1; then
         ok "Skills already installed at $skills_dir"
     else
-        if [[ -d "$bundled_skills" ]]; then
+        if [[ -d "$bundled_skills" ]] && ls "$bundled_skills"/* >/dev/null 2>&1; then
             info "Copying skills into .claude/skills/..."
             mkdir -p "$skills_dir"
             cp -a "$bundled_skills"/* "$skills_dir/"
             ok "Skills copied"
         else
-            fail "Bundled skills not found at $bundled_skills — is your Whetstone clone intact?"
+            warn "No bundled skills found at $bundled_skills — skipping skill copy"
         fi
     fi
 

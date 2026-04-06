@@ -13,7 +13,7 @@ Whetstone is an installer/configuration framework that brings three token optimi
 Users install by running `setup-whetstone.sh` from inside a git project. Global tools (Headroom, RTK) install once; MemStack skills and supporting files are copied per-project.
 
 **Bundled layout** in this repo:
-- `.claude/skills/` — 28 skill directories only (copied to project's `.claude/skills/`)
+- `.claude/skills/` — 20 skill directories only (copied to project's `.claude/skills/`)
 - `.claude/memstack/` — hooks, rules, commands, db, config (copied to project's `.claude/` directly)
 
 ## Commands
