@@ -67,6 +67,8 @@ Whetstone uses a single `VERSION` file as the source of truth.
 - `whetstone` checks upstream version periodically and shows an update notice.
 - `whetstone update` pulls latest `z19r/whetstone` and reruns setup for the
   current project.
+- `whetstone update --full` force-upgrades Headroom/RTK and refreshes existing
+  MemStack files in the current project.
 
 For contributors:
 
@@ -76,6 +78,7 @@ just release minor
 just release major
 just release set 1.2.3
 just release patch --tag
+just release-publish patch
 ```
 
 For an existing project:
@@ -83,6 +86,7 @@ For an existing project:
 ```bash
 cd ~/my-project
 whetstone update
+whetstone update --full
 ```
 
 ---

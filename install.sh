@@ -44,4 +44,4 @@ if [[ -f "$VERSION_FILE" ]]; then
 fi
 
 export WHETSTONE_ROOT="$HOME_DIR"
-exec bash "$HOME_DIR/setup-whetstone.sh"
+exec bash "$HOME_DIR/setup-whetstone.sh" "$@"

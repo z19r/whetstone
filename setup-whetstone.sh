@@ -58,10 +58,29 @@ VERSION_FILE="$REPO_ROOT/VERSION"
 WHETSTONE_VERSION="dev"
 MIN_HEADROOM_VERSION="0.14.0"
 MIN_RTK_VERSION="0.7.0"
+FULL_UPDATE=0
+FORCE_TOOL_UPGRADE=0
+FORCE_MEMSTACK_REFRESH=0
 
 if [[ -f "$VERSION_FILE" ]]; then
     WHETSTONE_VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
 fi
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --full)
+                FULL_UPDATE=1
+                FORCE_TOOL_UPGRADE=1
+                FORCE_MEMSTACK_REFRESH=1
+                ;;
+            *)
+                fail "Unknown argument: $1"
+                ;;
+        esac
+        shift
+    done
+}
 
 # Detect shell profile
 if [[ -f "$HOME/.zshrc" ]]; then
@@ -153,7 +172,11 @@ install_headroom() {
         local raw ver
         raw=$(headroom --version 2>/dev/null || echo "unknown")
         ver=$(extract_semver "$raw")
-        if version_lt "$ver" "$MIN_HEADROOM_VERSION"; then
+        if [[ "$FORCE_TOOL_UPGRADE" -eq 1 ]]; then
+            info "Full update: upgrading Headroom..."
+            py_install --upgrade "headroom-ai[proxy,code,mcp]"
+            ok "Headroom upgraded: $(headroom --version 2>/dev/null)"
+        elif version_lt "$ver" "$MIN_HEADROOM_VERSION"; then
             warn "Headroom $ver is older than $MIN_HEADROOM_VERSION"
             info "Upgrading headroom-ai..."
             py_install --upgrade "headroom-ai[proxy,code,mcp]"
@@ -201,7 +224,10 @@ install_rtk() {
             local raw ver
             raw=$(rtk --version 2>/dev/null || echo "unknown")
             ver=$(extract_semver "$raw")
-            if version_lt "$ver" "$MIN_RTK_VERSION"; then
+            if [[ "$FORCE_TOOL_UPGRADE" -eq 1 ]]; then
+                info "Full update: reinstalling RTK..."
+                need_install=1
+            elif version_lt "$ver" "$MIN_RTK_VERSION"; then
                 warn "RTK $ver is older than $MIN_RTK_VERSION"
                 need_install=1
             else
@@ -315,6 +341,19 @@ prompt_memstack_install() {
     echo ""
     info "MemStack adds skills under .claude/skills/ and registers Claude"
     info "Code hooks (session, git helpers, etc.) under ~/.claude/."
+    if [[ "$FULL_UPDATE" -eq 1 ]]; then
+        if [[ -d "$PROJECT_DIR/.claude/skills" ]] \
+            || [[ -f "$PROJECT_DIR/.claude/MEMSTACK.md" ]]; then
+            info "Full update: refreshing existing MemStack install."
+            INSTALL_MEMSTACK=1
+        else
+            info "Full update: no MemStack install found in this project."
+            info "Skipping MemStack refresh for this project."
+            INSTALL_MEMSTACK=0
+        fi
+        echo ""
+        return
+    fi
     if [[ -t 0 ]]; then
         read -r -p \
             "Install MemStack skills and hooks for this project? [Y/n] " \
@@ -341,30 +380,60 @@ install_memstack() {
     local bundled_skills="$REPO_ROOT/.claude/skills"
     local bundled_memstack="$REPO_ROOT/.claude/memstack"
 
-    # Copy skills (the 20 skill directories)
-    if [[ -d "$skills_dir" ]] && ls "$skills_dir"/*/ >/dev/null 2>&1; then
-        ok "Skills already installed at $skills_dir"
-    else
-        if [[ -d "$bundled_skills" ]] && ls "$bundled_skills"/* >/dev/null 2>&1; then
+    # Copy skills (the bundled skill directories).
+    if [[ -d "$bundled_skills" ]] \
+        && ls "$bundled_skills"/* >/dev/null 2>&1; then
+        if [[ "$FORCE_MEMSTACK_REFRESH" -eq 1 ]]; then
+            info "Refreshing skills in .claude/skills/..."
+            mkdir -p "$skills_dir"
+            cp -a "$bundled_skills"/. "$skills_dir/"
+            ok "Skills refreshed"
+        elif [[ -d "$skills_dir" ]] \
+            && ls "$skills_dir"/*/ >/dev/null 2>&1; then
+            ok "Skills already installed at $skills_dir"
+        else
             info "Copying skills into .claude/skills/..."
             mkdir -p "$skills_dir"
             cp -a "$bundled_skills"/* "$skills_dir/"
             ok "Skills copied"
-        else
-            warn "No bundled skills found at $bundled_skills — skipping skill copy"
         fi
+    else
+        warn "No bundled skills found at $bundled_skills — skipping skill copy"
     fi
 
-    # Copy MemStack supporting files (rules, commands, db)
-    for subdir in rules commands db; do
-        if [[ -d "$bundled_memstack/$subdir" ]] && [[ ! -d "$claude_dir/$subdir" ]]; then
+    # Copy MemStack supporting files (rules and commands).
+    for subdir in rules commands; do
+        if [[ ! -d "$bundled_memstack/$subdir" ]]; then
+            continue
+        fi
+        if [[ "$FORCE_MEMSTACK_REFRESH" -eq 1 ]]; then
+            mkdir -p "$claude_dir/$subdir"
+            cp -a "$bundled_memstack/$subdir"/. "$claude_dir/$subdir/"
+        elif [[ ! -d "$claude_dir/$subdir" ]]; then
             cp -a "$bundled_memstack/$subdir" "$claude_dir/$subdir"
         fi
     done
 
+    # Refresh db scripts without overwriting project memstack.db.
+    if [[ -d "$bundled_memstack/db" ]]; then
+        mkdir -p "$claude_dir/db"
+        for file in memstack-db.py migrate.py schema.sql; do
+            if [[ -f "$bundled_memstack/db/$file" ]]; then
+                cp "$bundled_memstack/db/$file" "$claude_dir/db/$file"
+            fi
+        done
+        if [[ ! -f "$claude_dir/db/memstack.db" ]] \
+            && [[ -f "$bundled_memstack/db/memstack.db" ]]; then
+            cp "$bundled_memstack/db/memstack.db" "$claude_dir/db/"
+        fi
+    fi
+
     # Copy MEMSTACK.md
-    if [[ -f "$bundled_memstack/MEMSTACK.md" ]] && [[ ! -f "$claude_dir/MEMSTACK.md" ]]; then
-        cp "$bundled_memstack/MEMSTACK.md" "$claude_dir/"
+    if [[ -f "$bundled_memstack/MEMSTACK.md" ]]; then
+        if [[ "$FORCE_MEMSTACK_REFRESH" -eq 1 ]] \
+            || [[ ! -f "$claude_dir/MEMSTACK.md" ]]; then
+            cp "$bundled_memstack/MEMSTACK.md" "$claude_dir/"
+        fi
     fi
 
     # Create config.local.json
@@ -851,6 +920,11 @@ main() {
     echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
     echo ""
 
+    if [[ "$FULL_UPDATE" -eq 1 ]]; then
+        info "Full update mode enabled"
+        echo ""
+    fi
+
     preflight
     install_headroom
     install_rtk
@@ -868,4 +942,5 @@ main() {
     summary
 }
 
-main "$@"
+parse_args "$@"
+main

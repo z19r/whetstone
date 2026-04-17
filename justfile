@@ -19,6 +19,10 @@ install-remote:
 update:
     bash ./install.sh
 
+# Force-upgrade Headroom/RTK and refresh existing MemStack files.
+update-full:
+    bash ./install.sh --full
+
 # Remove whetstone wrappers and optional global/project pieces
 uninstall:
     bash ./uninstall.sh
@@ -27,7 +31,12 @@ uninstall:
 check-scripts:
     bash -n ./setup-whetstone.sh ./setup-stack.sh ./install.sh ./uninstall.sh
     bash -n ./bin/whetstone ./bin/whetstone-rtk ./scripts/release.sh
+    bash -n ./scripts/release-publish.sh
 
 # Bump VERSION: just release patch|minor|major|set [version] [--tag]
 release *ARGS:
     bash ./scripts/release.sh {{ARGS}}
+
+# Bump, commit, tag, and push release in one command.
+release-publish *ARGS:
+    bash ./scripts/release-publish.sh {{ARGS}}

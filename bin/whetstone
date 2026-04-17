@@ -52,7 +52,7 @@ run_self_update() {
         echo "hint: reinstall from z19r/whetstone first." >&2
         exit 1
     fi
-    exec bash "$installer"
+    exec bash "$installer" "$@"
 }
 
 check_for_updates() {
@@ -122,6 +122,7 @@ Whetstone — Headroom + RTK helpers for Claude Code
   whetstone rtk [args]      rtk [args] (API traffic via Headroom URL)
   whetstone version         print installed whetstone version
   whetstone update          pull latest + rerun setup in this project
+  whetstone update --full   force-refresh toolchain and MemStack files
   whetstone help            this message
 
 Also: whetstone-rtk — same as whetstone rtk (PATH entry).
@@ -156,7 +157,8 @@ main() {
             print_version
             ;;
         update|self-update)
-            run_self_update
+            shift
+            run_self_update "$@"
             ;;
         claude|code)
             shift
