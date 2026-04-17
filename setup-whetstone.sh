@@ -473,10 +473,36 @@ CONF
         fi
     fi
 
-    # Install optional semantic search deps
-    info 'Installing semantic search deps (lancedb, sentence-transformers)...'
-    py_install lancedb sentence-transformers 2>/dev/null || \
-        warn "Semantic search deps failed; keyword search still works"
+    # Optional semantic search deps
+    local install_semantic_deps=0
+    local deps_reply="${WHETSTONE_INSTALL_SEMANTIC_DEPS:-}"
+
+    if [[ -n "$deps_reply" ]]; then
+        deps_reply="${deps_reply,,}"
+        if [[ "$deps_reply" == "1" || "$deps_reply" == "y" \
+            || "$deps_reply" == "yes" || "$deps_reply" == "true" ]]; then
+            install_semantic_deps=1
+        fi
+    elif [[ -t 0 ]]; then
+        echo ""
+        read -r -p \
+            "Install optional semantic deps for MemStack search? [y/N] " \
+            deps_reply
+        deps_reply="${deps_reply,,}"
+        if [[ "$deps_reply" == "y" || "$deps_reply" == "yes" ]]; then
+            install_semantic_deps=1
+        fi
+    else
+        info "Non-interactive: skipping optional semantic search deps."
+    fi
+
+    if [[ "$install_semantic_deps" -eq 1 ]]; then
+        info "Installing semantic search deps (lancedb, sentence-transformers)..."
+        py_install lancedb sentence-transformers 2>/dev/null || \
+            warn "Semantic deps install failed; keyword search still works"
+    else
+        info "Skipped semantic search deps; keyword search remains available."
+    fi
 
     echo ""
 }
