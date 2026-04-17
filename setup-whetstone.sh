@@ -47,6 +47,36 @@ py_install() {
     uv tool install "$@"
 }
 
+# Python libraries for local scripts (not CLI tools).
+py_install_libs() {
+    if python3 -m pip --version >/dev/null 2>&1; then
+        python3 -m pip install --user "$@"
+        return
+    fi
+    python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
+    if python3 -m pip --version >/dev/null 2>&1; then
+        python3 -m pip install --user "$@"
+        return
+    fi
+    fail "pip is unavailable for installing Python libraries."
+}
+
+verify_semantic_libs() {
+    python3 - <<'PY'
+import importlib.util
+import sys
+
+missing = []
+for pkg in ("lancedb", "sentence_transformers"):
+    if importlib.util.find_spec(pkg) is None:
+        missing.append(pkg)
+
+if missing:
+    print("missing:", ", ".join(missing))
+    sys.exit(1)
+PY
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Remote installer sets WHETSTONE_ROOT to the cloned repo (for bin/).
 REPO_ROOT="${WHETSTONE_ROOT:-$SCRIPT_DIR}"
@@ -498,8 +528,15 @@ CONF
 
     if [[ "$install_semantic_deps" -eq 1 ]]; then
         info "Installing semantic search deps (lancedb, sentence-transformers)..."
-        py_install lancedb sentence-transformers 2>/dev/null || \
-            warn "Semantic deps install failed; keyword search still works"
+        if py_install_libs lancedb sentence-transformers; then
+            if verify_semantic_libs; then
+                ok "Semantic search deps installed and importable."
+            else
+                fail "Semantic deps installed but imports failed."
+            fi
+        else
+            fail "Semantic deps install failed after opting in."
+        fi
     else
         info "Skipped semantic search deps; keyword search remains available."
     fi
