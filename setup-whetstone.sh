@@ -549,10 +549,10 @@ merge_hooks() {
                         {
                             "type": "command",
                             "command": (
-                                "bash -c '\''echo \"$CLAUDE_TOOL_INPUT\" "
+                                "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" "
                                 + "| grep -q \"git push\" && "
                                 + $hd
-                                + "/pre-push.sh || exit 0'\''"
+                                + "/pre-push.sh || exit 0'"
                             ),
                             "timeout": 60000
                         }
@@ -566,10 +566,10 @@ merge_hooks() {
                         {
                             "type": "command",
                             "command": (
-                                "bash -c '\''echo \"$CLAUDE_TOOL_INPUT\" "
+                                "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" "
                                 + "| grep -q \"git commit\" && "
                                 + $hd
-                                + "/post-commit.sh || exit 0'\''"
+                                + "/post-commit.sh || exit 0'"
                             ),
                             "timeout": 10000
                         }
@@ -603,11 +603,14 @@ merge_hooks() {
 JQF
     )
 
-    echo "$existing" | jq --arg hd "$hooks_dir" "$jq_merge_hooks" \
-        > "$SETTINGS_JSON.tmp" \
-        && mv "$SETTINGS_JSON.tmp" "$SETTINGS_JSON"
-
-    ok "All hooks registered with absolute paths in ~/.claude/hooks/"
+    if echo "$existing" | jq --arg hd "$hooks_dir" "$jq_merge_hooks" \
+        > "$SETTINGS_JSON.tmp"; then
+        mv "$SETTINGS_JSON.tmp" "$SETTINGS_JSON"
+        ok "All hooks registered with absolute paths in ~/.claude/hooks/"
+    else
+        rm -f "$SETTINGS_JSON.tmp"
+        fail "Failed to merge hooks into $SETTINGS_JSON"
+    fi
     echo ""
 }
 
