@@ -15,6 +15,10 @@ setup-stack:
 install-remote:
     bash ./install.sh
 
+# Update local ~/.whetstone clone to latest and run setup
+update:
+    bash ./install.sh
+
 # Remove whetstone wrappers and optional global/project pieces
 uninstall:
     bash ./uninstall.sh
@@ -22,4 +26,8 @@ uninstall:
 # Syntax check shell scripts
 check-scripts:
     bash -n ./setup-whetstone.sh ./setup-stack.sh ./install.sh ./uninstall.sh
-    bash -n ./bin/whetstone ./bin/whetstone-rtk
+    bash -n ./bin/whetstone ./bin/whetstone-rtk ./scripts/release.sh
+
+# Bump VERSION: just release patch|minor|major|set [version] [--tag]
+release *ARGS:
+    bash ./scripts/release.sh {{ARGS}}
