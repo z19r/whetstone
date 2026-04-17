@@ -112,8 +112,13 @@ parse_args() {
     done
 }
 
-# Detect shell profile
-if [[ -f "$HOME/.zshrc" ]]; then
+# Detect shell profile (prefer active shell, then fallback by existence).
+ACTIVE_SHELL="$(basename "${SHELL:-}")"
+if [[ "$ACTIVE_SHELL" == "zsh" && -f "$HOME/.zshrc" ]]; then
+    SHELL_PROFILE="$HOME/.zshrc"
+elif [[ "$ACTIVE_SHELL" == "bash" && -f "$HOME/.bashrc" ]]; then
+    SHELL_PROFILE="$HOME/.bashrc"
+elif [[ -f "$HOME/.zshrc" ]]; then
     SHELL_PROFILE="$HOME/.zshrc"
 elif [[ -f "$HOME/.bashrc" ]]; then
     SHELL_PROFILE="$HOME/.bashrc"
