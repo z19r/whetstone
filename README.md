@@ -58,9 +58,39 @@ Idempotent: global tools install once; MemStack is per-project under
 
 ---
 
+## Versioning & Updates
+
+Whetstone uses a single `VERSION` file as the source of truth.
+
+- `install.sh` reports version changes when it updates `~/.whetstone`.
+- `setup-whetstone.sh` checks Headroom/RTK versions and upgrades older ones.
+- `whetstone` checks upstream version periodically and shows an update notice.
+- `whetstone update` pulls latest `z19r/whetstone` and reruns setup for the
+  current project.
+
+For contributors:
+
+```bash
+just release patch
+just release minor
+just release major
+just release set 1.2.3
+just release patch --tag
+```
+
+For an existing project:
+
+```bash
+cd ~/my-project
+whetstone update
+```
+
+---
+
 ## Table of Contents
 
 - [Install](#install)
+- [Versioning & Updates](#versioning--updates)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)

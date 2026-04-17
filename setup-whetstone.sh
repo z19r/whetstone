@@ -25,6 +25,23 @@ ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail()  { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 
+extract_semver() {
+    local raw="$1"
+    local match
+    match=$(echo "$raw" | sed -nE 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
+    echo "$match"
+}
+
+version_lt() {
+    local left="$1"
+    local right="$2"
+    if [[ -z "$left" || -z "$right" ]]; then
+        return 1
+    fi
+    [[ "$(printf '%s\n%s\n' "$left" "$right" | sort -V | head -n1)" \
+        != "$right" ]]
+}
+
 # Python packages: uv only (preflight ensures uv exists).
 py_install() {
     uv tool install "$@"
@@ -37,6 +54,14 @@ PROJECT_DIR="$(pwd)"
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS_JSON="$CLAUDE_DIR/settings.json"
 SHELL_PROFILE=""
+VERSION_FILE="$REPO_ROOT/VERSION"
+WHETSTONE_VERSION="dev"
+MIN_HEADROOM_VERSION="0.14.0"
+MIN_RTK_VERSION="0.7.0"
+
+if [[ -f "$VERSION_FILE" ]]; then
+    WHETSTONE_VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+fi
 
 # Detect shell profile
 if [[ -f "$HOME/.zshrc" ]]; then
@@ -125,9 +150,17 @@ install_headroom() {
     info "Step 1: Headroom (context compression proxy)"
 
     if command -v headroom &>/dev/null; then
-        local ver
-        ver=$(headroom --version 2>/dev/null || echo "unknown")
-        ok "Headroom already installed: $ver"
+        local raw ver
+        raw=$(headroom --version 2>/dev/null || echo "unknown")
+        ver=$(extract_semver "$raw")
+        if version_lt "$ver" "$MIN_HEADROOM_VERSION"; then
+            warn "Headroom $ver is older than $MIN_HEADROOM_VERSION"
+            info "Upgrading headroom-ai..."
+            py_install --upgrade "headroom-ai[proxy,code,mcp]"
+            ok "Headroom upgraded: $(headroom --version 2>/dev/null)"
+        else
+            ok "Headroom already installed: $raw"
+        fi
     else
         info "Installing headroom-ai with proxy, code, and MCP extras..."
         py_install "headroom-ai[proxy,code,mcp]"
@@ -165,7 +198,15 @@ install_rtk() {
     local need_install=0
     if command -v rtk &>/dev/null; then
         if rtk gain &>/dev/null; then
-            ok "RTK already installed: $(rtk --version 2>/dev/null)"
+            local raw ver
+            raw=$(rtk --version 2>/dev/null || echo "unknown")
+            ver=$(extract_semver "$raw")
+            if version_lt "$ver" "$MIN_RTK_VERSION"; then
+                warn "RTK $ver is older than $MIN_RTK_VERSION"
+                need_install=1
+            else
+                ok "RTK already installed: $raw"
+            fi
         else
             warn "$(printf '%s %s' \
                 "Found 'rtk' but it is not rtk-ai (e.g. Rust Type Kit)." \
@@ -772,6 +813,8 @@ summary() {
     echo -e "${GREEN}  Whetstone setup complete!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
+    echo "Version: $WHETSTONE_VERSION"
+    echo ""
     echo "Installed:"
     echo "  Headroom : $(headroom --version 2>/dev/null \
         || echo 'check uv pip install')"
@@ -803,7 +846,7 @@ summary() {
 main() {
     echo ""
     echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║  Whetstone — Claude Code stack setup         ║${NC}"
+    echo -e "${BLUE}║  Whetstone v$WHETSTONE_VERSION setup         ║${NC}"
     echo -e "${BLUE}║  Headroom + RTK + MemStack                   ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
     echo ""
