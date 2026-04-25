@@ -34,10 +34,10 @@ setup *ARGS:
 uninstall:
     cargo run -- uninstall
 
-# Bump VERSION: just release patch|minor|major|set [version] [--tag]
+# Bump VERSION + Cargo.toml: just release patch|minor|major|set [version] [--tag]
 release *ARGS:
     cargo run -- release {{ARGS}}
 
-# Bump, commit, tag, and push release in one command
-release-publish *ARGS:
+# Bump, commit, tag, and push release in one command (runs check first)
+release-publish *ARGS: check
     cargo run -- release-publish {{ARGS}}

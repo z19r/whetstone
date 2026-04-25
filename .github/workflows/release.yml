@@ -2,7 +2,9 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,8 +13,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  check-tag:
+    name: Check if release needed
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      needed: ${{ steps.version.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version and check tag
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          TAG="v${VERSION}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Tag ${TAG} already exists, skipping release"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "Will create release ${TAG}"
+          fi
+
   build:
     name: Build ${{ matrix.target }}
+    needs: check-tag
+    if: needs.check-tag.outputs.needed == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -36,6 +65,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Install cross
         if: matrix.cross
@@ -63,6 +96,8 @@ jobs:
 
   assets:
     name: Package assets
+    needs: check-tag
+    if: needs.check-tag.outputs.needed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,10 +113,15 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build, assets]
+    needs: [check-tag, build, assets]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create tag
+        run: |
+          git tag ${{ needs.check-tag.outputs.tag }}
+          git push origin ${{ needs.check-tag.outputs.tag }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -90,5 +130,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.check-tag.outputs.tag }}
           generate_release_notes: true
           files: whetstone-*.tar.gz

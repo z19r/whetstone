@@ -6,18 +6,60 @@ use crate::cli::ReleaseAction;
 use crate::ui;
 use crate::version::{self, BumpKind};
 
+fn repo_root() -> Result<PathBuf> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .context("finding git root")?;
+    if !output.status.success() {
+        bail!("not inside a git repository");
+    }
+    let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(PathBuf::from(root))
+}
+
 fn version_file() -> Result<PathBuf> {
-    let mut dir = std::env::current_dir()?;
-    loop {
-        let candidate = dir.join("VERSION");
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-        if !dir.pop() {
-            break;
-        }
+    let root = repo_root()?;
+    let candidate = root.join("VERSION");
+    if candidate.exists() {
+        return Ok(candidate);
     }
     bail!("VERSION file not found");
+}
+
+fn sync_cargo_toml(root: &std::path::Path, new_ver: &semver::Version) -> Result<()> {
+    let cargo_path = root.join("Cargo.toml");
+    if !cargo_path.exists() {
+        return Ok(());
+    }
+    let content = std::fs::read_to_string(&cargo_path).context("reading Cargo.toml")?;
+    let mut in_package = false;
+    let mut replaced = false;
+    let new_content: String = content
+        .lines()
+        .map(|line| {
+            if line.trim() == "[package]" {
+                in_package = true;
+            } else if line.starts_with('[') {
+                in_package = false;
+            }
+            if in_package && !replaced && line.trim_start().starts_with("version") {
+                if let Some(eq_pos) = line.find('=') {
+                    replaced = true;
+                    return format!("{}= \"{new_ver}\"", &line[..=eq_pos]);
+                }
+            }
+            line.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let new_content = if content.ends_with('\n') && !new_content.ends_with('\n') {
+        format!("{new_content}\n")
+    } else {
+        new_content
+    };
+    std::fs::write(&cargo_path, new_content).context("writing Cargo.toml")?;
+    Ok(())
 }
 
 fn action_to_bump(action: &ReleaseAction) -> (Option<BumpKind>, Option<&str>, bool) {
@@ -30,6 +72,7 @@ fn action_to_bump(action: &ReleaseAction) -> (Option<BumpKind>, Option<&str>, bo
 }
 
 pub fn run(action: &ReleaseAction) -> Result<()> {
+    let root = repo_root()?;
     let path = version_file()?;
     let current = version::read_from_file(&path)?;
     let (bump_kind, explicit, create_tag) = action_to_bump(action);
@@ -43,6 +86,7 @@ pub fn run(action: &ReleaseAction) -> Result<()> {
     };
 
     version::write_to_file(&path, &new_ver)?;
+    sync_cargo_toml(&root, &new_ver)?;
     ui::ok(&format!("VERSION: {current} -> {new_ver}"));
 
     if create_tag {
@@ -88,11 +132,11 @@ pub fn run_publish(action: &ReleaseAction) -> Result<()> {
     let tag = format!("v{new_ver}");
 
     let git_add = Command::new("git")
-        .args(["add", "VERSION"])
+        .args(["add", "VERSION", "Cargo.toml"])
         .status()
-        .context("git add VERSION")?;
+        .context("git add VERSION Cargo.toml")?;
     if !git_add.success() {
-        bail!("git add VERSION failed");
+        bail!("git add failed");
     }
 
     let msg = format!("release: {tag}");
