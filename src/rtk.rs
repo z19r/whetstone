@@ -9,10 +9,7 @@ const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh";
 
 fn installed_version() -> Option<String> {
-    let output = Command::new("rtk")
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new("rtk").arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
     }

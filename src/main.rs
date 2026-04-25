@@ -25,7 +25,10 @@ fn main() {
             wrapper::wrap_claude(&[]);
         }
         Some(cmd) => match cmd {
-            Command::Setup { full, headroom_extras } => {
+            Command::Setup {
+                full,
+                headroom_extras,
+            } => {
                 if let Err(e) = setup::run(full, &headroom_extras) {
                     ui::fail(&format!("{e:#}"));
                 }

@@ -10,7 +10,8 @@ fn set_proxy_env() {
 }
 
 fn has_model_flag(args: &[String]) -> bool {
-    args.iter().any(|a| a == "--model" || a.starts_with("--model="))
+    args.iter()
+        .any(|a| a == "--model" || a.starts_with("--model="))
 }
 
 pub fn wrap_claude(args: &[String]) -> ! {

@@ -11,8 +11,7 @@ pub fn read_from_file(path: &Path) -> Result<Version> {
     let raw = fs::read_to_string(path)
         .with_context(|| format!("reading VERSION from {}", path.display()))?;
     let trimmed = raw.trim();
-    Version::parse(trimmed)
-        .with_context(|| format!("parsing semver from '{trimmed}'"))
+    Version::parse(trimmed).with_context(|| format!("parsing semver from '{trimmed}'"))
 }
 
 pub fn write_to_file(path: &Path, version: &Version) -> Result<()> {

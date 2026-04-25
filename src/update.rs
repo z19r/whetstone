@@ -47,8 +47,7 @@ fn fetch_remote_version() -> Result<String> {
         .into_string()
         .context("reading remote VERSION body")?;
 
-    version::extract_semver(body.trim())
-        .context("no valid semver in remote VERSION")
+    version::extract_semver(body.trim()).context("no valid semver in remote VERSION")
 }
 
 pub fn run(full: bool) -> Result<()> {

@@ -29,7 +29,10 @@ fn check_git_repo() -> Result<()> {
 
 fn check_python() -> Result<()> {
     let output = Command::new("python3")
-        .args(["-c", "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')"])
+        .args([
+            "-c",
+            "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')",
+        ])
         .output();
 
     match output {

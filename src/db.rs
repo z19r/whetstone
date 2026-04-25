@@ -38,7 +38,9 @@ fn require_fields(data: &Value, fields: &[&str]) -> Result<()> {
 }
 
 fn str_field(data: &Value, key: &str) -> Option<String> {
-    data.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    data.get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn str_or_empty(data: &Value, key: &str) -> String {
@@ -54,7 +56,11 @@ pub fn dispatch(cmd: DbCommand) -> Result<()> {
         DbCommand::Init => cmd_init(),
         DbCommand::AddSession { json } => cmd_add_session(&json),
         DbCommand::AddInsight { json } => cmd_add_insight(&json),
-        DbCommand::Search { query, project, limit } => cmd_search(&query, project.as_deref(), limit),
+        DbCommand::Search {
+            query,
+            project,
+            limit,
+        } => cmd_search(&query, project.as_deref(), limit),
         DbCommand::GetSessions { project, limit } => cmd_get_sessions(&project, limit),
         DbCommand::GetInsights { project } => cmd_get_insights(&project),
         DbCommand::GetContext { project } => cmd_get_context(&project),
@@ -135,34 +141,44 @@ fn cmd_search(query: &str, project: Option<&str>, limit: usize) -> Result<()> {
     let mut results: Vec<Value> = Vec::new();
 
     // Search sessions
-    let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(proj) = project {
-        (
-            "SELECT id, project, date, accomplished, decisions FROM sessions
+    let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+        if let Some(proj) = project {
+            (
+                "SELECT id, project, date, accomplished, decisions FROM sessions
              WHERE (accomplished LIKE ?1 OR decisions LIKE ?2 OR commits LIKE ?3
                     OR next_steps LIKE ?4 OR problems LIKE ?5)
-             AND project = ?6 ORDER BY date DESC LIMIT ?7".into(),
-            vec![
-                Box::new(pattern.clone()), Box::new(pattern.clone()),
-                Box::new(pattern.clone()), Box::new(pattern.clone()),
-                Box::new(pattern.clone()), Box::new(proj.to_string()),
-                Box::new(limit as i64),
-            ],
-        )
-    } else {
-        (
-            "SELECT id, project, date, accomplished, decisions FROM sessions
+             AND project = ?6 ORDER BY date DESC LIMIT ?7"
+                    .into(),
+                vec![
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(proj.to_string()),
+                    Box::new(limit as i64),
+                ],
+            )
+        } else {
+            (
+                "SELECT id, project, date, accomplished, decisions FROM sessions
              WHERE (accomplished LIKE ?1 OR decisions LIKE ?2 OR commits LIKE ?3
                     OR next_steps LIKE ?4 OR problems LIKE ?5)
-             ORDER BY date DESC LIMIT ?6".into(),
-            vec![
-                Box::new(pattern.clone()), Box::new(pattern.clone()),
-                Box::new(pattern.clone()), Box::new(pattern.clone()),
-                Box::new(pattern.clone()), Box::new(limit as i64),
-            ],
-        )
-    };
+             ORDER BY date DESC LIMIT ?6"
+                    .into(),
+                vec![
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(pattern.clone()),
+                    Box::new(limit as i64),
+                ],
+            )
+        };
 
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        params_vec.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(param_refs.as_slice(), |row| {
         let accomplished: Option<String> = row.get(3)?;
@@ -181,22 +197,30 @@ fn cmd_search(query: &str, project: Option<&str>, limit: usize) -> Result<()> {
     }
 
     // Search insights
-    let (sql2, params_vec2): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(proj) = project {
-        (
-            "SELECT id, project, type, content, tags FROM insights
+    let (sql2, params_vec2): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+        if let Some(proj) = project {
+            (
+                "SELECT id, project, type, content, tags FROM insights
              WHERE content LIKE ?1 AND project = ?2
-             ORDER BY created_at DESC LIMIT ?3".into(),
-            vec![Box::new(pattern.clone()), Box::new(proj.to_string()), Box::new(limit as i64)],
-        )
-    } else {
-        (
-            "SELECT id, project, type, content, tags FROM insights
-             WHERE content LIKE ?1 ORDER BY created_at DESC LIMIT ?2".into(),
-            vec![Box::new(pattern), Box::new(limit as i64)],
-        )
-    };
+             ORDER BY created_at DESC LIMIT ?3"
+                    .into(),
+                vec![
+                    Box::new(pattern.clone()),
+                    Box::new(proj.to_string()),
+                    Box::new(limit as i64),
+                ],
+            )
+        } else {
+            (
+                "SELECT id, project, type, content, tags FROM insights
+             WHERE content LIKE ?1 ORDER BY created_at DESC LIMIT ?2"
+                    .into(),
+                vec![Box::new(pattern), Box::new(limit as i64)],
+            )
+        };
 
-    let param_refs2: Vec<&dyn rusqlite::types::ToSql> = params_vec2.iter().map(|p| p.as_ref()).collect();
+    let param_refs2: Vec<&dyn rusqlite::types::ToSql> =
+        params_vec2.iter().map(|p| p.as_ref()).collect();
     let mut stmt2 = conn.prepare(&sql2)?;
     let rows2 = stmt2.query_map(param_refs2.as_slice(), |row| {
         let content: String = row.get(3)?;
@@ -287,7 +311,10 @@ fn cmd_get_context(project: &str) -> Result<()> {
     });
     match row {
         Ok(v) => println!("{v}"),
-        Err(_) => println!("{}", json!({"project": project, "status": "no context saved"})),
+        Err(_) => println!(
+            "{}",
+            json!({"project": project, "status": "no context saved"})
+        ),
     }
     Ok(())
 }
@@ -368,7 +395,10 @@ fn cmd_get_plan(project: &str) -> Result<()> {
     let tasks: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
     let done = tasks.iter().filter(|t| t["status"] == "completed").count();
     let total = tasks.len();
-    println!("{}", json!({"project": project, "tasks": tasks, "done": done, "total": total}));
+    println!(
+        "{}",
+        json!({"project": project, "tasks": tasks, "done": done, "total": total})
+    );
     Ok(())
 }
 
@@ -390,7 +420,10 @@ fn cmd_update_task(raw: &str) -> Result<()> {
     if changed == 0 {
         let proj = str_or_empty(&data, "project");
         let num = i64_field(&data, "task_number").unwrap_or(0);
-        println!("{}", json!({"ok": false, "error": format!("Task not found: {proj} #{num}")}));
+        println!(
+            "{}",
+            json!({"ok": false, "error": format!("Task not found: {proj} #{num}")})
+        );
     } else {
         println!("{}", json!({"ok": true}));
     }
@@ -406,10 +439,22 @@ fn cmd_export_md(project: &str) -> Result<()> {
         "SELECT date, accomplished, commits, decisions, next_steps
          FROM sessions WHERE project = ?1 ORDER BY date DESC",
     )?;
-    type SessionRow = (String, Option<String>, Option<String>, Option<String>, Option<String>);
+    type SessionRow = (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
     let sessions: Vec<SessionRow> = stmt
         .query_map(params![project], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
         })?
         .filter_map(|r| r.ok())
         .collect();
@@ -418,10 +463,26 @@ fn cmd_export_md(project: &str) -> Result<()> {
         lines.push("## Sessions\n".into());
         for (date, accomplished, commits, decisions, next_steps) in &sessions {
             lines.push(format!("### {date}"));
-            if let Some(a) = accomplished { if !a.is_empty() { lines.push(format!("**Accomplished:**\n{a}")); } }
-            if let Some(c) = commits { if !c.is_empty() { lines.push(format!("**Commits:**\n{c}")); } }
-            if let Some(d) = decisions { if !d.is_empty() { lines.push(format!("**Decisions:**\n{d}")); } }
-            if let Some(n) = next_steps { if !n.is_empty() { lines.push(format!("**Next Steps:**\n{n}")); } }
+            if let Some(a) = accomplished {
+                if !a.is_empty() {
+                    lines.push(format!("**Accomplished:**\n{a}"));
+                }
+            }
+            if let Some(c) = commits {
+                if !c.is_empty() {
+                    lines.push(format!("**Commits:**\n{c}"));
+                }
+            }
+            if let Some(d) = decisions {
+                if !d.is_empty() {
+                    lines.push(format!("**Decisions:**\n{d}"));
+                }
+            }
+            if let Some(n) = next_steps {
+                if !n.is_empty() {
+                    lines.push(format!("**Next Steps:**\n{n}"));
+                }
+            }
             lines.push(String::new());
         }
     }
@@ -430,9 +491,10 @@ fn cmd_export_md(project: &str) -> Result<()> {
     let mut stmt = conn.prepare(
         "SELECT type, content FROM insights WHERE project = ?1 ORDER BY created_at DESC",
     )?;
-    let insights: Vec<(String, String)> = stmt.query_map(params![project], |row| {
-        Ok((row.get(0)?, row.get(1)?))
-    })?.filter_map(|r| r.ok()).collect();
+    let insights: Vec<(String, String)> = stmt
+        .query_map(params![project], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
 
     if !insights.is_empty() {
         lines.push("## Insights\n".into());
@@ -447,21 +509,39 @@ fn cmd_export_md(project: &str) -> Result<()> {
         "SELECT status, current_branch, architecture_decisions, known_issues, backlog
          FROM project_context WHERE project = ?1",
         params![project],
-        |row| Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, Option<String>>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<String>>(4)?,
-        )),
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        },
     );
     if let Ok((status, branch, arch, issues, backlog)) = ctx {
         lines.push("## Project Context\n".into());
         lines.push(format!("- **Status:** {status}"));
-        if let Some(b) = branch { if !b.is_empty() { lines.push(format!("- **Current Branch:** {b}")); } }
-        if let Some(a) = arch { if !a.is_empty() { lines.push(format!("- **Architecture Decisions:**\n{a}")); } }
-        if let Some(i) = issues { if !i.is_empty() { lines.push(format!("- **Known Issues:**\n{i}")); } }
-        if let Some(bl) = backlog { if !bl.is_empty() { lines.push(format!("- **Backlog:**\n{bl}")); } }
+        if let Some(b) = branch {
+            if !b.is_empty() {
+                lines.push(format!("- **Current Branch:** {b}"));
+            }
+        }
+        if let Some(a) = arch {
+            if !a.is_empty() {
+                lines.push(format!("- **Architecture Decisions:**\n{a}"));
+            }
+        }
+        if let Some(i) = issues {
+            if !i.is_empty() {
+                lines.push(format!("- **Known Issues:**\n{i}"));
+            }
+        }
+        if let Some(bl) = backlog {
+            if !bl.is_empty() {
+                lines.push(format!("- **Backlog:**\n{bl}"));
+            }
+        }
     }
 
     println!("{}", lines.join("\n"));
@@ -481,7 +561,9 @@ fn cmd_stats() -> Result<()> {
         "SELECT project, COUNT(*) as cnt FROM sessions GROUP BY project ORDER BY cnt DESC",
     )?;
     let by_project: Value = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
         .filter_map(|r| r.ok())
         .fold(json!({}), |mut acc, (proj, cnt)| {
             acc[proj] = json!(cnt);
@@ -493,14 +575,17 @@ fn cmd_stats() -> Result<()> {
         .map(|m| (m.len() as f64 / 1024.0 * 10.0).round() / 10.0)
         .unwrap_or(0.0);
 
-    println!("{}", json!({
-        "sessions": sessions,
-        "insights": insights,
-        "projects": projects,
-        "plan_tasks": plan_tasks,
-        "sessions_by_project": by_project,
-        "db_path": path.display().to_string(),
-        "db_size_kb": size_kb,
-    }));
+    println!(
+        "{}",
+        json!({
+            "sessions": sessions,
+            "insights": insights,
+            "projects": projects,
+            "plan_tasks": plan_tasks,
+            "sessions_by_project": by_project,
+            "db_path": path.display().to_string(),
+            "db_size_kb": size_kb,
+        })
+    );
     Ok(())
 }

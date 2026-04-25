@@ -262,8 +262,8 @@ Per-project: `whetstone uninstall`
 "#;
 
 fn self_install() -> Result<()> {
-    let current_exe = std::env::current_exe()
-        .context("could not determine current executable path")?;
+    let current_exe =
+        std::env::current_exe().context("could not determine current executable path")?;
 
     let home = dirs::home_dir().context("could not determine home directory")?;
     let bin_dir = home.join(".local").join("bin");
@@ -290,7 +290,11 @@ fn self_install() -> Result<()> {
 }
 
 fn same_file(a: &PathBuf, b: &PathBuf) -> bool {
-    let Ok(a_canon) = fs::canonicalize(a) else { return false };
-    let Ok(b_canon) = fs::canonicalize(b) else { return false };
+    let Ok(a_canon) = fs::canonicalize(a) else {
+        return false;
+    };
+    let Ok(b_canon) = fs::canonicalize(b) else {
+        return false;
+    };
     a_canon == b_canon
 }

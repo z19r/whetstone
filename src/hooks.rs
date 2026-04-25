@@ -7,8 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::ui;
 
 pub fn copy_hook_scripts(assets_hooks: &Path, dest_hooks: &Path) -> Result<()> {
-    fs::create_dir_all(dest_hooks)
-        .with_context(|| format!("creating {}", dest_hooks.display()))?;
+    fs::create_dir_all(dest_hooks).with_context(|| format!("creating {}", dest_hooks.display()))?;
 
     let scripts = [
         "pre-tool-notify.sh",
@@ -61,8 +60,7 @@ pub fn merge_settings_json(settings_path: &Path, hooks_dir: &Path) -> Result<()>
     let hd = hooks_dir.display().to_string();
     let merged = build_hooks_value(&existing, &hd);
 
-    let json_str = serde_json::to_string_pretty(&merged)
-        .context("serializing settings.json")?;
+    let json_str = serde_json::to_string_pretty(&merged).context("serializing settings.json")?;
 
     if let Some(parent) = settings_path.parent() {
         fs::create_dir_all(parent)?;

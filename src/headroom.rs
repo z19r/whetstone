@@ -24,10 +24,7 @@ fn package_spec(extras: &str) -> String {
 }
 
 fn installed_version() -> Option<String> {
-    let output = Command::new("headroom")
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new("headroom").arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -64,12 +61,13 @@ fn run_uv_install(spec: &str, upgrade: bool) -> Result<()> {
     }
     args.push(spec);
 
-    let status = Command::new("uv")
-        .args(&args)
-        .status()?;
+    let status = Command::new("uv").args(&args).status()?;
 
     if !status.success() {
-        bail!("uv tool install failed (exit {})", status.code().unwrap_or(-1));
+        bail!(
+            "uv tool install failed (exit {})",
+            status.code().unwrap_or(-1)
+        );
     }
     Ok(())
 }

@@ -38,8 +38,7 @@ pub fn run(action: &ReleaseAction) -> Result<()> {
         version::bump(&current, kind)
     } else {
         let raw = explicit.context("set requires a version string")?;
-        let sem = version::extract_semver(raw)
-            .context("invalid semver in provided version")?;
+        let sem = version::extract_semver(raw).context("invalid semver in provided version")?;
         semver::Version::parse(&sem)?
     };
 

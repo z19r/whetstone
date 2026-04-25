@@ -81,9 +81,7 @@ impl WhetstoneConfig {
     }
 
     pub fn write_to(&self, path: &Path) -> Result<()> {
-        let json = serde_json::to_string_pretty(self)
-            .context("serializing config.local.json")?;
-        fs::write(path, json)
-            .with_context(|| format!("writing {}", path.display()))
+        let json = serde_json::to_string_pretty(self).context("serializing config.local.json")?;
+        fs::write(path, json).with_context(|| format!("writing {}", path.display()))
     }
 }
