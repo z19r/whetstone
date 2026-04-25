@@ -16,9 +16,11 @@ pub fn resolve_assets_dir() -> Result<PathBuf> {
 
     if let Ok(exe) = std::env::current_exe() {
         if let Some(bin_dir) = exe.parent() {
-            let relative = bin_dir.join("../assets");
-            if relative.is_dir() {
-                return Ok(relative.canonicalize()?);
+            for candidate in ["../assets", "../../assets"] {
+                let relative = bin_dir.join(candidate);
+                if relative.is_dir() {
+                    return Ok(relative.canonicalize()?);
+                }
             }
         }
     }
