@@ -7,14 +7,12 @@ Git commits support two formats. Use whichever fits the context:
 ```
 [ProjectName] Brief description of change
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
 
 **Conventional format** (for phased projects or when type clarity helps):
 ```
 type(scope): description
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
 
 Types: `feat` (new feature), `fix` (bug fix), `docs` (documentation), `refactor` (restructure), `style` (formatting), `test` (tests), `chore` (maintenance)

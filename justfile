@@ -3,6 +3,10 @@
 default:
     @just --list
 
+# Set up git hooks (run once after clone)
+init:
+    git config core.hooksPath .githooks
+
 # Build debug binary
 build:
     cargo build
