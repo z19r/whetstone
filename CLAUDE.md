@@ -4,27 +4,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Whetstone is an installer/configuration framework that brings three token optimization tools to Claude Code:
+Whetstone is a Rust CLI that installs and configures three token optimization tools for Claude Code:
 
 - **Headroom** — HTTP proxy between Claude Code and the Anthropic API (50-90% context compression)
 - **RTK** — Hook that rewrites CLI commands to compress output before entering context (60-90% savings)
-- **MemStack** — Persistent memory system with 77 skills, SQLite DB, and session hooks
+- **MemStack** — Persistent memory system with 20 skills, SQLite DB, and session hooks
 
-Users install by running `setup-whetstone.sh` from inside a git project. Global tools (Headroom, RTK) install once; MemStack skills and supporting files are copied per-project.
+Single binary distribution. Users run `whetstone setup` from inside a git project. Global tools (Headroom, RTK) install once; MemStack skills and supporting files are copied per-project.
 
-**Bundled layout** in this repo:
-- `.claude/skills/` — 20 skill directories only (copied to project's `.claude/skills/`)
-- `.claude/memstack/` — hooks, rules, commands, db, config (copied to project's `.claude/` directly)
+**Bundled assets** in this repo:
+- `assets/skills/` — 20 skill directories (copied to project's `.claude/skills/`)
+- `assets/hooks/` — 5 hook `.sh` scripts (copied to `~/.claude/hooks/`)
+- `assets/rules/` — 8 rule `.md` files (copied to project's `.claude/rules/`)
+- `assets/commands/` — 2 command `.md` files (copied to project's `.claude/commands/`)
+- `assets/db/schema.sql` — SQLite schema for MemStack database
 
 ## Commands
 
-```bash
-just setup           # Run setup-whetstone.sh
-just check-scripts   # Syntax-check all shell scripts (bash -n)
-just uninstall       # Run uninstall.sh
-```
+<!-- AUTO-GENERATED: commands -->
+| Command | Description |
+|---------|-------------|
+| `cargo build` | Build the whetstone binary |
+| `cargo test` | Run all tests (11 tests) |
+| `cargo clippy` | Run lints |
+| `cargo fmt` | Format Rust code |
+| `just build` | Build release binary |
+| `just test` | Run tests |
+| `just release <bump>` | Bump VERSION and optionally tag |
+| `just release-publish <bump>` | Bump, commit, tag, and push |
+<!-- AUTO-GENERATED: end -->
 
-There are no build steps, tests, or linters beyond `bash -n` syntax checking.
+## CLI Reference
+
+<!-- AUTO-GENERATED: cli -->
+```
+whetstone                              # Default: headroom wrap claude --model claude-opus-4-6
+whetstone setup [--full] [--headroom-extras EXTRAS]
+whetstone uninstall
+whetstone claude [args...]
+whetstone code [args...]               # Alias for claude
+whetstone proxy [args...]
+whetstone rtk [args...]
+whetstone version
+whetstone update [--full]
+whetstone release patch|minor|major|set X.Y.Z [--tag]
+whetstone release-publish patch|minor|major|set X.Y.Z [--tag]
+whetstone db init|add-session|add-insight|search|get-sessions|...
+```
+<!-- AUTO-GENERATED: end -->
+
+`--headroom-extras` accepts: `all` (default = `proxy,code,mcp`), `none`, or comma-separated like `proxy,code`.
 
 ## Architecture
 
@@ -35,14 +64,14 @@ User → Claude Code
          └── Memory     → [MemStack] → SQLite + skills
 ```
 
-**Setup flow** (`setup-whetstone.sh`, the core of the project):
-1. Preflight: verify Python 3.10+, git, jq, uv; confirm inside git repo
-2. Install Headroom globally via `uv tool install "headroom-ai[proxy,code,mcp]"`
+**Setup flow** (`whetstone setup`, orchestrated by `src/setup.rs`):
+1. Preflight: verify Python 3.10+, git, curl, uv; confirm inside git repo
+2. Install Headroom via `uv tool install "headroom-ai[EXTRAS]"` (extras configurable)
 3. Install RTK from GitHub (detects name collision with Rust Type Kit)
 4. Configure RTK hook globally + set `ANTHROPIC_BASE_URL` in shell profile
-5. Install whetstone/whetstone-rtk CLI wrappers to `~/.local/bin`
-6. Optionally copy bundled skills to `.claude/skills/`, supporting files (db, rules, commands) to `.claude/`, init SQLite
-7. Merge all hooks into `~/.claude/settings.json` (backed up with timestamp first)
+5. Self-install binary to `~/.local/bin/whetstone`
+6. Optionally install MemStack: copy skills, rules, commands, MEMSTACK.md; create config.local.json; init SQLite
+7. Copy hook scripts to `~/.claude/hooks/`; merge into `~/.claude/settings.json` (backed up with timestamp)
 8. Generate `STACK-SETUP.md`
 
 **Hook system** — registered in `~/.claude/settings.json`:
@@ -54,21 +83,50 @@ User → Claude Code
 | PreToolUse (Bash, git push) | Build check + secrets scan | MemStack |
 | PostToolUse (git commit) | Debug artifact scan | MemStack |
 | SessionStart | Headroom auto-start + indexing | MemStack |
-| SessionStop | Session reporting | MemStack |
+| Stop | Session reporting | MemStack |
+
+## Source Layout
+
+<!-- AUTO-GENERATED: source-layout -->
+```
+src/
+├── main.rs          # Entry: parse CLI, dispatch subcommands
+├── cli.rs           # clap derive structs for all subcommands
+├── setup.rs         # whetstone setup orchestrator (7 steps)
+├── uninstall.rs     # Interactive component removal
+├── wrapper.rs       # claude/proxy/rtk exec wrappers
+├── update.rs        # 12h-cached remote version check
+├── release.rs       # Version bump, tag, publish
+├── db.rs            # SQLite ops (full port of memstack-db.py)
+├── hooks.rs         # Hook script copy + settings.json merge
+├── config.rs        # Typed structs for config.local.json
+├── shell.rs         # Shell profile detection, env var injection
+├── preflight.rs     # Dependency checks (python, git, curl, uv)
+├── headroom.rs      # Headroom install/upgrade (extras configurable)
+├── rtk.rs           # RTK install/upgrade + collision detection
+├── version.rs       # Semver parse, compare, bump
+└── ui.rs            # Colored output, interactive prompts
+```
+<!-- AUTO-GENERATED: end -->
 
 ## Key Design Decisions
 
+- **Single Rust binary**: replaces ~1200 lines Bash + ~460 lines Python
 - **Idempotent**: setup skips already-installed components; safe to rerun
 - **Absolute paths in hooks**: avoids PATH/shell-state issues
 - **Global tools, per-project config**: RTK/Headroom installed globally; MemStack and config are per-project
 - **Backup before modify**: `settings.json` backed up with timestamp before any merge
-- **All scripts use `set -euo pipefail`**
+- **No jq dependency**: serde_json replaces jq for settings.json manipulation
+- **rusqlite bundled**: statically links SQLite, no system dependency
+- **Asset resolution**: `WHETSTONE_ASSETS` env → `<binary_dir>/../assets/` → `~/.whetstone/assets/`
 
-## Shell Script Conventions
+## Rust Conventions
 
-All scripts use colored output helpers (`info`, `ok`, `warn`, `fail`). The setup script auto-installs jq if missing (via pacman/apt/brew). Non-interactive mode (no TTY) auto-accepts MemStack install for CI use.
-
-`bin/whetstone` is the user-facing CLI: bare `whetstone` runs `headroom wrap claude`; subcommands (`proxy`, `rtk`, `claude`) dispatch to the appropriate tool with `ANTHROPIC_BASE_URL` set.
+- `anyhow::Result` for error propagation with context
+- `ui::fail()` for fatal errors (calls `process::exit(1)`)
+- Unix `CommandExt::exec` for wrapper commands (replaces process)
+- Non-interactive fallback: `dialoguer::Confirm` with TTY detection
+- `console::style` for colored output
 
 <!-- headroom:learn:start -->
 ## Headroom Learned Patterns
@@ -76,19 +134,19 @@ All scripts use colored output helpers (`info`, `ok`, `warn`, `fail`). The setup
 
 ### Repository Layout — Bundled Assets
 *~4,000 tokens/session saved*
-- `.claude/skills/` contains ONLY skill files (flat, no subdirectories from external repos)
-- `.claude/memstack/` contains hooks and MemStack runtime files
+- `assets/skills/` contains ONLY skill files (flat, no subdirectories from external repos)
+- `assets/hooks/`, `assets/rules/`, `assets/commands/` contain MemStack runtime files
 - These directories are **static/vendored** — do NOT clone or pull external repos into them at install time; files are shipped with whetstone and should only change on a new whetstone release
 
-### Install Script Constraints
+### Install Constraints
 *~3,000 tokens/session saved*
-- `setup-whetstone.sh` must copy skills flat into `.claude/skills/` (no nested repo structure)
+- `src/setup.rs` copies skills flat into `.claude/skills/` via `copy_dir_recursive` (no nested repo structure)
 - Never use `git clone` or `git submodule` for MemStack/skills during install; copy bundled files only
-- Verify with `just check-scripts` after any edits to shell scripts
+- Verify with `cargo clippy` and `cargo test` after any edits
 
 ### Available Commands
 *~500 tokens/session saved*
-- Use `just check-scripts` to run syntax checks on all shell scripts
+- Use `cargo build && cargo test && cargo clippy` to verify changes
 - `just` is the task runner (see `justfile` in repo root)
 
 <!-- headroom:learn:end -->
