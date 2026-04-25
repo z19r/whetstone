@@ -108,11 +108,11 @@ When multiple skills could activate on the same prompt, use these ownership rule
 - **"tier" / "scope" / "what's allowed"** →Governor only
 
 ## Storage
-- **Database (primary):** `C:\Projects\memstack\db\memstack.db` — SQLite with WAL mode
-- **DB Helper:** `python C:/Projects/memstack/db/memstack-db.py <command>` — repository pattern CLI
+- **Database (primary):** `.claude/memstack/db/memstack.db` — SQLite with WAL mode
+- **DB Helper:** `whetstone db <command>` — repository pattern CLI
 - **Commands:** `init`, `add-session`, `add-insight`, `search`, `get-sessions`, `get-insights`, `get-context`, `set-context`, `add-plan-task`, `get-plan`, `update-task`, `export-md`, `stats`
 
 ## Paths
-- Skills: `C:\Projects\memstack\skills\{name}\SKILL.md` | Deprecated: `skills\_deprecated\` | Hooks: `.claude/hooks/` | Rules: `.claude/rules/` | Commands: `.claude/commands/` | DB: `C:\Projects\memstack\db\` | Config: `config.json`
+- Skills: `.claude/skills/{name}/SKILL.md` | Hooks: `.claude/hooks/` | Rules: `.claude/rules/` | Commands: `.claude/commands/` | DB: `.claude/memstack/db/` | Config: `config.local.json`
 
 *Architecture inspired by Developer Kaki's MemoryCore (github.com/Kiyoraka/Project-AI-MemoryCore)*
