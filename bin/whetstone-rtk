@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# Whetstone RTK: run rtk with Headroom proxy URL in the environment.
-set -euo pipefail
-
-DEFAULT_PROXY="http://127.0.0.1:8787"
-export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-$DEFAULT_PROXY}"
-exec rtk "$@"

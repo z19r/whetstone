@@ -1,0 +1,26 @@
+[package]
+name = "whetstone"
+version = "0.5.0"
+edition = "2021"
+description = "Installer and CLI for Claude Code token optimization (Headroom + RTK + MemStack)"
+license = "MIT"
+repository = "https://github.com/z19r/whetstone"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env", "string"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+semver = "1"
+ureq = "2"
+dialoguer = "0.11"
+console = "0.15"
+which = "6"
+dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

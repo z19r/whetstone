@@ -3,40 +3,41 @@
 default:
     @just --list
 
-# Full install from clone (run inside a git project root)
-setup:
-    bash ./setup-whetstone.sh
+# Build debug binary
+build:
+    cargo build
 
-# Same as setup (back-compat script name)
-setup-stack:
-    bash ./setup-stack.sh
+# Build optimized release binary
+build-release:
+    cargo build --release
 
-# Pipe-friendly installer (uses WHETSTONE_SETUP_URL if set)
-install-remote:
-    bash ./install.sh
+# Run all tests
+test:
+    cargo test
 
-# Update local ~/.whetstone clone to latest and run setup
-update:
-    bash ./install.sh
+# Run clippy lints
+lint:
+    cargo clippy -- -D warnings
 
-# Force-upgrade Headroom/RTK and refresh existing MemStack files.
-update-full:
-    bash ./install.sh --full
+# Format code
+fmt:
+    cargo fmt
 
-# Remove whetstone wrappers and optional global/project pieces
+# Build, test, and lint in one shot
+check: build test lint
+
+# Run whetstone setup (uses cargo run)
+setup *ARGS:
+    cargo run -- setup {{ARGS}}
+
+# Run whetstone uninstall
 uninstall:
-    bash ./uninstall.sh
-
-# Syntax check shell scripts
-check-scripts:
-    bash -n ./setup-whetstone.sh ./setup-stack.sh ./install.sh ./uninstall.sh
-    bash -n ./bin/whetstone ./bin/whetstone-rtk ./scripts/release.sh
-    bash -n ./scripts/release-publish.sh
+    cargo run -- uninstall
 
 # Bump VERSION: just release patch|minor|major|set [version] [--tag]
 release *ARGS:
-    bash ./scripts/release.sh {{ARGS}}
+    cargo run -- release {{ARGS}}
 
-# Bump, commit, tag, and push release in one command.
+# Bump, commit, tag, and push release in one command
 release-publish *ARGS:
-    bash ./scripts/release-publish.sh {{ARGS}}
+    cargo run -- release-publish {{ARGS}}
