@@ -81,23 +81,10 @@ pub enum Command {
 
 #[derive(Subcommand, Clone)]
 pub enum ReleaseAction {
-    Patch {
-        #[arg(long)]
-        tag: bool,
-    },
-    Minor {
-        #[arg(long)]
-        tag: bool,
-    },
-    Major {
-        #[arg(long)]
-        tag: bool,
-    },
-    Set {
-        version: String,
-        #[arg(long)]
-        tag: bool,
-    },
+    Patch,
+    Minor,
+    Major,
+    Set { version: String },
 }
 
 #[derive(Subcommand)]
