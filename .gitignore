@@ -130,3 +130,4 @@ rustc-ice-*.txt
 #.idea/
 /.claude/memstack/db/memstack.db-shm
 /.claude/memstack/db/memstack.db-wal
+/.claude
