@@ -18,7 +18,7 @@ whetstone setup ──┬── Headroom (context compression proxy)
 
 ```bash
 cd ~/my-project
-curl -fsSL https://raw.githubusercontent.com/zackkitzmiller/whetstone/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/z19r/whetstone/main/install.sh | bash
 ```
 
 This downloads the prebuilt binary for your OS/arch, installs it to
@@ -186,7 +186,7 @@ just release-publish minor         # Bump, commit, tag, and push
 
 ```bash
 # 1. Install whetstone
-curl -fsSL https://raw.githubusercontent.com/zackkitzmiller/whetstone/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/z19r/whetstone/main/install.sh | bash
 
 # 2. Or, if already installed, go to your project (must be a git repo)
 cd ~/my-project

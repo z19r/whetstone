@@ -4,7 +4,7 @@
 # fetches assets to ~/.whetstone/assets/, then runs `whetstone setup`.
 set -euo pipefail
 
-REPO="zackkitzmiller/whetstone"
+REPO="z19r/whetstone"
 BIN_DIR="${HOME}/.local/bin"
 ASSETS_DIR="${HOME}/.whetstone/assets"
 
