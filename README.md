@@ -7,7 +7,7 @@ and skills land in whatever git repo you run it from.
 ```
 whetstone setup ──┬── Headroom (context compression proxy)
                   ├── RTK (CLI output compression)
-                  └── MemStack (skills + persistent memory)
+                  └── Memory (ICM or AutoMem provider)
 ```
 
 ## Install
@@ -27,7 +27,7 @@ See [docs/install.md](docs/install.md) for prerequisites, setup details, and pro
 User → AI Coding Tool
          ├── Bash calls → [RTK Hook] → compressed output (60-90% savings)
          ├── Context    → [Headroom Proxy :8787] → LLM API (50-90% savings)
-         └── Memory     → [MemStack] → SQLite + 77 skills
+         └── Memory     → [ICM or AutoMem] → persistent context
 ```
 
 Token savings compound: RTK shrinks tool output before it enters the context window, then Headroom compresses the entire context before it hits the API.
@@ -38,7 +38,7 @@ Token savings compound: RTK shrinks tool output before it enters the context win
 
 **RTK** — Single Rust binary that compresses CLI output. `cargo test` goes from ~4,800 tokens to ~11. `git diff` from ~21,500 to ~1,259. Transparent via hook — `git status` becomes `rtk git status` automatically.
 
-**MemStack** — 77 specialist skills activated by keyword triggers, plus persistent memory across sessions. Core skills: Echo (recall), Diary (logging), Work (tasks), Verify (pre-commit). Hooks for pre-push safety, post-commit cleanup, session lifecycle.
+**Memory** — Choose between ICM (embedded SQLite, zero dependencies) or AutoMem (graph memory via FalkorDB + Qdrant). Bundled skills, rules, and hooks for pre-push safety, post-commit cleanup, and session lifecycle.
 
 ## Documentation
 

@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "whetstone",
     version = env!("WHETSTONE_VERSION"),
-    about = "Headroom + RTK + MemStack for Claude Code"
+    about = "Headroom + RTK + Memory for Claude Code"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -13,9 +13,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Install Headroom, RTK, and optionally MemStack
+    /// Install Headroom, RTK, and a memory provider
     Setup {
-        /// Force-upgrade all tools and refresh MemStack files
+        /// Force-upgrade all tools and refresh installed files
         #[arg(long)]
         full: bool,
 
@@ -72,7 +72,7 @@ pub enum Command {
         action: ReleaseAction,
     },
 
-    /// MemStack database operations
+    /// Session database operations
     Db {
         #[command(subcommand)]
         action: DbCommand,

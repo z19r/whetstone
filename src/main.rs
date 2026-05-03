@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod headroom;
 mod hooks;
+mod memory;
 mod preflight;
 mod release;
 mod rtk;

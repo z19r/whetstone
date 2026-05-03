@@ -131,3 +131,4 @@ rustc-ice-*.txt
 /.claude/memstack/db/memstack.db-shm
 /.claude/memstack/db/memstack.db-wal
 /.claude
+STACK-SETUP.md

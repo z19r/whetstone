@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::memory::MemoryProvider;
 use crate::ui;
 
 pub fn copy_hook_scripts(assets_hooks: &Path, dest_hooks: &Path) -> Result<()> {
@@ -37,7 +38,11 @@ pub fn copy_hook_scripts(assets_hooks: &Path, dest_hooks: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn merge_settings_json(settings_path: &Path, hooks_dir: &Path) -> Result<()> {
+pub fn merge_settings_json(
+    settings_path: &Path,
+    hooks_dir: &Path,
+    provider: MemoryProvider,
+) -> Result<()> {
     if settings_path.exists() {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -58,7 +63,7 @@ pub fn merge_settings_json(settings_path: &Path, hooks_dir: &Path) -> Result<()>
     };
 
     let hd = hooks_dir.display().to_string();
-    let merged = build_hooks_value(&existing, &hd);
+    let merged = build_hooks_value(&existing, &hd, provider);
 
     let json_str = serde_json::to_string_pretty(&merged).context("serializing settings.json")?;
 
@@ -72,66 +77,96 @@ pub fn merge_settings_json(settings_path: &Path, hooks_dir: &Path) -> Result<()>
     Ok(())
 }
 
-fn build_hooks_value(existing: &Value, hd: &str) -> Value {
+fn build_hooks_value(existing: &Value, hd: &str, provider: MemoryProvider) -> Value {
     let mut result = existing.clone();
 
-    result["hooks"] = json!({
-        "PreToolUse": [
-            {
+    let whetstone_hooks: Vec<(&str, Vec<Value>)> = vec![
+        (
+            "PreToolUse",
+            vec![
+                json!({
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": format!("{hd}/rtk-rewrite.sh")}]
+                }),
+                json!({
+                    "matcher": "Write|Edit|MultiEdit|Bash",
+                    "hooks": [{"type": "command", "command": format!("{hd}/pre-tool-notify.sh"), "timeout": 10000}]
+                }),
+                json!({
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command",
+                        "command": format!("bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"git push\" && {hd}/pre-push.sh || exit 0'"),
+                        "timeout": 60000}]
+                }),
+            ],
+        ),
+        (
+            "PostToolUse",
+            vec![json!({
                 "matcher": "Bash",
-                "hooks": [{
-                    "type": "command",
-                    "command": format!("{hd}/rtk-rewrite.sh")
-                }]
-            },
-            {
-                "matcher": "Write|Edit|MultiEdit|Bash",
-                "hooks": [{
-                    "type": "command",
-                    "command": format!("{hd}/pre-tool-notify.sh"),
-                    "timeout": 10000
-                }]
-            },
-            {
-                "matcher": "Bash",
-                "hooks": [{
-                    "type": "command",
-                    "command": format!(
-                        "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"git push\" && {hd}/pre-push.sh || exit 0'"
-                    ),
-                    "timeout": 60000
-                }]
+                "hooks": [{"type": "command",
+                    "command": format!("bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"git commit\" && {hd}/post-commit.sh || exit 0'"),
+                    "timeout": 10000}]
+            })],
+        ),
+        (
+            "SessionStart",
+            vec![json!({
+                "hooks": [{"type": "command", "command": format!("{hd}/session-start.sh"), "timeout": 10000}]
+            })],
+        ),
+        (
+            "Stop",
+            vec![json!({
+                "hooks": [{"type": "command", "command": format!("{hd}/session-end.sh"), "timeout": 10000}]
+            })],
+        ),
+    ];
+
+    let old_hooks = result.get("hooks").cloned().unwrap_or_else(|| json!({}));
+    let mut new_hooks = serde_json::Map::new();
+
+    for (event, whetstone_entries) in &whetstone_hooks {
+        let mut merged: Vec<Value> = old_hooks
+            .get(*event)
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter(|entry| !entry_references_dir(entry, hd))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        merged.extend(whetstone_entries.iter().cloned());
+        new_hooks.insert((*event).to_string(), Value::Array(merged));
+    }
+
+    if let Some(obj) = old_hooks.as_object() {
+        for (key, val) in obj {
+            if !new_hooks.contains_key(key) {
+                new_hooks.insert(key.clone(), val.clone());
             }
-        ],
-        "PostToolUse": [
-            {
-                "matcher": "Bash",
-                "hooks": [{
-                    "type": "command",
-                    "command": format!(
-                        "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"git commit\" && {hd}/post-commit.sh || exit 0'"
-                    ),
-                    "timeout": 10000
-                }]
-            }
-        ],
-        "SessionStart": [{
-            "hooks": [{
-                "type": "command",
-                "command": format!("{hd}/session-start.sh"),
-                "timeout": 10000
-            }]
-        }],
-        "Stop": [{
-            "hooks": [{
-                "type": "command",
-                "command": format!("{hd}/session-end.sh"),
-                "timeout": 10000
-            }]
-        }]
-    });
+        }
+    }
+
+    result["hooks"] = Value::Object(new_hooks);
+
+    if provider == MemoryProvider::AutoMem {
+        if result.get("mcpServers").is_none() {
+            result["mcpServers"] = json!({});
+        }
+        result["mcpServers"]["memory"] = json!({
+            "command": "npx",
+            "args": ["-y", "@verygoodplugins/mcp-automem"]
+        });
+    }
 
     result
+}
+
+fn entry_references_dir(entry: &Value, dir: &str) -> bool {
+    let s = entry.to_string();
+    s.contains(dir)
 }
 
 #[cfg(test)]
@@ -141,7 +176,7 @@ mod tests {
     #[test]
     fn merge_into_empty_settings() {
         let existing = json!({});
-        let result = build_hooks_value(&existing, "/home/user/.claude/hooks");
+        let result = build_hooks_value(&existing, "/home/user/.claude/hooks", MemoryProvider::Skip);
 
         let hooks = &result["hooks"];
         assert!(hooks["PreToolUse"].is_array());
@@ -157,7 +192,7 @@ mod tests {
             "apiKey": "sk-test",
             "model": "claude-opus-4-6"
         });
-        let result = build_hooks_value(&existing, "/tmp/hooks");
+        let result = build_hooks_value(&existing, "/tmp/hooks", MemoryProvider::Icm);
 
         assert_eq!(result["apiKey"], "sk-test");
         assert_eq!(result["model"], "claude-opus-4-6");
@@ -166,12 +201,55 @@ mod tests {
 
     #[test]
     fn hooks_use_absolute_paths() {
-        let result = build_hooks_value(&json!({}), "/home/user/.claude/hooks");
+        let result =
+            build_hooks_value(&json!({}), "/home/user/.claude/hooks", MemoryProvider::Skip);
 
         let rtk_cmd = result["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
             .as_str()
             .unwrap();
         assert!(rtk_cmd.starts_with("/home/user/.claude/hooks/"));
         assert!(rtk_cmd.ends_with("rtk-rewrite.sh"));
+    }
+
+    #[test]
+    fn merge_preserves_non_whetstone_hooks() {
+        let existing = json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": "/usr/local/bin/icm hook pre"}]
+                }],
+                "PreCompact": [{
+                    "hooks": [{"type": "command", "command": "/usr/local/bin/icm hook compact"}]
+                }]
+            }
+        });
+        let result = build_hooks_value(&existing, "/home/user/.claude/hooks", MemoryProvider::Icm);
+
+        let pre = result["hooks"]["PreToolUse"].as_array().unwrap();
+        assert!(pre.iter().any(|e| e.to_string().contains("icm hook pre")));
+        assert!(pre.iter().any(|e| e.to_string().contains("rtk-rewrite")));
+
+        assert!(result["hooks"]["PreCompact"].is_array());
+    }
+
+    #[test]
+    fn automem_adds_mcp_server() {
+        let result = build_hooks_value(
+            &json!({}),
+            "/home/user/.claude/hooks",
+            MemoryProvider::AutoMem,
+        );
+
+        assert!(result["mcpServers"]["memory"].is_object());
+        assert_eq!(result["mcpServers"]["memory"]["command"], "npx");
+    }
+
+    #[test]
+    fn skip_provider_no_mcp_servers() {
+        let result =
+            build_hooks_value(&json!({}), "/home/user/.claude/hooks", MemoryProvider::Skip);
+
+        assert!(result.get("mcpServers").is_none());
     }
 }

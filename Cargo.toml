@@ -2,7 +2,7 @@
 name = "whetstone-cli"
 version = "2.0.0"
 edition = "2021"
-description = "Installer and CLI for Claude Code token optimization (Headroom + RTK + MemStack)"
+description = "Installer and CLI for Claude Code token optimization (Headroom + RTK + Memory)"
 license = "MIT"
 repository = "https://github.com/z19r/whetstone"
 
