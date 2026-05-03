@@ -9,8 +9,8 @@ This skill teaches the core development patterns and conventions used in the `wh
 ## Coding Conventions
 
 ### File Naming
-- Use **camelCase** for file names.
-  - Example: `myModule.rs`, `dataProcessor.rs`
+- Use **snake_case** for file names.
+  - Example: `my_module.rs`, `data_processor.rs`
 
 ### Import Style
 - Use **relative imports** within the codebase.
