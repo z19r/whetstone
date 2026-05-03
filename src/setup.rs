@@ -2,7 +2,8 @@ use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{config, db, headroom, hooks, preflight, rtk, shell, ui};
+use crate::memory::MemoryProvider;
+use crate::{config, headroom, hooks, preflight, rtk, shell, ui};
 
 const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
 
@@ -61,13 +62,16 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
     ui::info("step 5/7 — install whetstone binary");
     self_install()?;
 
-    let install_memstack = prompt_memstack(full)?;
+    let provider = prompt_memory_provider(full)?;
 
-    if install_memstack {
-        ui::info("step 6/7 — memstack");
-        install_memstack_assets(&assets, full, headroom_extras)?;
+    if provider != MemoryProvider::Skip {
+        ui::info("step 6/8 — skills, rules, commands");
+        install_general_assets(&assets, full, headroom_extras)?;
 
-        ui::info("step 7/7 — hooks + settings.json");
+        ui::info(&format!("step 7/8 — {} provider", provider.name()));
+        install_provider(provider)?;
+
+        ui::info("step 8/8 — hooks + settings.json");
         let claude_dir = dirs::home_dir()
             .context("could not determine home directory")?
             .join(".claude");
@@ -75,38 +79,56 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
         let settings_path = claude_dir.join("settings.json");
 
         hooks::copy_hook_scripts(&assets.join("hooks"), &hooks_dir)?;
-        hooks::merge_settings_json(&settings_path, &hooks_dir)?;
+        hooks::merge_settings_json(&settings_path, &hooks_dir, provider)?;
 
-        generate_stack_setup()?;
+        generate_stack_setup(provider)?;
     } else {
-        ui::info("skipped memstack skills, hooks, and STACK-SETUP.md");
+        ui::info("skipped memory provider, skills, hooks, and STACK-SETUP.md");
     }
 
     ui::ok("whetstone setup complete");
     Ok(())
 }
 
-fn prompt_memstack(full: bool) -> Result<bool> {
+fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
     let project_dir = std::env::current_dir()?;
     let has_existing = project_dir.join(".claude/skills").is_dir()
         || project_dir.join(".claude/MEMSTACK.md").exists();
 
     if full {
         if has_existing {
-            ui::info("full update: refreshing existing memstack install");
-            return Ok(true);
+            ui::info("full update: refreshing existing install");
+            return detect_installed_provider();
         }
-        ui::info("full update: no memstack install found — skipping");
-        return Ok(false);
+        ui::info("full update: no existing install found — skipping");
+        return Ok(MemoryProvider::Skip);
     }
 
-    Ok(ui::confirm(
-        "Install MemStack skills and hooks for this project?",
-        true,
-    ))
+    let choices = MemoryProvider::CHOICES;
+    let idx = ui::select("Choose a memory provider:", &choices, 0);
+    Ok(choices[idx])
 }
 
-fn install_memstack_assets(assets: &Path, full: bool, headroom_extras: &str) -> Result<()> {
+fn detect_installed_provider() -> Result<MemoryProvider> {
+    let settings_path = dirs::home_dir()
+        .context("home directory")?
+        .join(".claude/settings.json");
+
+    if !settings_path.exists() {
+        return Ok(MemoryProvider::Icm);
+    }
+
+    let content = fs::read_to_string(&settings_path).unwrap_or_default();
+    if content.contains("icm hook") || content.contains("icm serve") {
+        Ok(MemoryProvider::Icm)
+    } else if content.contains("mcp-automem") {
+        Ok(MemoryProvider::AutoMem)
+    } else {
+        Ok(MemoryProvider::Icm)
+    }
+}
+
+fn install_general_assets(assets: &Path, full: bool, headroom_extras: &str) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let claude_dir = project_dir.join(".claude");
 
@@ -119,16 +141,76 @@ fn install_memstack_assets(assets: &Path, full: bool, headroom_extras: &str) -> 
     cfg.write_to(&config_path)?;
     ui::ok("created config.local.json");
 
-    let db_dir = claude_dir.join("db");
-    fs::create_dir_all(&db_dir)?;
-    let db_path = db_dir.join("memstack.db");
-    if !db_path.exists() {
-        db::dispatch(crate::cli::DbCommand::Init)?;
-        ui::ok("database initialized");
-    } else {
-        ui::ok("database already exists");
+    Ok(())
+}
+
+fn install_provider(provider: MemoryProvider) -> Result<()> {
+    match provider {
+        MemoryProvider::Icm => install_icm(),
+        MemoryProvider::AutoMem => install_automem(),
+        MemoryProvider::Skip => Ok(()),
+    }
+}
+
+fn install_icm() -> Result<()> {
+    if which::which("icm").is_ok() {
+        let output = std::process::Command::new("icm").arg("--version").output();
+        if let Ok(o) = output {
+            if o.status.success() {
+                let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                ui::ok(&format!("icm already installed ({ver})"));
+                run_icm_init()?;
+                return Ok(());
+            }
+        }
     }
 
+    ui::info("installing ICM...");
+    let status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("curl -fsSL https://raw.githubusercontent.com/rtk-ai/icm/main/install.sh | sh")
+        .status()
+        .context("failed to run ICM install script")?;
+
+    if !status.success() {
+        bail!("ICM installation failed");
+    }
+
+    if which::which("icm").is_err() {
+        bail!("ICM binary not found after installation — check your PATH");
+    }
+
+    run_icm_init()?;
+    ui::ok("ICM installed and configured");
+    Ok(())
+}
+
+fn run_icm_init() -> Result<()> {
+    let status = std::process::Command::new("icm")
+        .args(["init", "--mode", "standard"])
+        .status()
+        .context("failed to run icm init")?;
+
+    if !status.success() {
+        ui::warn("icm init returned non-zero — hooks may need manual setup");
+    }
+    Ok(())
+}
+
+fn install_automem() -> Result<()> {
+    preflight::check_npm()?;
+
+    ui::info("installing AutoMem...");
+    let status = std::process::Command::new("npx")
+        .args(["-y", "@verygoodplugins/mcp-automem", "claude-code"])
+        .status()
+        .context("failed to run AutoMem installer")?;
+
+    if !status.success() {
+        bail!("AutoMem installation failed");
+    }
+
+    ui::ok("AutoMem installed");
     Ok(())
 }
 
@@ -181,10 +263,11 @@ fn copy_memstack_md(assets: &Path, claude_dir: &Path, force: bool) -> Result<()>
     Ok(())
 }
 
-fn generate_stack_setup() -> Result<()> {
+fn generate_stack_setup(provider: MemoryProvider) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let dest = project_dir.join("STACK-SETUP.md");
-    fs::write(&dest, STACK_SETUP_CONTENT)?;
+    let content = stack_setup_content(provider);
+    fs::write(&dest, content)?;
     ui::ok("generated STACK-SETUP.md");
     Ok(())
 }
@@ -210,9 +293,21 @@ fn has_subdirs(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-const STACK_SETUP_CONTENT: &str = r#"# Whetstone (Claude Code stack)
+fn stack_setup_content(provider: MemoryProvider) -> String {
+    let provider_row = match provider {
+        MemoryProvider::Icm => {
+            "| ICM | Embedded SQLite memory, zero dependencies | persistent context |"
+        }
+        MemoryProvider::AutoMem => {
+            "| AutoMem | Graph memory via MCP (FalkorDB + Qdrant) | persistent context |"
+        }
+        MemoryProvider::Skip => "| — | No memory provider installed | — |",
+    };
 
-This project was set up with Whetstone: Headroom, RTK, and MemStack for
+    format!(
+        r#"# Whetstone (Claude Code stack)
+
+This project was set up with Whetstone: Headroom, RTK, and {provider} for
 token-efficient Claude Code sessions.
 
 ## Quick Start
@@ -228,18 +323,7 @@ whetstone claude       # Same as above
 |------|---------|---------|
 | Headroom | HTTP proxy compresses context before API | 50-90% |
 | RTK | Hook rewrites CLI output before entering context | 60-90% |
-| MemStack | Skills, SQLite memory, session hooks | efficiency |
-
-## Hooks
-
-| Event | Hook | Tool |
-|-------|------|------|
-| Before Bash | RTK rewrites command | RTK |
-| Before Write/Edit/Bash | TTS notification | MemStack |
-| Before `git push` | Build check + secrets scan | MemStack |
-| After `git commit` | Debug artifact scan | MemStack |
-| Session start | Headroom auto-start + indexing | MemStack |
-| Session end | Session reporting | MemStack |
+{provider_row}
 
 ## Configuration
 
@@ -247,21 +331,15 @@ whetstone claude       # Same as above
 |------|---------|
 | `~/.claude/settings.json` | Hook registrations (global) |
 | `.claude/config.local.json` | Project config |
-| `.claude/db/memstack.db` | SQLite database |
-
-## Database CLI
-
-```bash
-whetstone db stats
-whetstone db search "query"
-whetstone db get-sessions
-whetstone db export-md
-```
 
 ## Uninstall
 
 Per-project: `whetstone uninstall`
-"#;
+"#,
+        provider = provider.name(),
+        provider_row = provider_row,
+    )
+}
 
 fn self_install() -> Result<()> {
     let current_exe =

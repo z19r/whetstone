@@ -81,3 +81,12 @@ fn check_uv() -> Result<()> {
         bail!("uv not found — install from https://docs.astral.sh/uv/")
     }
 }
+
+pub fn check_npm() -> Result<()> {
+    if which::which("npx").is_ok() {
+        ui::ok("npx");
+        Ok(())
+    } else {
+        bail!("npx not found — install Node.js 18+ to use AutoMem")
+    }
+}

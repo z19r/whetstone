@@ -1,5 +1,5 @@
 use console::style;
-use dialoguer::Confirm;
+use dialoguer::{Confirm, Select};
 use std::io::{self, IsTerminal};
 
 pub fn info(msg: &str) {
@@ -29,6 +29,18 @@ pub fn confirm(prompt: &str, default: bool) -> bool {
     }
     Confirm::new()
         .with_prompt(prompt)
+        .default(default)
+        .interact()
+        .unwrap_or(default)
+}
+
+pub fn select<T: std::fmt::Display>(prompt: &str, items: &[T], default: usize) -> usize {
+    if !is_interactive() {
+        return default;
+    }
+    Select::new()
+        .with_prompt(prompt)
+        .items(items)
         .default(default)
         .interact()
         .unwrap_or(default)
