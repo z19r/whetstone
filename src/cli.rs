@@ -15,7 +15,7 @@ pub struct Cli {
 pub enum Command {
     /// Install Headroom, RTK, and a memory provider
     Setup {
-        /// Force-upgrade all tools and refresh MemStack files
+        /// Force-upgrade all tools and refresh installed files
         #[arg(long)]
         full: bool,
 
@@ -72,7 +72,7 @@ pub enum Command {
         action: ReleaseAction,
     },
 
-    /// MemStack database operations
+    /// Session database operations
     Db {
         #[command(subcommand)]
         action: DbCommand,

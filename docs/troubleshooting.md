@@ -61,11 +61,11 @@ headroom proxy --port 8787
 curl -s localhost:8787/stats
 ```
 
-## MemStack skills not loading
+## Skills not loading
 
 ```bash
-# Is it installed?
-ls .claude/skills/MEMSTACK.md
+# Are skills installed?
+ls .claude/skills/
 
 # Are rules present?
 ls .claude/rules/
@@ -97,13 +97,13 @@ cp ~/.claude/settings.json.bak.NEWEST ~/.claude/settings.json
 whetstone uninstall
 ```
 
-Interactive prompts let you choose which components to remove (whetstone binary, RTK, Headroom, project MemStack files).
+Interactive prompts let you choose which components to remove (whetstone binary, RTK, Headroom, project files).
 
 ### Manual removal
 
-**Remove MemStack (per-project):**
+**Remove whetstone files (per-project):**
 ```bash
-rm -rf .claude/skills .claude/rules .claude/commands .claude/memstack
+rm -rf .claude/skills .claude/rules .claude/commands .claude/db
 rm -f config.local.json STACK-SETUP.md
 ```
 

@@ -24,10 +24,10 @@ pub fn run() -> Result<()> {
         ui::warn("skipped Headroom removal");
     }
 
-    if ui::confirm("Remove MemStack from this project directory?", false) {
-        remove_project_memstack(&project_dir);
+    if ui::confirm("Remove whetstone files from this project directory?", false) {
+        remove_project_files(&project_dir);
     } else {
-        ui::warn("skipped project MemStack removal");
+        ui::warn("skipped project file removal");
     }
 
     ui::warn("review shell rc files and remove ANTHROPIC_BASE_URL if unwanted");
@@ -81,7 +81,7 @@ fn remove_headroom() {
     ui::ok("headroom uninstall attempted");
 }
 
-fn remove_project_memstack(project_dir: &Path) {
+fn remove_project_files(project_dir: &Path) {
     let claude = project_dir.join(".claude");
     if !claude.join("skills").is_dir() {
         ui::info(&format!("no .claude/skills in {}", project_dir.display()));
@@ -96,5 +96,5 @@ fn remove_project_memstack(project_dir: &Path) {
     }
     let _ = fs::remove_file(project_dir.join("STACK-SETUP.md"));
 
-    ui::ok("project MemStack files removed");
+    ui::ok("project whetstone files removed");
 }

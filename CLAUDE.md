@@ -8,16 +8,16 @@ Whetstone is a Rust CLI that installs and configures three token optimization to
 
 - **Headroom** — HTTP proxy between Claude Code and the Anthropic API (50-90% context compression)
 - **RTK** — Hook that rewrites CLI commands to compress output before entering context (60-90% savings)
-- **MemStack** — Persistent memory system with 20 skills, SQLite DB, and session hooks
+- **Memory** — Persistent memory via ICM (embedded SQLite) or AutoMem (graph memory), with bundled skills and session hooks
 
-Single binary distribution. Users run `whetstone setup` from inside a git project. Global tools (Headroom, RTK) install once; MemStack skills and supporting files are copied per-project.
+Single binary distribution. Users run `whetstone setup` from inside a git project. Global tools (Headroom, RTK) install once; skills, rules, and memory provider are configured per-project.
 
 **Bundled assets** in this repo:
 - `assets/skills/` — 20 skill directories (copied to project's `.claude/skills/`)
 - `assets/hooks/` — 5 hook `.sh` scripts (copied to `~/.claude/hooks/`)
 - `assets/rules/` — 8 rule `.md` files (copied to project's `.claude/rules/`)
 - `assets/commands/` — 2 command `.md` files (copied to project's `.claude/commands/`)
-- `assets/db/schema.sql` — SQLite schema for MemStack database
+- `assets/db/schema.sql` — SQLite schema for session database
 
 ## Commands
 
@@ -61,7 +61,7 @@ whetstone db init|add-session|add-insight|search|get-sessions|...
 User → Claude Code
          ├── Bash calls → [RTK Hook] → rtk <cmd> → compressed output
          ├── Context    → [Headroom Proxy :8787] → Anthropic API
-         └── Memory     → [MemStack] → SQLite + skills
+         └── Memory     → [ICM or AutoMem] → persistent context
 ```
 
 **Setup flow** (`whetstone setup`, orchestrated by `src/setup.rs`):
@@ -70,20 +70,22 @@ User → Claude Code
 3. Install RTK from GitHub (detects name collision with Rust Type Kit)
 4. Configure RTK hook globally + set `ANTHROPIC_BASE_URL` in shell profile
 5. Self-install binary to `~/.local/bin/whetstone`
-6. Optionally install MemStack: copy skills, rules, commands, MEMSTACK.md; create config.local.json; init SQLite
-7. Copy hook scripts to `~/.claude/hooks/`; merge into `~/.claude/settings.json` (backed up with timestamp)
-8. Generate `STACK-SETUP.md`
+6. Prompt for memory provider (ICM, AutoMem, or Skip)
+7. Copy skills, rules, commands, MEMSTACK.md; create config.local.json
+8. Install and configure chosen memory provider
+9. Copy hook scripts to `~/.claude/hooks/`; merge into `~/.claude/settings.json` (backed up with timestamp)
+10. Generate `STACK-SETUP.md`
 
 **Hook system** — registered in `~/.claude/settings.json`:
 
 | Event | What Fires | Source |
 |-------|-----------|--------|
 | PreToolUse (Bash) | RTK rewrites command | RTK |
-| PreToolUse (Write/Edit/Bash) | TTS notification | MemStack |
-| PreToolUse (Bash, git push) | Build check + secrets scan | MemStack |
-| PostToolUse (git commit) | Debug artifact scan | MemStack |
-| SessionStart | Headroom auto-start + indexing | MemStack |
-| Stop | Session reporting | MemStack |
+| PreToolUse (Write/Edit/Bash) | TTS notification | whetstone |
+| PreToolUse (Bash, git push) | Build check + secrets scan | whetstone |
+| PostToolUse (git commit) | Debug artifact scan | whetstone |
+| SessionStart | Headroom auto-start + indexing | whetstone |
+| Stop | Session reporting | whetstone |
 
 ## Source Layout
 
@@ -92,12 +94,13 @@ User → Claude Code
 src/
 ├── main.rs          # Entry: parse CLI, dispatch subcommands
 ├── cli.rs           # clap derive structs for all subcommands
-├── setup.rs         # whetstone setup orchestrator (7 steps)
+├── setup.rs         # whetstone setup orchestrator (8 steps)
 ├── uninstall.rs     # Interactive component removal
 ├── wrapper.rs       # claude/proxy/rtk exec wrappers
 ├── update.rs        # 12h-cached remote version check
 ├── release.rs       # Version bump, tag, publish
-├── db.rs            # SQLite ops (full port of memstack-db.py)
+├── db.rs            # SQLite ops for session/memory database
+├── memory.rs        # MemoryProvider enum (ICM, AutoMem, Skip)
 ├── hooks.rs         # Hook script copy + settings.json merge
 ├── config.rs        # Typed structs for config.local.json
 ├── shell.rs         # Shell profile detection, env var injection
@@ -114,7 +117,7 @@ src/
 - **Single Rust binary**: replaces ~1200 lines Bash + ~460 lines Python
 - **Idempotent**: setup skips already-installed components; safe to rerun
 - **Absolute paths in hooks**: avoids PATH/shell-state issues
-- **Global tools, per-project config**: RTK/Headroom installed globally; MemStack and config are per-project
+- **Global tools, per-project config**: RTK/Headroom installed globally; memory provider and config are per-project
 - **Backup before modify**: `settings.json` backed up with timestamp before any merge
 - **No jq dependency**: serde_json replaces jq for settings.json manipulation
 - **rusqlite bundled**: statically links SQLite, no system dependency
@@ -135,13 +138,13 @@ src/
 ### Repository Layout — Bundled Assets
 *~4,000 tokens/session saved*
 - `assets/skills/` contains ONLY skill files (flat, no subdirectories from external repos)
-- `assets/hooks/`, `assets/rules/`, `assets/commands/` contain MemStack runtime files
+- `assets/hooks/`, `assets/rules/`, `assets/commands/` contain runtime files
 - These directories are **static/vendored** — do NOT clone or pull external repos into them at install time; files are shipped with whetstone and should only change on a new whetstone release
 
 ### Install Constraints
 *~3,000 tokens/session saved*
 - `src/setup.rs` copies skills flat into `.claude/skills/` via `copy_dir_recursive` (no nested repo structure)
-- Never use `git clone` or `git submodule` for MemStack/skills during install; copy bundled files only
+- Never use `git clone` or `git submodule` for skills during install; copy bundled files only
 - Verify with `cargo clippy` and `cargo test` after any edits
 
 ### Available Commands

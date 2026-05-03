@@ -13,17 +13,17 @@ whetstone
 headroom proxy --port 8787 &
 claude
 
-# Option C: Without Headroom (RTK + MemStack only)
+# Option C: Without Headroom (RTK + Memory only)
 claude
 ```
 
 **What happens automatically:**
 - RTK hook rewrites every Bash tool call (`git status` -> `rtk git status`)
 - Headroom compresses context before API calls (if proxy is running)
-- MemStack hooks fire on session start/end, commits, pushes
-- MemStack skills activate on keyword triggers ("recall", "todo", "verify", etc.)
+- Memory hooks fire on session start/end, commits, pushes
+- Memory skills activate on keyword triggers ("recall", "todo", "verify", etc.)
 
-**Hook configuration** lives in `~/.claude/settings.json` (global). All hooks — RTK and MemStack — are installed to `~/.claude/hooks/` with absolute paths. Works in every project, every directory.
+**Hook configuration** lives in `~/.claude/settings.json` (global). All hooks — RTK and Memory — are installed to `~/.claude/hooks/` with absolute paths. Works in every project, every directory.
 
 **MCP tools** (optional, adds `headroom_compress`, `headroom_retrieve`, `headroom_stats`):
 ```bash
@@ -40,7 +40,7 @@ headroom mcp status
 **Setup:**
 1. Run `whetstone setup` from your project root (terminal)
 2. The extension reads the same `~/.claude/settings.json` hooks
-3. RTK and MemStack hooks work identically to CLI
+3. RTK and Memory hooks work identically to CLI
 
 **Headroom proxy connection** — two options:
 
@@ -80,7 +80,7 @@ Or use the [systemd service](headroom-service.md) to have it always running.
 
 ## Cursor
 
-**Partial support.** RTK and Headroom work. MemStack does not (Cursor has a different hook system).
+**Partial support.** RTK and Headroom work. Memory does not (Cursor has a different hook system).
 
 **RTK setup:**
 ```bash
@@ -99,13 +99,13 @@ Alternatively, set the environment variable before launching:
 ANTHROPIC_BASE_URL=http://localhost:8787 cursor
 ```
 
-**MemStack:** Not supported. Cursor does not implement Claude Code's `PreToolUse`/`PostToolUse`/`SessionStart`/`Stop` lifecycle hooks.
+**Memory:** Not supported. Cursor does not implement Claude Code's `PreToolUse`/`PostToolUse`/`SessionStart`/`Stop` lifecycle hooks.
 
 ---
 
 ## VS Code + GitHub Copilot
 
-**Partial support.** RTK works. Headroom requires SDK integration. MemStack does not work.
+**Partial support.** RTK works. Headroom requires SDK integration. Memory does not work.
 
 **RTK setup:**
 ```bash
@@ -119,13 +119,13 @@ import { withHeadroom } from 'headroom-ai/openai';
 const client = withHeadroom(new OpenAI());
 ```
 
-**MemStack:** Not supported (different hook architecture).
+**Memory:** Not supported (different hook architecture).
 
 ---
 
 ## Windsurf
 
-**Partial support.** RTK works (project-scoped). Headroom via env var. MemStack does not work.
+**Partial support.** RTK works (project-scoped). Headroom via env var. Memory does not work.
 
 **RTK setup:**
 ```bash
@@ -139,13 +139,13 @@ This creates `.windsurfrules` in your project root. Windsurf's Cascade reads thi
 ANTHROPIC_BASE_URL=http://localhost:8787 windsurf
 ```
 
-**MemStack:** Not supported.
+**Memory:** Not supported.
 
 ---
 
 ## Cline / Roo Code (VS Code)
 
-**Partial support.** RTK works (project-scoped). Headroom via settings. MemStack does not work.
+**Partial support.** RTK works (project-scoped). Headroom via settings. Memory does not work.
 
 **RTK setup:**
 ```bash
@@ -156,13 +156,13 @@ This creates `.clinerules` in your project root. Project-scoped only.
 
 **Headroom:** Cline has API base URL fields in its settings panel. Set the Anthropic base URL to `http://localhost:8787`.
 
-**MemStack:** Not supported.
+**Memory:** Not supported.
 
 ---
 
 ## Aider
 
-**Partial support.** Headroom works natively. RTK is instruction-based. MemStack does not work.
+**Partial support.** Headroom works natively. RTK is instruction-based. Memory does not work.
 
 **Headroom (one command):**
 ```bash
@@ -172,13 +172,13 @@ This starts the proxy and launches Aider with the correct base URL.
 
 **RTK:** No hook system in Aider. You can add instructions to `.aider.conf.yml` or use `rtk` commands directly in your prompts.
 
-**MemStack:** Not supported.
+**Memory:** Not supported.
 
 ---
 
 ## OpenAI Codex CLI
 
-**Partial support.** RTK works (instruction-based). Headroom works. MemStack does not work.
+**Partial support.** RTK works (instruction-based). Headroom works. Memory does not work.
 
 **Headroom:**
 ```bash
@@ -191,13 +191,13 @@ rtk init -g --codex
 ```
 This creates `~/.codex/RTK.md` and `~/.codex/AGENTS.md`. Codex reads these as global instructions and prefixes commands with `rtk`. This is instruction-based (no hook API), so compliance depends on the model.
 
-**MemStack:** Not supported.
+**Memory:** Not supported.
 
 ---
 
 ## Gemini CLI
 
-**Partial support.** RTK works (hook-based). Headroom via env var. MemStack does not work.
+**Partial support.** RTK works (hook-based). Headroom via env var. Memory does not work.
 
 **RTK setup:**
 ```bash
@@ -210,13 +210,13 @@ This creates `~/.gemini/hooks/rtk-hook-gemini.sh` and patches `~/.gemini/setting
 OPENAI_BASE_URL=http://localhost:8787/v1 gemini
 ```
 
-**MemStack:** Not supported.
+**Memory:** Not supported.
 
 ---
 
 ## OpenCode
 
-**Partial support.** RTK works (plugin-based). Headroom via env var. MemStack does not work.
+**Partial support.** RTK works (plugin-based). Headroom via env var. Memory does not work.
 
 **RTK setup:**
 ```bash
@@ -234,8 +234,8 @@ This creates `~/.config/opencode/plugins/rtk.ts` using the `tool.execute.before`
 | **Headroom MCP** | `mcp install` | manual | -- | -- | -- | -- | -- | -- |
 | **RTK hooks** | PreToolUse | preToolUse | PreToolUse | `.windsurfrules` | `.clinerules` | manual | instructions | BeforeTool |
 | **RTK scope** | global | global | global | project | project | -- | global | global |
-| **MemStack skills** | full | -- | -- | -- | -- | -- | -- | -- |
-| **MemStack hooks** | full | -- | -- | -- | -- | -- | -- | -- |
-| **MemStack memory** | full | -- | -- | -- | -- | -- | -- | -- |
+| **Memory skills** | full | -- | -- | -- | -- | -- | -- | -- |
+| **Memory hooks** | full | -- | -- | -- | -- | -- | -- | -- |
+| **Memory memory** | full | -- | -- | -- | -- | -- | -- | -- |
 
 Legend: full = fully supported, manual = requires manual configuration, -- = not supported

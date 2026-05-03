@@ -4,7 +4,7 @@
 
 | File | Owner | Purpose |
 |------|-------|---------|
-| `~/.claude/settings.json` | RTK + MemStack | All hooks (absolute paths to `~/.claude/hooks/`) |
+| `~/.claude/settings.json` | RTK + whetstone | All hooks (absolute paths to `~/.claude/hooks/`) |
 | `~/.claude/hooks/rtk-rewrite.sh` | RTK | Bash command rewriter |
 | `~/.claude/RTK.md` | RTK | RTK instructions for Claude Code context |
 | `~/.claude/CLAUDE.md` | Claude Code | Global instructions (references `@RTK.md`) |
@@ -15,11 +15,11 @@
 
 | File | Owner | Purpose |
 |------|-------|---------|
-| `.claude/skills/` | MemStack | Skills directories |
-| `.claude/rules/` | MemStack | Rule files |
-| `.claude/commands/` | MemStack | Command files |
+| `.claude/skills/` | whetstone | Skills directories |
+| `.claude/rules/` | whetstone | Rule files |
+| `.claude/commands/` | whetstone | Command files |
 | `config.local.json` | whetstone | Project-specific configuration |
-| `.claude/memstack/db/memstack.db` | MemStack | Session/memory database |
+| `.claude/db/memstack.db` | whetstone | Session/memory database |
 | `STACK-SETUP.md` | whetstone setup | Per-project quick reference |
 | `CLAUDE.md` | Claude Code | Project-specific instructions |
 

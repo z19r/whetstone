@@ -27,7 +27,7 @@ cd ~/another-project
 whetstone setup
 ```
 
-Idempotent: global tools install once; MemStack is per-project under `.claude/`.
+Idempotent: global tools install once; memory provider and skills are per-project under `.claude/`.
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ whetstone setup
 whetstone
 ```
 
-RTK hooks, Headroom, and MemStack (optional) are configured.
+RTK hooks, Headroom, and memory provider (optional) are configured.
 
 ## Setting Up a New Project
 
@@ -65,7 +65,7 @@ whetstone setup
 whetstone version
 rtk --version
 headroom --version
-ls .claude/skills/MEMSTACK.md    # if you opted into MemStack
+ls .claude/skills/               # if you chose a memory provider
 ```
 
 The setup command will:
@@ -75,10 +75,11 @@ The setup command will:
 4. Configure the RTK PreToolUse hook in `~/.claude/settings.json`
 5. Add `ANTHROPIC_BASE_URL` to your shell profile
 6. Copy the whetstone binary to `~/.local/bin`
-7. Optionally install MemStack into `.claude/`
-8. Initialize the MemStack SQLite database (if MemStack on)
-9. Merge hooks into `~/.claude/settings.json` (if MemStack on)
-10. Generate `STACK-SETUP.md` in your project root (if MemStack on)
+7. Prompt for memory provider (ICM, AutoMem, or Skip)
+8. Copy skills, rules, commands into `.claude/`
+9. Install and configure chosen memory provider
+10. Merge hooks into `~/.claude/settings.json`
+11. Generate `STACK-SETUP.md` in your project root
 
 ## Setting Up an Existing Project
 
@@ -89,6 +90,6 @@ cd ~/existing-project
 whetstone setup
 ```
 
-If components are already installed, setup skips them. If `.claude/` already exists with MemStack, it skips the copy.
+If components are already installed, setup skips them. If `.claude/` already has skills installed, it skips the copy.
 
 **If your project already has a `.claude/` directory:** Setup creates `.claude/skills/` inside it. Your existing `.claude/settings.json`, `CLAUDE.md`, and other files are preserved. Only `~/.claude/settings.json` (global) is modified (with a timestamped backup).

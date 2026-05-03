@@ -13,7 +13,7 @@
 | `whetstone update [--full]` | Check for updates |
 | `whetstone release patch\|minor\|major\|set X.Y.Z [--tag]` | Bump VERSION |
 | `whetstone release-publish ...` | Bump, commit, tag, and push |
-| `whetstone db <subcommand>` | MemStack database operations |
+| `whetstone db <subcommand>` | Session database operations |
 
 ## Headroom Extras
 
