@@ -63,7 +63,7 @@ Use camelCase naming convention
 ## Evidence
 
 - Analyzed file naming patterns in repository
-- Dominant pattern: camelCase
+- Dominant pattern: camel_case
 
 ---
 id: whetstone-import-relative
@@ -142,7 +142,7 @@ Name the file using camelCase
 
 ## Evidence
 
-- Pattern in namingConventions.files: camelCase
+- Pattern in naming_conventions.files: camelCase
 
 ---
 id: whetstone-instinct-function-naming
@@ -161,7 +161,7 @@ Name the function using camelCase
 
 ## Evidence
 
-- Pattern in namingConventions.functions: camelCase
+- Pattern in naming_conventions.functions: camelCase
 
 ---
 id: whetstone-instinct-class-naming
@@ -237,7 +237,7 @@ Use named exports
 
 ## Evidence
 
-- Pattern in exportStyle: named
+- Pattern in export_style: named
 
 ---
 id: whetstone-instinct-commit-format
@@ -276,7 +276,7 @@ Keep the commit message around 62 characters on average
 
 ## Evidence
 
-- Pattern in commits.averageLength: 62
+- Pattern in commits.average_length: 62
 
 ---
 id: whetstone-instinct-test-location
@@ -295,5 +295,5 @@ Place test files in a separate location from source files
 
 ## Evidence
 
-- Pattern in architecture.folderStructure.testLocation: separate
+- Pattern in architecture.folder_structure.testLocation: separate
 
