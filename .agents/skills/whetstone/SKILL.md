@@ -17,7 +17,7 @@ This skill teaches the core development patterns and conventions used in the `wh
   - Example:
     ```rust
     mod utils;
-    use crate::utils::helperFunction;
+    use crate::utils::helper_function;
     ```
 
 ### Export Style
@@ -66,7 +66,7 @@ This skill teaches the core development patterns and conventions used in the `wh
 ## Testing Patterns
 
 - Test files follow the `*.test.*` naming pattern.
-  - Example: `dataProcessor.test.rs`
+  - Example: `data_processor.test.rs`
 - Testing framework is not explicitly specified; use Rust's built-in test framework.
 - Example test:
     ```rust
