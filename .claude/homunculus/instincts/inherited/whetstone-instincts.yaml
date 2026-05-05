@@ -58,52 +58,13 @@ source_repo: https://github.com/z19r/whetstone
 
 ## Action
 
-Use camelCase naming convention
+Use snake_case naming convention
 
 ## Evidence
 
 - Analyzed file naming patterns in repository
-- Dominant pattern: camel_case
+- Dominant pattern: snake_case (Rust convention)
 
----
-id: whetstone-import-relative
-trigger: "when importing modules"
-confidence: 0.75
-domain: code-style
-source: repo-analysis
-source_repo: https://github.com/z19r/whetstone
----
-
-# Whetstone Import Relative
-
-## Action
-
-Use relative imports for project files
-
-## Evidence
-
-- Import analysis shows relative import pattern
-- Example: import { x } from '../lib/x'
-
----
-id: whetstone-export-style
-trigger: "when exporting from a module"
-confidence: 0.7
-domain: code-style
-source: repo-analysis
-source_repo: https://github.com/z19r/whetstone
----
-
-# Whetstone Export Style
-
-## Action
-
-Prefer named exports
-
-## Evidence
-
-- Export pattern analysis
-- Dominant style: named
 
 ---
 id: whetstone-test-separate
@@ -138,11 +99,11 @@ source_repo: z19r/whetstone
 
 ## Action
 
-Name the file using camelCase
+Name the file using snake_case
 
 ## Evidence
 
-- Pattern in naming_conventions.files: camelCase
+- Pattern in naming_conventions.files: snake_case (Rust convention)
 
 ---
 id: whetstone-instinct-function-naming
@@ -157,11 +118,11 @@ source_repo: z19r/whetstone
 
 ## Action
 
-Name the function using camelCase
+Name the function using snake_case
 
 ## Evidence
 
-- Pattern in naming_conventions.functions: camelCase
+- Pattern in naming_conventions.functions: snake_case (Rust convention)
 
 ---
 id: whetstone-instinct-class-naming
@@ -180,7 +141,7 @@ Name the class or struct using PascalCase
 
 ## Evidence
 
-- Pattern in namingConventions.classes: PascalCase
+- Pattern in naming_conventions.classes: TitleCase (PascalCase) — applies to structs, enums, traits, and type aliases
 
 ---
 id: whetstone-instinct-constant-naming
@@ -201,43 +162,6 @@ Name the constant using SCREAMING_SNAKE_CASE
 
 - Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
 
----
-id: whetstone-instinct-import-style
-trigger: "When importing modules"
-confidence: 0.7
-domain: code-style
-source: repo-analysis
-source_repo: z19r/whetstone
----
-
-# Whetstone Instinct Import Style
-
-## Action
-
-Use relative import paths
-
-## Evidence
-
-- Pattern in importStyle: relative
-
----
-id: whetstone-instinct-export-style
-trigger: "When exporting functions or types"
-confidence: 0.7
-domain: code-style
-source: repo-analysis
-source_repo: z19r/whetstone
----
-
-# Whetstone Instinct Export Style
-
-## Action
-
-Use named exports
-
-## Evidence
-
-- Pattern in export_style: named
 
 ---
 id: whetstone-instinct-commit-format
