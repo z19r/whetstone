@@ -1,0 +1,223 @@
+# Instincts generated from https://github.com/z19r/whetstone
+# Generated: 2026-05-03T12:33:11.999Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: whetstone-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/z19r/whetstone
+---
+
+# Whetstone Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat
+
+## Evidence
+
+- 1 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat: replace MemStack with AutoMem/ICM memory provider choice
+
+---
+id: whetstone-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/z19r/whetstone
+---
+
+# Whetstone Commit Length
+
+## Action
+
+Write moderate-length commit messages (~62 characters)
+
+## Evidence
+
+- Average commit message length: 62 chars
+- Based on 1 commits
+
+---
+id: whetstone-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/z19r/whetstone
+---
+
+# Whetstone Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case (Rust convention)
+
+
+---
+id: whetstone-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/z19r/whetstone
+---
+
+# Whetstone Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: whetstone-instinct-file-naming
+trigger: "When creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: z19r/whetstone
+---
+
+# Whetstone Instinct File Naming
+
+## Action
+
+Name the file using snake_case
+
+## Evidence
+
+- Pattern in naming_conventions.files: snake_case (Rust convention)
+
+---
+id: whetstone-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: z19r/whetstone
+---
+
+# Whetstone Instinct Function Naming
+
+## Action
+
+Name the function using snake_case
+
+## Evidence
+
+- Pattern in naming_conventions.functions: snake_case (Rust convention)
+
+---
+id: whetstone-instinct-class-naming
+trigger: "When defining a new class or struct"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: z19r/whetstone
+---
+
+# Whetstone Instinct Class Naming
+
+## Action
+
+Name the class or struct using PascalCase
+
+## Evidence
+
+- Pattern in naming_conventions.classes: TitleCase (PascalCase) — applies to structs, enums, traits, and type aliases
+
+---
+id: whetstone-instinct-constant-naming
+trigger: "When defining a new constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: z19r/whetstone
+---
+
+# Whetstone Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+
+---
+id: whetstone-instinct-commit-format
+trigger: "When writing a git commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: z19r/whetstone
+---
+
+# Whetstone Instinct Commit Format
+
+## Action
+
+Start the commit message with 'feat:' followed by a concise description
+
+## Evidence
+
+- Pattern in commits.prefixes: feat
+- Example: feat: replace MemStack with AutoMem/ICM memory provider choice
+
+---
+id: whetstone-instinct-commit-length
+trigger: "When writing a git commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: z19r/whetstone
+---
+
+# Whetstone Instinct Commit Length
+
+## Action
+
+Keep the commit message around 62 characters on average
+
+## Evidence
+
+- Pattern in commits.average_length: 62
+
+---
+id: whetstone-instinct-test-location
+trigger: "When adding or organizing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: z19r/whetstone
+---
+
+# Whetstone Instinct Test Location
+
+## Action
+
+Place test files in a separate location from source files
+
+## Evidence
+
+- Pattern in architecture.folder_structure.testLocation: separate
+
