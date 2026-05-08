@@ -109,7 +109,7 @@ fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
     Ok(choices[idx])
 }
 
-fn detect_installed_provider() -> Result<MemoryProvider> {
+pub(crate) fn detect_installed_provider() -> Result<MemoryProvider> {
     let settings_path = dirs::home_dir()
         .context("home directory")?
         .join(".claude/settings.json");
@@ -128,7 +128,11 @@ fn detect_installed_provider() -> Result<MemoryProvider> {
     }
 }
 
-fn install_general_assets(assets: &Path, full: bool, headroom_extras: &str) -> Result<()> {
+pub(crate) fn install_general_assets(
+    assets: &Path,
+    full: bool,
+    headroom_extras: &str,
+) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let claude_dir = project_dir.join(".claude");
 
@@ -144,7 +148,7 @@ fn install_general_assets(assets: &Path, full: bool, headroom_extras: &str) -> R
     Ok(())
 }
 
-fn install_provider(provider: MemoryProvider) -> Result<()> {
+pub(crate) fn install_provider(provider: MemoryProvider) -> Result<()> {
     match provider {
         MemoryProvider::Icm => install_icm(),
         MemoryProvider::AutoMem => install_automem(),
