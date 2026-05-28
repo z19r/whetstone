@@ -91,7 +91,7 @@ function App() {
               <span>ONE BINARY <span className="sep">·</span></span>
               <span>97% ACC @ 19% TOK · SQUAD V2 <span className="sep">·</span></span>
               <span>CARGO TEST 4,800 → 11 <span className="sep">·</span></span>
-              <span>v2.5.0 <span className="sep">·</span></span>
+              <span>v2.5.1 <span className="sep">·</span></span>
               {/* duplicate for seamless loop */}
               <span>RUST 2021 <span className="sep">·</span></span>
               <span>MIT <span className="sep">·</span></span>
@@ -99,7 +99,7 @@ function App() {
               <span>ONE BINARY <span className="sep">·</span></span>
               <span>97% ACC @ 19% TOK · SQUAD V2 <span className="sep">·</span></span>
               <span>CARGO TEST 4,800 → 11 <span className="sep">·</span></span>
-              <span>v2.5.0 <span className="sep">·</span></span>
+              <span>v2.5.1 <span className="sep">·</span></span>
             </div>
           </div>
         )}
