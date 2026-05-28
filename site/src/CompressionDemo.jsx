@@ -170,7 +170,6 @@ function CompressionDemo() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">03 · COMPRESSION</div>
         <h2>Tool output<br />becomes a line.</h2>
-        <div className="ws-sec-meta">CARGO · GIT · CONTEXT<br />SWITCH TO SEE EACH</div>
       </div>
 
       <div className="demo">

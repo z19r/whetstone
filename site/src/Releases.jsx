@@ -80,7 +80,6 @@ function Releases() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">07 · RELEASES</div>
         <h2>Recent shipments.</h2>
-        <div className="ws-sec-meta">CURRENT · v2.5.0<br />SEMVER · MIT · OSS</div>
       </div>
 
       <div className="releases">

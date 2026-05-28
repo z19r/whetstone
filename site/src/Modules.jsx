@@ -9,7 +9,6 @@ function Modules() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">01 · MODULES</div>
         <h2>Three layers,<br />one binary.</h2>
-        <div className="ws-sec-meta">HEADROOM · RTK<br />MEMORY · ICM / AUTOMEM</div>
       </div>
 
       <div className="modules-grid">

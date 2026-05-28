@@ -98,6 +98,10 @@ main { position: relative; z-index: 1; }
 .ws-nav-link:hover { background: var(--brand); color: var(--c-bone); }
 .ws-nav-link.is-active { background: var(--accent); color: var(--c-ink); }
 html[data-theme="light"] .ws-nav-link:hover { color: var(--c-bone); }
+html[data-theme="light"] .ws-badge--acid {
+  color: #3d6b00;
+  background: rgba(140, 180, 10, 0.12);
+}
 
 .ws-nav-right { display: flex; align-items: center; gap: 10px; }
 
@@ -138,8 +142,8 @@ html[data-theme="light"] .theme-toggle .dot { background: var(--c-magenta); }
 /* ============================================================
    SECTION SHELL
    ============================================================ */
-.section { padding: var(--s-8) 0; }
-.section.tight { padding: var(--s-7) 0; }
+.section { padding-block: var(--s-8); }
+.section.tight { padding-block: var(--s-7); }
 .section.no-top { padding-top: 0; }
 
 .section.surface-void {
@@ -166,7 +170,7 @@ html[data-theme="light"] .theme-toggle .dot { background: var(--c-magenta); }
    HERO
    ============================================================ */
 .hero {
-  padding: var(--s-9) 0 var(--s-8);
+  padding-block: var(--s-9) var(--s-8);
   position: relative;
 }
 .hero h1.display {
@@ -879,7 +883,7 @@ html[data-theme="light"] .faq-a code { background: rgba(255,46,147,0.06); }
   will-change: transform;
 }
 .marquee-track span { display: inline-block; padding: 0 var(--s-5); }
-.marquee-track .sep { color: var(--c-magenta); }
+.marquee-track .sep { color: var(--accent-hot); }
 @keyframes ws-marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }

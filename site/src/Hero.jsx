@@ -25,10 +25,12 @@ const CopyChip = function CopyChip({ cmd }) {
 function HeroBadges() {
   return (
     <div className="hero-badges">
-      <span className="ws-badge ws-badge--acid"><span className="pulse"></span>BUILD · PASSING</span>
+      <span className="ws-badge ws-badge--acid"></span>
+      <span className="ws-badge ws-badge--acid">&nbsp;&nbsp;</span>
+      <span className="ws-badge ws-badge--acid">&nbsp;&nbsp;&nbsp;</span>
       <span className="ws-badge ws-badge--royal">CRATES.IO · v2.5.0</span>
       <span className="ws-badge ws-badge--mag">MIT</span>
-      <span className="ws-badge ws-badge--bone">RUST 2021</span>
+      <span className="ws-badge ws-badge--acid">RUST 2021</span>
     </div>
   );
 }

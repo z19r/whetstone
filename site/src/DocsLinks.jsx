@@ -47,8 +47,7 @@ function DocsLinks() {
     <section className="section ws-wrap" id="docs">
       <div className="ws-sec-head">
         <div className="ws-sec-tag">09 · DOCS</div>
-        <h2>Read the manual.</h2>
-        <div className="ws-sec-meta">6 ENTRIES · OPEN-SOURCE<br />MIT · github.com/z19r/whetstone</div>
+        <h2>Read the fucking manual.</h2>
       </div>
 
       <div className="docs-grid">

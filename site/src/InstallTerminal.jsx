@@ -18,7 +18,7 @@ const SUCCESS_LINES = [
   { t: 240,  text: '   ✓ whetstone                      → ~/.local/bin/whetstone', cls: 'ok' },
   { t: 200,  text: '  └─────────────────────────────────────',   cls: 'rule' },
   { t: 400,  text: '  ┌─ CONFIGURE ─────────────────────────',  cls: 'rule' },
-  { t: 200,  text: '   ✓ ANTHROPIC_BASE_URL → ~/.zshrc',  cls: 'ok' },
+  { t: 200,  text: '   ✓ ANTHROPIC_BASE_URL → ~/.bashrc',  cls: 'ok' },
   { t: 200,  text: '   ✓ rtk PreToolUse hook → ~/.claude/settings.json', cls: 'ok' },
   { t: 200,  text: '   ✓ 20 skills · 5 hooks · 8 rules → .claude/', cls: 'ok' },
   { t: 200,  text: '   ✓ memory provider: icm (sqlite)',  cls: 'ok' },
@@ -110,7 +110,6 @@ function InstallTerminal() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">02 · INSTALL</div>
         <h2>One command.<br />Two outcomes shown.</h2>
-        <div className="ws-sec-meta">whetstone setup --full<br />~ 8 SECONDS · IDEMPOTENT</div>
       </div>
 
       <div style={{
@@ -140,7 +139,7 @@ function InstallTerminal() {
           <div style={{
             font: 'var(--t-tag)', letterSpacing: '0.14em', textTransform: 'uppercase',
             color: 'var(--c-acid)',
-          }}>~/projects/my-app · zsh</div>
+          }}>~/projects/my-app · bash</div>
           <div style={{ font: 'var(--t-mono)', fontSize: '11px', color: 'var(--c-lilac)' }}>
             [RTK · LIVE]
           </div>
@@ -223,7 +222,7 @@ function InstallTerminal() {
             <div className="ws-kv-row"><div className="k">MEMORY</div><div className="v">icm · .claude/db/whetstone.db</div><div className="s ok">ready</div></div>
             <div className="ws-kv-row"><div className="k">SKILLS</div><div className="v">20 copied to .claude/skills/</div><div className="s ok">ok</div></div>
             <div className="ws-kv-row"><div className="k">HOOKS</div><div className="v">5 hooks merged into ~/.claude/settings.json</div><div className="s ok">ok</div></div>
-            <div className="ws-kv-row"><div className="k">SHELL</div><div className="v">ANTHROPIC_BASE_URL → ~/.zshrc · restart needed</div><div className="s err">action</div></div>
+            <div className="ws-kv-row"><div className="k">SHELL</div><div className="v">ANTHROPIC_BASE_URL → ~/.bashrc</div><div className="s err">action</div></div>
           </div>
         </div>
       )}

@@ -63,7 +63,6 @@ function Architecture() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">05 · ARCHITECTURE</div>
         <h2>Where it sits<br />in your stack.</h2>
-        <div className="ws-sec-meta">PROXY · HOOK · MEMORY<br />ALL LOCAL · ALL OPTIONAL</div>
       </div>
 
       <ArchitectureDiagram />

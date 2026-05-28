@@ -44,7 +44,7 @@ const FAQS = [
       <>
         <p>Five stages: cache alignment, content routing, statistical JSON compression,
         AST-aware code compression, and score-based message dropping. Optional
-        <code>--llmlingua</code> adds an ML pass at ~2 GB model download.</p>
+        <code>--llmlingua</code> adds   an ML pass at ~2 GB model download.</p>
         <p>Benchmarks: <strong>97% accuracy at 19% tokens</strong> on SQuAD v2.</p>
       </>
     ),
@@ -116,7 +116,6 @@ function FAQ() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">08 · FAQ</div>
         <h2>What people<br />usually ask.</h2>
-        <div className="ws-sec-meta">8 ENTRIES<br />ALSO SEE /docs/troubleshooting</div>
       </div>
 
       <div className="faq-list">

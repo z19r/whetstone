@@ -10,7 +10,7 @@
 /* ============================================================
    HELPERS / LAYOUT
    ============================================================ */
-.ws-wrap   { max-width: 1440px; margin: 0 auto; padding: 0 clamp(var(--s-4), 5vw, var(--s-7)); }
+.ws-wrap   { max-width: 1440px; margin: 0 auto; padding: 0 clamp(var(--s-5), 5vw, var(--s-7)); }
 .ws-eyebrow {
   font: var(--t-tag);
   letter-spacing: 0.18em;

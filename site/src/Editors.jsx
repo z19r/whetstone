@@ -76,7 +76,6 @@ function Editors() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">06 · COMPATIBILITY</div>
         <h2>Works with what<br />you already run.</h2>
-        <div className="ws-sec-meta">8 EDITORS / AGENTS<br />FULL · PARTIAL · NONE</div>
       </div>
 
       <div className="matrix-wrap">

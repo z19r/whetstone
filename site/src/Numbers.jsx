@@ -56,7 +56,6 @@ function Numbers() {
       <div className="ws-sec-head">
         <div className="ws-sec-tag">04 · NUMBERS</div>
         <h2>Measured against<br />a clean baseline.</h2>
-        <div className="ws-sec-meta">SQUAD V2 BENCHMARK<br />CARGO · GIT REAL RUNS</div>
       </div>
 
       {/* big diff */}
