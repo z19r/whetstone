@@ -150,6 +150,38 @@ pub(crate) fn install_general_assets(assets: &Path, full: bool) -> Result<()> {
     Ok(())
 }
 
+/// Force-refresh the project's slash commands and rules from bundled assets.
+///
+/// Used by `whetstone update` (Phase 4.1) when the project's recorded
+/// integration-version is behind the binary's bundled
+/// [`crate::config::INTEGRATION_VERSION`]. Skills are intentionally left
+/// alone — they are heavier and the user often customises them; `--full`
+/// goes through [`refresh_all_assets`] instead.
+pub(crate) fn refresh_managed_subdirs(assets: &Path) -> Result<()> {
+    let project_dir = std::env::current_dir()?;
+    let claude_dir = project_dir.join(".claude");
+    copy_subdirs(assets, &claude_dir, true)
+}
+
+/// Force-refresh skills + slash commands + rules + MEMSTACK.md.
+///
+/// Triggered by `whetstone update --full`.
+pub(crate) fn refresh_all_assets(assets: &Path) -> Result<()> {
+    let project_dir = std::env::current_dir()?;
+    let claude_dir = project_dir.join(".claude");
+    copy_skills(assets, &claude_dir, true)?;
+    copy_subdirs(assets, &claude_dir, true)?;
+    copy_memstack_md(assets, &claude_dir, true)?;
+    Ok(())
+}
+
+/// Expose `icm --version` parsing so callers outside `setup.rs`
+/// (e.g. `whetstone update`'s per-project refresh) can update
+/// [`crate::config::ToolVersions`] without duplicating the spawn.
+pub(crate) fn current_icm_version() -> Option<String> {
+    installed_icm_version()
+}
+
 /// Install the memory provider's binary only. Integration (init) happens in
 /// `integrations::run_all` after this returns.
 pub(crate) fn install_provider_binary(provider: MemoryProvider) -> Result<()> {

@@ -98,6 +98,49 @@ pub fn update() -> Result<ui::ComponentStatus> {
     }
 }
 
+/// Best-effort `headroom learn` invocation.
+///
+/// Phase 4.2: rerun on `whetstone update` so the CLAUDE.md
+/// learned-patterns block doesn't rot. Returns `Ok(true)` when the command
+/// was successfully invoked, `Ok(false)` when headroom isn't installed or
+/// doesn't support `learn` on this version, and `Err` only for true I/O
+/// failures the caller may want to surface. The update path treats any
+/// failure as non-fatal.
+pub fn learn() -> Result<bool> {
+    if which::which("headroom").is_err() {
+        return Ok(false);
+    }
+
+    let output = Command::new("headroom")
+        .arg("learn")
+        .output()
+        .context("failed to spawn `headroom learn`")?;
+
+    if output.status.success() {
+        return Ok(true);
+    }
+
+    // Older headroom versions don't ship the `learn` subcommand. Detect
+    // that softly so we don't yell at the user for a no-op.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}").to_lowercase();
+    let looks_like_unknown_subcommand = combined.contains("unrecognized")
+        || combined.contains("unknown command")
+        || combined.contains("no such command")
+        || combined.contains("invalid choice");
+
+    if looks_like_unknown_subcommand {
+        return Ok(false);
+    }
+
+    bail!(
+        "headroom learn failed (exit {:?}): {}",
+        output.status.code(),
+        stderr.trim()
+    );
+}
+
 fn run_uv_install(spec: &str, upgrade: bool) -> Result<()> {
     let mut args = vec!["tool", "install"];
     if upgrade {
