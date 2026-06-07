@@ -36,6 +36,49 @@ watch:
 check:
     cargo check --all-targets --all-features
 
+
+# Open whetstone in Cursor classic editor (full LSP)
+edit-classic:
+    cursor --classic {{justfile_directory()}}
+
+# Diagnose rust-analyzer / Cursor LSP wiring
+ra-doctor:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BUNDLED="/home/zrk/.cursor/extensions/rust-lang.rust-analyzer-0.3.2921-linux-x64/server/rust-analyzer"
+    echo "=== rust-analyzer doctor ==="
+    echo "Extension server: $BUNDLED"
+    if [[ -x "$BUNDLED" ]]; then
+        "$BUNDLED" --version
+    else
+        echo "MISSING: install rust-analyzer extension in Cursor"
+        exit 1
+    fi
+    echo
+    echo "Running analysis-stats (proves RA can index this crate)..."
+    timeout 60 "$BUNDLED" analysis-stats . | tail -5
+    echo
+    echo
+    echo "=== Cursor Agents window (likely root cause) ==="
+    echo "Go-to-definition does NOT work in Agent layout file tabs."
+    echo "rust-analyzer can be healthy while F12 does nothing there."
+    echo "Fix: open this repo in the classic editor instead:"
+    echo "  just edit-classic"
+    echo "Or double-click a file tab to pop it into the main editor."
+    echo
+    echo "If classic editor still fails:"
+    echo "  1. Cmd Palette -> Developer: Restart Extension Host"
+    echo "  2. Cmd Palette -> Rust Analyzer: Restart server"
+    echo "  3. Cmd Palette -> Developer: Reload Window"
+
+# Kill bundled rust-analyzer zombies; reload Cursor window after
+ra-restart:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkill -f       '/home/zrk/.cursor/extensions/rust-lang.rust-analyzer-.*/server/rust-analyzer'       2>/dev/null || true
+    echo "Bundled rust-analyzer stopped (if any)."
+    echo "In Cursor: Rust Analyzer: Restart server, then Reload Window."
+
 # ─── Whetstone Commands ──────────────────────────────────────────
 
 # Run whetstone setup
