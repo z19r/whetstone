@@ -218,8 +218,52 @@ fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
     Ok(ui::ComponentStatus::Updated(current, latest.to_string()))
 }
 
-pub fn run(_full: bool) -> Result<()> {
+/// Decision for a single managed dependency (rtk / headroom).
+///
+/// Pure function so we can pin the `full` semantics in a unit test without
+/// touching the network or shelling out.
+#[derive(Debug, PartialEq, Eq)]
+enum DependencyDecision {
+    UpToDate(String),
+    Refresh,
+    NotInstalled,
+}
+
+fn dependency_decision(
+    installed: Option<&str>,
+    remote_latest: Option<&str>,
+    full: bool,
+) -> DependencyDecision {
+    match (installed, remote_latest) {
+        (None, _) => DependencyDecision::NotInstalled,
+        (Some(cur), Some(latest)) if !version::is_older(cur, latest) && !full => {
+            DependencyDecision::UpToDate(cur.to_string())
+        }
+        (Some(_), _) => DependencyDecision::Refresh,
+    }
+}
+
+/// Whetstone self-update + dependency refresh.
+///
+/// `full` plumbs the user's `--full` flag through. Today (Phase 2.4) it:
+///   - logs an explicit "full mode" banner, and
+///   - forces a refresh of `rtk` / `headroom` even when their installed
+///     version already satisfies the remote latest. Without `full`, an
+///     up-to-date component is left alone.
+///
+/// Phase 4 will extend this to also re-copy per-project assets
+/// (`.claude/skills`, rules, manifest) and re-run `whetstone doctor`. The
+/// plumbing lands now so callers don't drift; the per-project behaviour
+/// stays in its phase.
+pub fn run(full: bool) -> Result<()> {
     ui::section("whetstone update");
+
+    if full {
+        ui::info(
+            "full mode — forcing refresh of dependencies \
+             (Phase 4 will also refresh project assets)",
+        );
+    }
 
     let mut sp = ui::spinner("checking for updates");
     let whetstone_latest = fetch_remote_version()?;
@@ -241,30 +285,31 @@ pub fn run(_full: bool) -> Result<()> {
     }
     ui::component_line("whetstone", &whetstone_status);
 
-    let rtk_status = match (&rtk_current, &rtk_remote) {
-        (Some(cur), Some(latest)) if !version::is_older(cur, latest) => {
-            ui::ComponentStatus::UpToDate(cur.clone())
-        }
-        (Some(_), _) => match rtk::update() {
+    let rtk_status = match dependency_decision(rtk_current.as_deref(), rtk_remote.as_deref(), full)
+    {
+        DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
+        DependencyDecision::Refresh => match rtk::update() {
             Ok(status) => status,
             Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
         },
-        (None, _) => ui::ComponentStatus::NotInstalled,
+        DependencyDecision::NotInstalled => ui::ComponentStatus::NotInstalled,
     };
     if matches!(&rtk_status, ui::ComponentStatus::Updated(_, _)) {
         updated_count += 1;
     }
     ui::component_line("rtk", &rtk_status);
 
-    let headroom_status = match (&headroom_current, &headroom_remote) {
-        (Some(cur), Some(latest)) if !version::is_older(cur, latest) => {
-            ui::ComponentStatus::UpToDate(cur.clone())
-        }
-        (Some(_), _) => match headroom::update() {
+    let headroom_status = match dependency_decision(
+        headroom_current.as_deref(),
+        headroom_remote.as_deref(),
+        full,
+    ) {
+        DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
+        DependencyDecision::Refresh => match headroom::update() {
             Ok(status) => status,
             Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
         },
-        (None, _) => ui::ComponentStatus::NotInstalled,
+        DependencyDecision::NotInstalled => ui::ComponentStatus::NotInstalled,
     };
     if matches!(&headroom_status, ui::ComponentStatus::Updated(_, _)) {
         updated_count += 1;
@@ -304,4 +349,47 @@ pub fn run(_full: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn full_flag_forces_refresh_even_when_up_to_date() {
+        // Phase 2.4 regression: previously `_full` was ignored. The user's
+        // explicit `--full` must override "installed is already latest".
+        assert_eq!(
+            dependency_decision(Some("0.42.3"), Some("0.42.3"), true),
+            DependencyDecision::Refresh,
+        );
+    }
+
+    #[test]
+    fn no_full_flag_skips_when_up_to_date() {
+        assert_eq!(
+            dependency_decision(Some("0.42.3"), Some("0.42.3"), false),
+            DependencyDecision::UpToDate("0.42.3".into()),
+        );
+    }
+
+    #[test]
+    fn refresh_when_installed_is_older() {
+        assert_eq!(
+            dependency_decision(Some("0.41.0"), Some("0.42.3"), false),
+            DependencyDecision::Refresh,
+        );
+    }
+
+    #[test]
+    fn not_installed_short_circuits_regardless_of_full_flag() {
+        assert_eq!(
+            dependency_decision(None, Some("0.42.3"), true),
+            DependencyDecision::NotInstalled,
+        );
+        assert_eq!(
+            dependency_decision(None, None, false),
+            DependencyDecision::NotInstalled,
+        );
+    }
 }

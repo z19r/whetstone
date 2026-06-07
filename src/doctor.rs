@@ -490,4 +490,62 @@ mod tests {
         r.push("b", Status::Warning("bad".into()));
         assert!(!r.green());
     }
+
+    /// Phase 2.6 regression: confirms the v2-era stdin contract is gone.
+    ///
+    /// v2 shipped five hook scripts under `assets/hooks/` that read
+    /// `$CLAUDE_TOOL_INPUT` from the environment to gate behaviour. Those
+    /// scripts (and `src/hooks.rs`) were deleted in Phase 1. This test
+    /// audits the repo to make sure no resurrected code path is silently
+    /// re-introducing the broken env-var gate.
+    ///
+    /// Why this lives here: `whetstone doctor` is the Phase 1 watchdog for
+    /// the surviving hook contract. Pinning the inverse — that no piece of
+    /// whetstone *itself* talks about the broken token — fits in the same
+    /// module. Docs (the plan, the phase brief) reference the token
+    /// historically and are explicitly excluded.
+    #[test]
+    fn no_source_references_claude_tool_input_env_var() {
+        use std::collections::HashSet;
+
+        let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let scan_roots = ["src", "assets"];
+        let needle = "CLAUDE_TOOL_INPUT";
+
+        let mut offenders = HashSet::new();
+        for root in scan_roots {
+            let dir = Path::new(cargo_manifest_dir).join(root);
+            scan_for(&dir, needle, &mut offenders);
+        }
+
+        // This file mentions the token in the test comment above; that's
+        // documentation about the regression itself, not gating logic.
+        // Strip it from the offender set.
+        offenders.retain(|p| !p.ends_with("src/doctor.rs"));
+
+        assert!(
+            offenders.is_empty(),
+            "Phase 2.6 regression: source/asset tree must not reference \
+             `$CLAUDE_TOOL_INPUT`. Offending files: {offenders:#?}",
+        );
+    }
+
+    fn scan_for(dir: &Path, needle: &str, out: &mut std::collections::HashSet<String>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                scan_for(&path, needle, out);
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            if content.contains(needle) {
+                out.insert(path.display().to_string());
+            }
+        }
+    }
 }

@@ -25,7 +25,10 @@ const SUCCESS_LINES = [
   { t: 200,  text: '  └─────────────────────────────────────',   cls: 'rule' },
   { t: 600,  text: '',                                    cls: '' },
   { t: 200,  text: '$ whetstone version',                 cls: 'cmd' },
-  { t: 200,  text: '   whetstone 2.2.2 · headroom 0.9.1 · rtk 1.2.0', cls: 'dim' },
+  // Phase 2.5: pull whetstone's version from window.WHETSTONE_VERSION
+  // (regenerated from VERSION by `just release`). Component versions for
+  // the demo terminal are illustrative.
+  { t: 200,  text: `   whetstone ${window.WHETSTONE_VERSION} · headroom 0.9.1 · rtk 1.2.0`, cls: 'dim' },
   { t: 600,  text: '$ ',                                  cls: 'cmd-end' },
 ];
 

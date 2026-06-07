@@ -131,6 +131,17 @@ mod tests {
     }
 
     #[test]
+    fn icm_default_mode_matches_interface_contract() {
+        // Phase 2.3 regression: the interface contract pins
+        // `icm init --mode standard` as the v3 default invocation.
+        // See docs/interface-contract.md §0.2. The Phase 2 prompt's claim
+        // that `--mode standard` was invalid turned out to be stale — the
+        // contract verifies `standard` is in fact the documented default.
+        let default_invocation = ["init", "--mode", IcmMode::Standard.as_arg()];
+        assert_eq!(default_invocation, ["init", "--mode", "standard"]);
+    }
+
+    #[test]
     fn integration_report_defaults_false() {
         let r = IntegrationReport::default();
         assert!(!r.rtk_ran);

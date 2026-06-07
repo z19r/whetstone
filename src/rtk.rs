@@ -5,7 +5,14 @@ use std::process::Command;
 use crate::ui;
 use crate::version;
 
-const MIN_VERSION: &str = "0.39.0";
+/// Floor for the v3 integration contract. RTK 0.42.0 is the oldest release
+/// that ships `rtk init --auto-patch` (see `docs/interface-contract.md`),
+/// which `integrations::rtk_init` shells out to.
+///
+/// v2 had `0.39.0` here, but no such RTK release ever existed — that pin
+/// silently re-installed every run. Phase 2 task 2.2 raises the floor to a
+/// version that actually exists and unblocks the v3 surface.
+const MIN_VERSION: &str = "0.42.0";
 const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh";
 const GITHUB_LATEST_URL: &str = "https://api.github.com/repos/rtk-ai/rtk/releases/latest";
@@ -128,5 +135,28 @@ mod tests {
         let release: GithubRelease = serde_json::from_str(json).unwrap();
         let tag = release.tag_name.trim_start_matches('v');
         assert_eq!(version::extract_semver(tag), Some("0.42.0".into()));
+    }
+
+    #[test]
+    fn min_version_is_a_real_released_version() {
+        // Phase 2.2 regression: previously `MIN_VERSION` was 0.39.0, which
+        // never shipped — every `install()` re-installed because the check
+        // `is_older(installed, "0.39.0")` was always true for any real RTK.
+        //
+        // The new floor must satisfy two properties:
+        //   (a) it must be a version that actually exists upstream
+        //   (b) installed >= MIN_VERSION must be a meaningful skip condition
+        //
+        // We can't reach the network here, so we encode (a) as: MIN_VERSION
+        // is <= the version pinned in the interface contract (0.42.3), and
+        // (b) as: a known-good installed (0.42.3) is NOT considered older.
+        assert!(
+            !version::is_older("0.42.3", MIN_VERSION),
+            "RTK 0.42.3 (contract-pinned) must be >= MIN_VERSION = {MIN_VERSION}",
+        );
+        assert!(
+            version::is_older("0.41.9", MIN_VERSION),
+            "MIN_VERSION = {MIN_VERSION} must actually reject something",
+        );
     }
 }

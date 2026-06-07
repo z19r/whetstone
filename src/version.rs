@@ -104,4 +104,23 @@ mod tests {
         assert!(!is_older("0.14.0", "0.14.0"));
         assert!(!is_older("0.15.0", "0.14.0"));
     }
+
+    #[test]
+    fn cargo_pkg_version_matches_version_file() {
+        // Phase 2.5 regression: VERSION is the single source of truth.
+        // `whetstone version` reads `env!("CARGO_PKG_VERSION")`; the
+        // marketing site reads `site/src/version.js`; the release recipe
+        // writes both from `VERSION`. This test pins the Rust↔VERSION
+        // half of that contract; if it ever drifts, `just release` skipped
+        // a step or someone hand-edited only one of them.
+        let from_file = include_str!("../VERSION").trim();
+        assert_eq!(
+            current(),
+            from_file,
+            "Cargo.toml version ({}) does not match VERSION file ({}). \
+             Update VERSION (or Cargo.toml) and rerun `just release`.",
+            current(),
+            from_file,
+        );
+    }
 }

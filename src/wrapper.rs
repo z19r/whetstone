@@ -6,8 +6,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
-const DEFAULT_MODEL: &str = "claude-opus-4-6";
-const LATEST_MODEL: &str = "claude-opus-4-7";
 
 fn set_proxy_env() {
     if std::env::var("ANTHROPIC_BASE_URL").is_err() {
@@ -15,173 +13,25 @@ fn set_proxy_env() {
     }
 }
 
-fn has_model_flag(args: &[String]) -> bool {
-    args.iter()
-        .any(|a| a == "--model" || a.starts_with("--model="))
-}
-
-fn read_model_from_settings(path: &Path) -> Option<String> {
-    let contents = fs::read_to_string(path).ok()?;
-    let settings: Value = serde_json::from_str(&contents).ok()?;
-    settings
-        .get("model")
-        .and_then(Value::as_str)
-        .map(String::from)
-}
-
-fn effective_model_from(project_settings: &Path, global_settings: &Path) -> String {
-    if let Some(model) = read_model_from_settings(project_settings) {
-        return model;
-    }
-    if let Some(model) = read_model_from_settings(global_settings) {
-        return model;
-    }
-    DEFAULT_MODEL.to_string()
-}
-
-fn effective_model() -> String {
-    let project = Path::new(".claude/settings.local.json");
-    let global = dirs::home_dir()
-        .map(|h| h.join(".claude/settings.json"))
-        .unwrap_or_default();
-    effective_model_from(project, &global)
-}
-
-fn write_model_to_settings(path: &Path, model: &str) {
-    let mut settings: Value = path
-        .exists()
-        .then(|| fs::read_to_string(path).ok())
-        .flatten()
-        .and_then(|c| serde_json::from_str(&c).ok())
-        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
-
-    settings["model"] = Value::String(model.to_string());
-
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-
-    if let Ok(json) = serde_json::to_string_pretty(&settings) {
-        let _ = fs::write(path, json);
-    }
-}
-
-fn has_model_value(args: &[String], model: &str) -> bool {
-    if args.iter().any(|a| a == &format!("--model={model}")) {
-        return true;
-    }
-    args.windows(2).any(|w| w[0] == "--model" && w[1] == model)
-}
-
-fn dismissal_path() -> Option<PathBuf> {
-    dirs::cache_dir().map(|c| c.join("whetstone/model-prompt-dismissed"))
-}
-
-fn prompt_is_dismissed() -> bool {
-    let Some(path) = dismissal_path() else {
-        return false;
-    };
-    let Ok(content) = fs::read_to_string(&path) else {
-        return false;
-    };
-    let mut lines = content.lines();
-    let model_match = lines.next() == Some(LATEST_MODEL);
-    let version_match = lines.next() == Some(env!("WHETSTONE_VERSION"));
-    model_match && version_match
-}
-
-fn write_dismissal() {
-    let Some(path) = dismissal_path() else {
-        return;
-    };
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _ = fs::write(
-        path,
-        format!("{}\n{}\n", LATEST_MODEL, env!("WHETSTONE_VERSION")),
-    );
-}
-
-fn maybe_prompt_model_upgrade(args: &[String]) -> Vec<String> {
-    if !crate::ui::is_interactive() {
-        return vec![];
-    }
-
-    if has_model_value(args, LATEST_MODEL) {
-        return vec![];
-    }
-
-    let current = effective_model();
-    if current == LATEST_MODEL {
-        return vec![];
-    }
-
-    if prompt_is_dismissed() {
-        return vec![];
-    }
-
-    crate::ui::warn(&format!(
-        "Current model: {current} (latest is {LATEST_MODEL})"
-    ));
-
-    let choices = [
-        format!("Keep {current} (continue)"),
-        format!("Use {LATEST_MODEL} this session only"),
-        format!("Set {LATEST_MODEL} project-wide (.claude/settings.local.json)"),
-        format!("Set {LATEST_MODEL} globally (~/.claude/settings.json)"),
-    ];
-
-    let selected = crate::ui::select("Model selection:", &choices, 0);
-
-    match selected {
-        1 => {
-            vec!["--model".into(), LATEST_MODEL.into()]
-        }
-        2 => {
-            let path = Path::new(".claude/settings.local.json");
-            write_model_to_settings(path, LATEST_MODEL);
-            crate::ui::ok(&format!("Set model={LATEST_MODEL} in {}", path.display()));
-            vec!["--model".into(), LATEST_MODEL.into()]
-        }
-        3 => {
-            if let Some(home) = dirs::home_dir() {
-                let path = home.join(".claude/settings.json");
-                write_model_to_settings(&path, LATEST_MODEL);
-                crate::ui::ok(&format!("Set model={LATEST_MODEL} in {}", path.display()));
-            }
-            vec!["--model".into(), LATEST_MODEL.into()]
-        }
-        _ => {
-            write_dismissal();
-            vec![]
-        }
-    }
-}
-
 pub fn wrap_claude(args: &[String]) -> ! {
     set_proxy_env();
 
-    let extra = maybe_prompt_model_upgrade(args);
-    let mut all_args: Vec<String> = args.to_vec();
-    all_args.extend(extra);
-
     let skip_rtk_setup = should_skip_headroom_rtk_setup();
-    let cmd_args = build_claude_args(&all_args, skip_rtk_setup);
+    let cmd_args = build_claude_args(args, skip_rtk_setup);
 
     exec("headroom", &cmd_args);
 }
 
+// Phase 2 task 2.1: whetstone does NOT inject `--model`. Model selection is
+// owned by Claude Code's own settings (`~/.claude/settings.json`,
+// `.claude/settings.local.json`) and any `--model` the user passes on the
+// command line. Hardcoding a default here just bakes a stale model name into
+// every release.
 fn build_claude_args(args: &[String], skip_rtk_setup: bool) -> Vec<String> {
     let mut cmd_args = vec!["wrap".to_string(), "claude".to_string()];
 
     if skip_rtk_setup {
         cmd_args.push("--no-rtk".into());
-    }
-
-    if !has_model_flag(args) {
-        cmd_args.push("--model".into());
-        cmd_args.push(DEFAULT_MODEL.into());
     }
 
     cmd_args.extend_from_slice(args);
@@ -393,13 +243,14 @@ exit 0
     }
 
     #[test]
-    fn build_claude_args_adds_model_and_skips_rtk_when_ready() {
+    fn build_claude_args_does_not_inject_model_when_absent() {
+        // Phase 2.1 regression: whetstone must NOT add `--model` itself.
+        // Claude Code's own settings choose the model — hardcoding a default
+        // here is exactly the bug we just removed.
         let args = build_claude_args(&[], true);
 
-        assert_eq!(
-            args,
-            strings(&["wrap", "claude", "--no-rtk", "--model", DEFAULT_MODEL,])
-        );
+        assert_eq!(args, strings(&["wrap", "claude", "--no-rtk"]));
+        assert!(!args.iter().any(|a| a == "--model"));
     }
 
     #[test]
@@ -409,6 +260,24 @@ exit 0
         assert_eq!(
             args,
             strings(&["wrap", "claude", "--model", "claude-sonnet"])
+        );
+    }
+
+    #[test]
+    fn build_claude_args_passes_through_arbitrary_args_unchanged() {
+        let args = build_claude_args(
+            &["--dangerously-skip-permissions".into(), "--print".into()],
+            false,
+        );
+
+        assert_eq!(
+            args,
+            strings(&[
+                "wrap",
+                "claude",
+                "--dangerously-skip-permissions",
+                "--print",
+            ])
         );
     }
 
@@ -493,141 +362,5 @@ exit 0
 
         assert!(path_has_rtk_binary(dir.clone()));
         cleanup_fake_rtk(&dir, &binary);
-    }
-
-    fn temp_dir_with_stamp(label: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("whetstone-{label}-{stamp}"));
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn effective_model_prefers_project_over_global() {
-        let dir = temp_dir_with_stamp("model-prio");
-        let project = dir.join("project.json");
-        let global = dir.join("global.json");
-
-        fs::write(&project, r#"{"model":"claude-opus-4-7"}"#).unwrap();
-        fs::write(&global, r#"{"model":"claude-opus-4-6"}"#).unwrap();
-
-        assert_eq!(effective_model_from(&project, &global), "claude-opus-4-7");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn effective_model_falls_back_to_global() {
-        let dir = temp_dir_with_stamp("model-global");
-        let project = dir.join("missing.json");
-        let global = dir.join("global.json");
-
-        fs::write(&global, r#"{"model":"claude-sonnet-4-6"}"#).unwrap();
-
-        assert_eq!(effective_model_from(&project, &global), "claude-sonnet-4-6");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn effective_model_falls_back_to_default() {
-        let dir = temp_dir_with_stamp("model-default");
-        let project = dir.join("missing1.json");
-        let global = dir.join("missing2.json");
-
-        assert_eq!(effective_model_from(&project, &global), DEFAULT_MODEL);
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn has_model_value_detects_equals_form() {
-        assert!(has_model_value(
-            &strings(&["--model=claude-opus-4-7"]),
-            "claude-opus-4-7"
-        ));
-    }
-
-    #[test]
-    fn has_model_value_detects_space_form() {
-        assert!(has_model_value(
-            &strings(&["--model", "claude-opus-4-7"]),
-            "claude-opus-4-7"
-        ));
-    }
-
-    #[test]
-    fn has_model_value_rejects_different_model() {
-        assert!(!has_model_value(
-            &strings(&["--model", "claude-sonnet-4-6"]),
-            "claude-opus-4-7"
-        ));
-    }
-
-    #[test]
-    fn write_model_creates_new_file() {
-        let dir = temp_dir_with_stamp("model-write");
-        let path = dir.join("new-settings.json");
-
-        write_model_to_settings(&path, "claude-opus-4-7");
-
-        let content: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(content["model"], "claude-opus-4-7");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn write_model_preserves_existing_keys() {
-        let dir = temp_dir_with_stamp("model-preserve");
-        let path = dir.join("existing.json");
-
-        fs::write(
-            &path,
-            r#"{"apiKey":"sk-test","theme":"dark","model":"claude-opus-4-6"}"#,
-        )
-        .unwrap();
-
-        write_model_to_settings(&path, "claude-opus-4-7");
-
-        let content: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(content["model"], "claude-opus-4-7");
-        assert_eq!(content["apiKey"], "sk-test");
-        assert_eq!(content["theme"], "dark");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn dismissal_file_suppresses_prompt() {
-        let dir = temp_dir_with_stamp("dismiss");
-        let path = dir.join("model-prompt-dismissed");
-        let content = format!("{}\n{}\n", LATEST_MODEL, env!("WHETSTONE_VERSION"));
-        fs::write(&path, &content).unwrap();
-
-        let read_back = fs::read_to_string(&path).unwrap();
-        let mut lines = read_back.lines();
-        assert_eq!(lines.next(), Some(LATEST_MODEL));
-        assert_eq!(lines.next(), Some(env!("WHETSTONE_VERSION")));
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn stale_dismissal_does_not_suppress() {
-        let dir = temp_dir_with_stamp("dismiss-stale");
-        let path = dir.join("model-prompt-dismissed");
-        fs::write(&path, "claude-opus-4-6\n0.0.0\n").unwrap();
-
-        let read_back = fs::read_to_string(&path).unwrap();
-        let mut lines = read_back.lines();
-        let model_match = lines.next() == Some(LATEST_MODEL);
-        let version_match = lines.next() == Some(env!("WHETSTONE_VERSION"));
-        assert!(!model_match || !version_match);
-
-        let _ = fs::remove_dir_all(&dir);
     }
 }
