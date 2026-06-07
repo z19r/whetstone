@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{ToolVersions, WhetstoneManifest};
 use crate::memory::MemoryProvider;
-use crate::{config, doctor, headroom, integrations, preflight, rtk, shell, ui};
+use crate::{config, doctor, headroom, integrations, migrate, preflight, rtk, shell, ui};
 
 pub(crate) const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
 
@@ -47,6 +47,11 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
 
 fn run_sequential(full: bool, headroom_extras: &str) -> Result<()> {
     ui::info("whetstone setup");
+
+    // Phase 3.8: if a v2 install is detected, offer migration before doing anything else.
+    if migrate::detect_and_offer(false)? {
+        return Ok(());
+    }
 
     let assets = resolve_assets_dir()?;
     ui::ok(&format!("assets at {}", assets.display()));

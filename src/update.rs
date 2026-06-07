@@ -5,7 +5,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{headroom, rtk, ui, version};
+use crate::{headroom, migrate, rtk, ui, version};
 
 const REMOTE_VERSION_URL: &str = "https://raw.githubusercontent.com/z19r/whetstone/main/VERSION";
 const RELEASE_URL_BASE: &str = "https://github.com/z19r/whetstone/releases/download";
@@ -257,6 +257,12 @@ fn dependency_decision(
 /// stays in its phase.
 pub fn run(full: bool) -> Result<()> {
     ui::section("whetstone update");
+
+    // Phase 3.8: detect v2 markers and offer migration before pulling new
+    // versions of v3 tools — migration is a precondition for v3 update.
+    if migrate::detect_and_offer(false)? {
+        return Ok(());
+    }
 
     if full {
         ui::info(
