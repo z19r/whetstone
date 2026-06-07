@@ -1,87 +1,207 @@
+//! Versioned per-project manifest, written to `.claude/whetstone.json`.
+//!
+//! Replaces v2's `config.local.json` (which mixed project-list metadata,
+//! per-author state, and headroom config). v3's manifest is intentionally
+//! minimal: just enough state for `whetstone doctor`, `whetstone update`, and
+//! Phase 3's migration layer to know what's installed and when it last ran.
+//!
+//! Phase 1 task 1.5.
+
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
+use std::path::{Path, PathBuf};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WhetstoneConfig {
-    pub version: String,
-    pub author: String,
-    pub projects: HashMap<String, ProjectEntry>,
-    pub headroom: HeadroomConfig,
+use crate::memory::MemoryProvider;
+
+/// Bump this whenever the manifest schema gains/changes a required field.
+/// `whetstone update` uses it to decide when to rewrite the manifest in place.
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// Bump this whenever whetstone's *integration contract* changes — e.g. the
+/// expected hook layout shifts because we now delegate to a tool's init that
+/// emits a different shape. Phase 3 migration consults this to decide whether
+/// a fresh `whetstone setup` is needed.
+pub const INTEGRATION_VERSION: u32 = 1;
+
+const MANIFEST_FILENAME: &str = "whetstone.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTag {
+    Icm,
+    Skip,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProjectEntry {
-    pub dir: String,
-    pub claude_md: String,
-    pub deploy_target: String,
-    pub repo: String,
+impl From<MemoryProvider> for ProviderTag {
+    fn from(p: MemoryProvider) -> Self {
+        match p {
+            MemoryProvider::Icm => Self::Icm,
+            MemoryProvider::Skip => Self::Skip,
+        }
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HeadroomConfig {
-    pub auto_start: bool,
-    pub port: u16,
-    pub health_url: String,
-    pub startup_flags: String,
-    pub required_extras: Vec<String>,
+impl From<ProviderTag> for MemoryProvider {
+    fn from(t: ProviderTag) -> Self {
+        match t {
+            ProviderTag::Icm => Self::Icm,
+            ProviderTag::Skip => Self::Skip,
+        }
+    }
 }
 
-impl WhetstoneConfig {
-    pub fn new_for_project(project_dir: &Path, headroom_extras: &str) -> Self {
-        let project_name = project_dir
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "project".to_string());
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ToolVersions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rtk: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icm: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headroom: Option<String>,
+}
 
-        let author = Command::new("git")
-            .args(["config", "user.name"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_else(|| "User".to_string());
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WhetstoneManifest {
+    pub schema: u32,
+    pub whetstone_version: String,
+    pub integration_version: u32,
+    pub provider: ProviderTag,
+    #[serde(default)]
+    pub tool_versions: ToolVersions,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migration_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
 
-        let dir_str = project_dir.display().to_string();
-        let claude_md = project_dir.join("CLAUDE.md").display().to_string();
-
-        let resolved = crate::headroom::resolve_extras(headroom_extras);
-        let extras: Vec<String> = if resolved.is_empty() {
-            vec![]
-        } else {
-            resolved.split(',').map(|s| format!("[{s}]")).collect()
-        };
-
-        let mut projects = HashMap::new();
-        projects.insert(
-            project_name,
-            ProjectEntry {
-                dir: dir_str,
-                claude_md,
-                deploy_target: String::new(),
-                repo: String::new(),
-            },
-        );
-
+impl WhetstoneManifest {
+    /// Fresh manifest stamped for a brand-new `whetstone setup` run.
+    pub fn new(provider: MemoryProvider, tool_versions: ToolVersions) -> Self {
+        let now = Utc::now();
         Self {
-            version: "3.2.3".to_string(),
-            author,
-            projects,
-            headroom: HeadroomConfig {
-                auto_start: true,
-                port: 8787,
-                health_url: "http://127.0.0.1:8787/health".to_string(),
-                startup_flags: String::new(),
-                required_extras: extras,
-            },
+            schema: SCHEMA_VERSION,
+            whetstone_version: crate::version::current().to_string(),
+            integration_version: INTEGRATION_VERSION,
+            provider: provider.into(),
+            tool_versions,
+            migration_id: None,
+            created_at: now,
+            updated_at: now,
         }
     }
 
-    pub fn write_to(&self, path: &Path) -> Result<()> {
-        let json = serde_json::to_string_pretty(self).context("serializing config.local.json")?;
-        fs::write(path, json).with_context(|| format!("writing {}", path.display()))
+    /// Conventional path: `<project>/.claude/whetstone.json`.
+    pub fn path_for(project_dir: &Path) -> PathBuf {
+        project_dir.join(".claude").join(MANIFEST_FILENAME)
+    }
+
+    /// Load the manifest if it exists. Returns `Ok(None)` for "no manifest
+    /// yet" (fresh project), and a real error for a malformed file.
+    pub fn load(path: &Path) -> Result<Option<Self>> {
+        if !path.exists() {
+            return Ok(None);
+        }
+        let raw =
+            fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let parsed: Self = serde_json::from_str(&raw)
+            .with_context(|| format!("parsing manifest at {}", path.display()))?;
+        Ok(Some(parsed))
+    }
+
+    /// Atomic write: serialize, ensure parent dir exists, write.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+        }
+        let pretty = serde_json::to_string_pretty(self).context("serializing whetstone.json")?;
+        fs::write(path, pretty).with_context(|| format!("writing {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Refresh `updated_at` and persist the change.
+    #[allow(dead_code)] // exercised by tests; consumed by Phase 3 migration.
+    pub fn touch_and_save(&mut self, path: &Path) -> Result<()> {
+        self.updated_at = Utc::now();
+        self.save(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn provider_round_trip() {
+        let icm: ProviderTag = MemoryProvider::Icm.into();
+        assert_eq!(MemoryProvider::from(icm), MemoryProvider::Icm);
+        let skip: ProviderTag = MemoryProvider::Skip.into();
+        assert_eq!(MemoryProvider::from(skip), MemoryProvider::Skip);
+    }
+
+    #[test]
+    fn provider_serializes_snake_case() {
+        let tag = ProviderTag::Icm;
+        let s = serde_json::to_string(&tag).unwrap();
+        assert_eq!(s, "\"icm\"");
+    }
+
+    #[test]
+    fn new_manifest_has_current_schema_and_integration_version() {
+        let m = WhetstoneManifest::new(MemoryProvider::Icm, ToolVersions::default());
+        assert_eq!(m.schema, SCHEMA_VERSION);
+        assert_eq!(m.integration_version, INTEGRATION_VERSION);
+        assert_eq!(m.provider, ProviderTag::Icm);
+        assert!(m.migration_id.is_none());
+    }
+
+    #[test]
+    fn save_and_load_round_trip() {
+        let m = WhetstoneManifest::new(
+            MemoryProvider::Icm,
+            ToolVersions {
+                rtk: Some("0.42.3".into()),
+                icm: Some("0.10.43".into()),
+                headroom: Some("0.23.0".into()),
+            },
+        );
+        let f = NamedTempFile::new().unwrap();
+        m.save(f.path()).unwrap();
+        let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
+        assert_eq!(loaded.provider, m.provider);
+        assert_eq!(loaded.tool_versions.rtk.as_deref(), Some("0.42.3"));
+    }
+
+    #[test]
+    fn load_returns_none_when_file_missing() {
+        let path = Path::new("/nonexistent-whetstone-test/whetstone.json");
+        assert!(WhetstoneManifest::load(path).unwrap().is_none());
+    }
+
+    #[test]
+    fn load_errors_on_malformed_json() {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(b"not json").unwrap();
+        assert!(WhetstoneManifest::load(f.path()).is_err());
+    }
+
+    #[test]
+    fn path_for_uses_dot_claude() {
+        let p = WhetstoneManifest::path_for(Path::new("/tmp/proj"));
+        assert!(p.ends_with(".claude/whetstone.json"));
+    }
+
+    #[test]
+    fn touch_and_save_bumps_updated_at() {
+        let mut m = WhetstoneManifest::new(MemoryProvider::Skip, ToolVersions::default());
+        let original = m.updated_at;
+        let f = NamedTempFile::new().unwrap();
+        // Sleep enough to guarantee a chrono-detectable bump on fast machines.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        m.touch_and_save(f.path()).unwrap();
+        assert!(m.updated_at > original);
     }
 }

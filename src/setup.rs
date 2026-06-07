@@ -2,8 +2,9 @@ use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::config::{ToolVersions, WhetstoneManifest};
 use crate::memory::MemoryProvider;
-use crate::{config, headroom, hooks, preflight, rtk, shell, ui};
+use crate::{config, doctor, headroom, integrations, preflight, rtk, shell, ui};
 
 pub(crate) const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
 
@@ -53,51 +54,49 @@ fn run_sequential(full: bool, headroom_extras: &str) -> Result<()> {
     ui::info("checking dependencies");
     preflight::check_all()?;
 
-    ui::info("step 1/6 — headroom");
+    ui::info("step 1/7 — headroom");
     headroom::install(headroom_extras, full)?;
 
-    ui::info("step 2/6 — rtk");
+    ui::info("step 2/7 — rtk");
     rtk::install(full)?;
 
-    ui::info("step 3/6 — shell profile");
+    ui::info("step 3/7 — shell profile");
     shell::set_anthropic_base_url(DEFAULT_PROXY)?;
     shell::ensure_path_contains_local_bin()?;
 
-    ui::info("step 4/6 — install whetstone binary");
+    ui::info("step 4/7 — install whetstone binary");
     self_install()?;
 
     let provider = prompt_memory_provider(full)?;
 
     if provider != MemoryProvider::Skip {
-        ui::info("step 5/7 — skills, rules, commands");
-        install_general_assets(&assets, full, headroom_extras)?;
-
-        ui::info(&format!("step 6/7 — {} provider", provider.name()));
-        install_provider(provider)?;
-
-        ui::info("step 7/7 — hooks + settings.json");
-        let claude_dir = dirs::home_dir()
-            .context("could not determine home directory")?
-            .join(".claude");
-        let hooks_dir = claude_dir.join("hooks");
-        let settings_path = claude_dir.join("settings.json");
-
-        hooks::copy_hook_scripts(&assets.join("hooks"), &hooks_dir)?;
-        hooks::merge_settings_json(&settings_path, &hooks_dir, provider)?;
-
-        generate_stack_setup(provider)?;
+        complete_setup(provider, &assets, full)?;
     } else {
-        ui::info("skipped memory provider, skills, hooks, and STACK-SETUP.md");
+        ui::info("skipped memory provider, skills, integrations, manifest");
     }
 
     ui::ok("whetstone setup complete");
     Ok(())
 }
 
+/// Shared finishing sequence used by both the headless `setup::run` path and
+/// the interactive `wizard::run` path. Assumes binaries (headroom, rtk,
+/// whetstone) are already installed.
+pub(crate) fn complete_setup(provider: MemoryProvider, assets: &Path, full: bool) -> Result<()> {
+    install_general_assets(assets, full)?;
+    install_provider_binary(provider)?;
+    integrations::run_all(provider)?;
+    let _report = doctor::run()?;
+    write_manifest(provider)?;
+    generate_stack_setup(provider)?;
+    Ok(())
+}
+
 pub(crate) fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
     let project_dir = std::env::current_dir()?;
     let has_existing = project_dir.join(".claude/skills").is_dir()
-        || project_dir.join(".claude/MEMSTACK.md").exists();
+        || project_dir.join(".claude/MEMSTACK.md").exists()
+        || project_dir.join(".claude/whetstone.json").exists();
 
     if full {
         if has_existing {
@@ -114,6 +113,14 @@ pub(crate) fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
 }
 
 fn detect_installed_provider() -> Result<MemoryProvider> {
+    // Prefer the v3 manifest if present.
+    let project_dir = std::env::current_dir()?;
+    let manifest_path = WhetstoneManifest::path_for(&project_dir);
+    if let Some(manifest) = WhetstoneManifest::load(&manifest_path)? {
+        return Ok(manifest.provider.into());
+    }
+
+    // Fall back to a shallow scan of settings.json for an ICM hint.
     let settings_path = dirs::home_dir()
         .context("home directory")?
         .join(".claude/settings.json");
@@ -122,21 +129,12 @@ fn detect_installed_provider() -> Result<MemoryProvider> {
         return Ok(MemoryProvider::Icm);
     }
 
-    let content = fs::read_to_string(&settings_path).unwrap_or_default();
-    if content.contains("icm hook") || content.contains("icm serve") {
-        Ok(MemoryProvider::Icm)
-    } else if content.contains("mcp-automem") {
-        Ok(MemoryProvider::AutoMem)
-    } else {
-        Ok(MemoryProvider::Icm)
-    }
+    // No manifest yet: default to ICM. Phase 3 migration is where AutoMem
+    // installs get detected and translated.
+    Ok(MemoryProvider::Icm)
 }
 
-pub(crate) fn install_general_assets(
-    assets: &Path,
-    full: bool,
-    headroom_extras: &str,
-) -> Result<()> {
+pub(crate) fn install_general_assets(assets: &Path, full: bool) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let claude_dir = project_dir.join(".claude");
 
@@ -144,30 +142,25 @@ pub(crate) fn install_general_assets(
     copy_subdirs(assets, &claude_dir, full)?;
     copy_memstack_md(assets, &claude_dir, full)?;
 
-    let config_path = claude_dir.join("config.local.json");
-    let cfg = config::WhetstoneConfig::new_for_project(&project_dir, headroom_extras);
-    cfg.write_to(&config_path)?;
-    ui::ok("created config.local.json");
-
     Ok(())
 }
 
-pub(crate) fn install_provider(provider: MemoryProvider) -> Result<()> {
+/// Install the memory provider's binary only. Integration (init) happens in
+/// `integrations::run_all` after this returns.
+pub(crate) fn install_provider_binary(provider: MemoryProvider) -> Result<()> {
     match provider {
-        MemoryProvider::Icm => install_icm(),
-        MemoryProvider::AutoMem => install_automem(),
+        MemoryProvider::Icm => ensure_icm_installed(),
         MemoryProvider::Skip => Ok(()),
     }
 }
 
-fn install_icm() -> Result<()> {
+fn ensure_icm_installed() -> Result<()> {
     if which::which("icm").is_ok() {
         let output = std::process::Command::new("icm").arg("--version").output();
         if let Ok(o) = output {
             if o.status.success() {
                 let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
                 ui::ok(&format!("icm already installed ({ver})"));
-                run_icm_init()?;
                 return Ok(());
             }
         }
@@ -188,38 +181,31 @@ fn install_icm() -> Result<()> {
         bail!("ICM binary not found after installation — check your PATH");
     }
 
-    run_icm_init()?;
-    ui::ok("ICM installed and configured");
+    ui::ok("ICM installed");
     Ok(())
 }
 
-fn run_icm_init() -> Result<()> {
-    let status = std::process::Command::new("icm")
-        .args(["init", "--mode", "standard"])
-        .status()
-        .context("failed to run icm init")?;
-
-    if !status.success() {
-        ui::warn("icm init returned non-zero — hooks may need manual setup");
-    }
+fn write_manifest(provider: MemoryProvider) -> Result<()> {
+    let project_dir = std::env::current_dir()?;
+    let manifest_path = WhetstoneManifest::path_for(&project_dir);
+    let tools = ToolVersions {
+        rtk: rtk::installed_version(),
+        icm: installed_icm_version(),
+        headroom: headroom::installed_version(),
+    };
+    let manifest = config::WhetstoneManifest::new(provider, tools);
+    manifest.save(&manifest_path)?;
+    ui::ok(&format!("wrote manifest to {}", manifest_path.display()));
     Ok(())
 }
 
-fn install_automem() -> Result<()> {
-    preflight::check_npm()?;
-
-    ui::info("installing AutoMem...");
-    let status = std::process::Command::new("npx")
-        .args(["-y", "@verygoodplugins/mcp-automem", "claude-code"])
-        .status()
-        .context("failed to run AutoMem installer")?;
-
-    if !status.success() {
-        bail!("AutoMem installation failed");
-    }
-
-    ui::ok("AutoMem installed");
-    Ok(())
+fn installed_icm_version() -> Option<String> {
+    let output = std::process::Command::new("icm")
+        .arg("--version")
+        .output()
+        .ok()?;
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    crate::version::extract_semver(&raw)
 }
 
 fn copy_skills(assets: &Path, claude_dir: &Path, force: bool) -> Result<()> {
@@ -306,9 +292,6 @@ fn stack_setup_content(provider: MemoryProvider) -> String {
         MemoryProvider::Icm => {
             "| ICM | Embedded SQLite memory, zero dependencies | persistent context |"
         }
-        MemoryProvider::AutoMem => {
-            "| AutoMem | Graph memory via MCP (FalkorDB + Qdrant) | persistent context |"
-        }
         MemoryProvider::Skip => "| — | No memory provider installed | — |",
     };
 
@@ -323,6 +306,7 @@ token-efficient Claude Code sessions.
 ```bash
 whetstone              # Start Claude with Headroom proxy
 whetstone claude       # Same as above
+whetstone doctor       # Inspect ~/.claude/settings.json
 ```
 
 ## Tools
@@ -337,8 +321,8 @@ whetstone claude       # Same as above
 
 | File | Purpose |
 |------|---------|
-| `~/.claude/settings.json` | Hook registrations (global) |
-| `.claude/config.local.json` | Project config |
+| `~/.claude/settings.json` | Hook registrations (written by rtk init / icm init) |
+| `.claude/whetstone.json` | Project manifest (whetstone, integration, tool versions) |
 
 ## Uninstall
 

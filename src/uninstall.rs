@@ -91,7 +91,7 @@ fn remove_project_files(project_dir: &Path) {
     for dir in ["skills", "db", "rules", "commands"] {
         let _ = fs::remove_dir_all(claude.join(dir));
     }
-    for file in ["MEMSTACK.md", "config.local.json"] {
+    for file in ["MEMSTACK.md", "config.local.json", "whetstone.json"] {
         let _ = fs::remove_file(claude.join(file));
     }
     let _ = fs::remove_file(project_dir.join("STACK-SETUP.md"));

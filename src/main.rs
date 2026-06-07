@@ -2,8 +2,9 @@ mod cli;
 mod config;
 mod dashboard;
 mod db;
+mod doctor;
 mod headroom;
-mod hooks;
+mod integrations;
 mod memory;
 mod preflight;
 mod release;
@@ -95,6 +96,11 @@ fn main() {
             }
             Command::Dashboard => {
                 if let Err(e) = dashboard::run() {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
+            Command::Doctor => {
+                if let Err(e) = doctor::run() {
                     ui::fail(&format!("{e:#}"));
                 }
             }

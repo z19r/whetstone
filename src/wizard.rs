@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -11,7 +11,7 @@ use std::io;
 use std::time::Duration;
 
 use crate::memory::MemoryProvider;
-use crate::{headroom, hooks, preflight, rtk, setup, shell, ui, version};
+use crate::{headroom, preflight, rtk, setup, shell, ui, version};
 
 const TOTAL_STEPS: usize = 7;
 
@@ -41,20 +41,10 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
     let provider = setup::prompt_memory_provider(full)?;
 
     if provider != MemoryProvider::Skip {
-        step_progress(7, "Assets & hooks");
-        setup::install_general_assets(&assets, full, headroom_extras)?;
-        setup::install_provider(provider)?;
-
-        let claude_dir = dirs::home_dir()
-            .context("could not determine home directory")?
-            .join(".claude");
-        let hooks_dir = claude_dir.join("hooks");
-        let settings_path = claude_dir.join("settings.json");
-        hooks::copy_hook_scripts(&assets.join("hooks"), &hooks_dir)?;
-        hooks::merge_settings_json(&settings_path, &hooks_dir, provider)?;
-        setup::generate_stack_setup(provider)?;
+        step_progress(7, "Integrations & manifest");
+        setup::complete_setup(provider, &assets, full)?;
     } else {
-        ui::info("skipped memory provider, skills, hooks, and STACK-SETUP.md");
+        ui::info("skipped memory provider, skills, integrations, manifest");
     }
 
     completion_screen(provider)?;
@@ -227,10 +217,6 @@ fn draw_completion(frame: &mut Frame, provider: MemoryProvider) {
         MemoryProvider::Icm => lines.push(Line::from(vec![
             Span::styled("    \u{25cf} ", Style::default().fg(Color::Green)),
             Span::raw("ICM (embedded SQLite)"),
-        ])),
-        MemoryProvider::AutoMem => lines.push(Line::from(vec![
-            Span::styled("    \u{25cf} ", Style::default().fg(Color::Green)),
-            Span::raw("AutoMem (graph memory)"),
         ])),
         MemoryProvider::Skip => lines.push(Line::from(vec![
             Span::styled(
