@@ -121,10 +121,24 @@ impl WhetstoneManifest {
     }
 
     /// Refresh `updated_at` and persist the change.
-    #[allow(dead_code)] // exercised by tests; consumed by Phase 3 migration.
     pub fn touch_and_save(&mut self, path: &Path) -> Result<()> {
         self.updated_at = Utc::now();
         self.save(path)
+    }
+
+    /// Migration id stamped by `whetstone migrate` (Phase 3.6).
+    pub fn migration_id(&self) -> Option<&str> {
+        self.migration_id.as_deref()
+    }
+
+    /// Set the migration id (called by `whetstone migrate` after re-init).
+    pub fn set_migration_id(&mut self, id: &str) {
+        self.migration_id = Some(id.to_string());
+    }
+
+    /// Clear the migration id (called by `--rollback`).
+    pub fn clear_migration_id(&mut self) {
+        self.migration_id = None;
     }
 }
 

@@ -61,6 +61,21 @@ pub enum Command {
     /// Inspect ~/.claude/settings.json and report problems (Phase 1 task 1.2)
     Doctor,
 
+    /// Migrate a v2 install to v3 (Phase 3)
+    Migrate {
+        /// Print the plan without writing anything
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip the interactive confirmation
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Restore an earlier migration by id (e.g. 20260607-153012)
+        #[arg(long, value_name = "MIGRATION_ID")]
+        rollback: Option<String>,
+    },
+
     /// Pull latest and rerun setup
     Update {
         #[arg(long)]
