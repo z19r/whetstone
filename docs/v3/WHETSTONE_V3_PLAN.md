@@ -10,45 +10,45 @@
 
 ## Scope decisions — LOCK THESE FIRST
 
-- [ ] Confirm: memory providers collapse to `Icm | Skip` (AutoMem removed entirely)
-- [ ] Confirm: whetstone becomes a thin orchestrator — delegates integration to `rtk init` / `icm init`, stops hand-writing hooks
-- [ ] Confirm: remove the 20-skill MemStack bundle, 8 rules, `pro-skills.md` catalog, and the `whetstone db` CLI command (keep the memstack.db *reader* internally for migration only)
-- [ ] Confirm: ICM owns memory (its own hooks + skills + CLAUDE.md via `icm init`)
-- [ ] Confirm: this is a breaking change → `v3.0.0`, shipped via an `rc` first
-- [ ] Calibration noted: v2 wired AutoMem with no endpoint/key + no backend, so AutoMem "migration" is mostly dead-config removal; the real data path is `memstack.db` → ICM
+- [x] Confirm: memory providers collapse to `Icm | Skip` (AutoMem removed entirely)
+- [x] Confirm: whetstone becomes a thin orchestrator — delegates integration to `rtk init` / `icm init`, stops hand-writing hooks
+- [x] Confirm: remove the 20-skill MemStack bundle, 8 rules, `pro-skills.md` catalog, and the `whetstone db` CLI command (keep the memstack.db *reader* internally for migration only)
+- [x] Confirm: ICM owns memory (its own hooks + skills + CLAUDE.md via `icm init`)
+- [x] Confirm: this is a breaking change → `v3.0.0`, shipped via an `rc` first
+- [x] Calibration noted: v2 wired AutoMem with no endpoint/key + no backend, so AutoMem "migration" is mostly dead-config removal; the real data path is `memstack.db` → ICM
 
 ---
 
 ## Phase 0 — Foundations & external verification
 
-- [ ] **0.1** ⚠️ Verify `headroom wrap` exists in the pinned Headroom version
+- [x] **0.1** ⚠️ Verify `headroom wrap` exists in the pinned Headroom version
   - [ ] If it does NOT exist: design fallback (start proxy + exec claude) for default `whetstone` command and `headroom wrap aider/codex` in docs
-- [ ] **0.2** Capture exact current flags for `rtk init` and `icm init` against pinned versions
-  - [ ] 🔴 Identify ICM's actual verb for adding/importing a memory (`icm remember` vs `icm import <file>` vs per-concept calls) — gates the migration importer
-  - [ ] Pin tested `rtk` / `icm` / `headroom` versions in CI
-- [ ] **0.3** Read RTK's actual current version (~0.28.x); set a real `MIN_VERSION` floor or remove the floor
-- [ ] **0.4** Make `VERSION` the single source of truth; design propagation to CHANGELOG + `site/src/Releases.jsx` + hardcoded `v2.x` strings
-- [ ] **0.5** Cut a `v3` branch; gate new flows behind `--channel rc` / prerelease tag
-- [ ] **Acceptance:** one-page "interface contract" doc recording verified `rtk`/`icm`/`headroom` commands + pinned versions
+- [x] **0.2** Capture exact current flags for `rtk init` and `icm init` against pinned versions
+  - [x] 🔴 Identify ICM's actual verb for adding/importing a memory (`icm remember` vs `icm import <file>` vs per-concept calls) — gates the migration importer
+  - [x] Pin tested `rtk` / `icm` / `headroom` versions in CI
+- [x] **0.3** Read RTK's actual current version (~0.28.x); set a real `MIN_VERSION` floor or remove the floor
+- [x] **0.4** Make `VERSION` the single source of truth; design propagation to CHANGELOG + `site/src/Releases.jsx` + hardcoded `v2.x` strings
+- [x] **0.5** Cut a `v3` branch; gate new flows behind `--channel rc` / prerelease tag
+- [x] **Acceptance:** one-page "interface contract" doc recording verified `rtk`/`icm`/`headroom` commands + pinned versions
 
 ---
 
 ## Phase 1 — Core refactor to thin orchestrator
 
-- [ ] **1.1** New `integrations.rs` — shell out to `rtk init` and `icm init`, capture/normalize output (replaces `hooks.rs::build_hooks_value` + `copy_hook_scripts`)
-- [ ] **1.2** New `doctor.rs` / `whetstone doctor` — after tool inits, read `~/.claude/settings.json` and:
-  - [ ] Normalize hook ordering so RTK's PreToolUse Bash hook is **last**
-  - [ ] Confirm ICM hooks present + well-formed
-  - [ ] Report anything off (repurpose old `entry_is_whetstone_managed` from "replace" → "inspect/normalize")
-- [ ] **1.3** Collapse `MemoryProvider` to `{ Icm, Skip }`
-  - [ ] Delete `install_automem`
-  - [ ] Delete the `mcpServers.memory` AutoMem branch in `build_hooks_value`
-  - [ ] Delete AutoMem detection
-- [ ] **1.4** Delete the five whetstone hook scripts from `assets/hooks/`; stop copying them
-  - [ ] Move proxy auto-start to `headroom wrap` (if 0.1 confirms) OR systemd/launchd service
-  - [ ] Add optional `whetstone proxy service install` helper
-- [ ] **1.5** New versioned `whetstone.json` project manifest (replaces `config.local.json`) recording: whetstone version, provider, integration-version, migration id
-- [ ] **Acceptance:** fresh `whetstone setup` on clean machine → working v3 (RTK + ICM wired by their own inits, proxy running, `whetstone doctor` green, **zero** whetstone-authored hooks in settings.json)
+- [x] **1.1** New `integrations.rs` — shell out to `rtk init` and `icm init`, capture/normalize output (replaces `hooks.rs::build_hooks_value` + `copy_hook_scripts`)
+- [x] **1.2** New `doctor.rs` / `whetstone doctor` — after tool inits, read `~/.claude/settings.json` and:
+  - [x] Normalize hook ordering so RTK's PreToolUse Bash hook is **last**
+  - [x] Confirm ICM hooks present + well-formed
+  - [x] Report anything off (repurpose old `entry_is_whetstone_managed` from "replace" → "inspect/normalize")
+- [x] **1.3** Collapse `MemoryProvider` to `{ Icm, Skip }`
+  - [x] Delete `install_automem`
+  - [x] Delete the `mcpServers.memory` AutoMem branch in `build_hooks_value` (entire `hooks.rs` deleted)
+  - [x] Delete AutoMem detection
+- [x] **1.4** Delete the five whetstone hook scripts from `assets/hooks/`; stop copying them
+  - [x] Move proxy auto-start to `headroom wrap` (confirmed in 0.1)
+  - [ ] Add optional `whetstone proxy service install` helper (deferred — `headroom install` already provides this)
+- [x] **1.5** New versioned `whetstone.json` project manifest (replaces `config.local.json`) recording: whetstone version, provider, integration-version, migration id
+- [x] **Acceptance:** fresh `whetstone setup` on clean machine → working v3 (RTK + ICM wired by their own inits, proxy running, `whetstone doctor` green, **zero** whetstone-authored hooks in settings.json)
 
 ---
 
