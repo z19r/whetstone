@@ -17,7 +17,9 @@ Session.vim
 .cproject
 .idea
 *.iml
-.vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .project
 .vim/
 .helix/
