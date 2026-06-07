@@ -1,0 +1,23 @@
+{
+  "rust-analyzer.server.path": "/home/zrk/.cursor/extensions/rust-lang.rust-analyzer-0.3.2921-linux-x64/server/rust-analyzer",
+  "rust-analyzer.server.extraEnv": {
+    "PATH": "/home/zrk/.local/share/mise/shims:/home/zrk/.cargo/bin:/usr/bin:/bin",
+    "RUSTUP_HOME": "/home/zrk/.rustup",
+    "CARGO_HOME": "/home/zrk/.cargo"
+  },
+  "rust-analyzer.cargo.extraEnv": {
+    "PATH": "/home/zrk/.local/share/mise/shims:/home/zrk/.cargo/bin:/usr/bin:/bin",
+    "RUSTUP_HOME": "/home/zrk/.rustup",
+    "CARGO_HOME": "/home/zrk/.cargo"
+  },
+  "rust-analyzer.cargo.buildScripts.enable": true,
+  "rust-analyzer.procMacro.enable": true,
+  "rust-analyzer.cargo.allTargets": true,
+  "rust-analyzer.linkedProjects": [
+    "/home/zrk/code/whetstone/Cargo.toml"
+  ],
+  "rust-analyzer.checkOnSave": true,
+  "rust-analyzer.diagnostics.enable": true,
+  "rust-analyzer.trace.server": "messages",
+  "editor.definitionLinkOpensInPeek": false
+}
