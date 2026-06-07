@@ -10,6 +10,7 @@ mod release;
 mod rtk;
 mod setup;
 mod shell;
+mod stats;
 mod ui;
 mod uninstall;
 mod update;
@@ -23,7 +24,7 @@ use cli::{Cli, Command};
 fn show_upgrade_banner(cmd: &Option<Command>) {
     let skip = matches!(
         cmd,
-        Some(Command::Update { .. } | Command::Version | Command::Dashboard)
+        Some(Command::Update { .. } | Command::Version | Command::Dashboard | Command::Stats)
     );
     if skip {
         return;
@@ -104,6 +105,11 @@ fn main() {
             }
             Command::ReleasePublish { action } => {
                 if let Err(e) = release::run_publish(&action) {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
+            Command::Stats => {
+                if let Err(e) = stats::run() {
                     ui::fail(&format!("{e:#}"));
                 }
             }

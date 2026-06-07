@@ -76,6 +76,9 @@ pub enum Command {
         action: ReleaseAction,
     },
 
+    /// Show token savings across all whetstone components
+    Stats,
+
     /// Session database operations
     Db {
         #[command(subcommand)]
