@@ -126,12 +126,12 @@
 
 ## Phase 4 — Update & per-project refresh
 
-- [ ] **4.1** `whetstone update`: after upgrading global tools, compare `whetstone.json` integration-version vs binary's bundled version
-  - [ ] If behind: re-run `rtk init` / `icm init`, re-apply slash commands, run `doctor`
-  - [ ] `--full` forces it
-- [ ] **4.2** Optionally re-run `headroom learn` on update so CLAUDE.md learned-patterns block doesn't rot
-- [ ] **4.3** Extend version cache to track integration-version
-- [ ] **Acceptance:** bumping bundled integration-version + `whetstone update` in an existing project re-applies inits and updates `whetstone.json`
+- [x] **4.1** `whetstone update`: after upgrading global tools, compare `whetstone.json` integration-version vs binary's bundled version — `refresh_project_integration` in `src/update.rs` loads `WhetstoneManifest`, runs `project_refresh_decision`, and short-circuits when at-or-ahead
+  - [x] If behind: re-run `rtk init` / `icm init` (via `integrations::run_all`), re-apply slash commands (`setup::refresh_managed_subdirs`), run `doctor::run`, and bump `manifest.integration_version` + `tool_versions` + `touch_and_save`
+  - [x] `--full` forces it — `project_refresh_decision(Some(v), v, true)` returns `Refresh { forced: true }`; `setup::refresh_all_assets` also re-copies skills + MEMSTACK.md in this path
+- [x] **4.2** Optionally re-run `headroom learn` on update so CLAUDE.md learned-patterns block doesn't rot — `headroom::learn()` is best-effort: returns `Ok(false)` on missing binary or unknown subcommand, warns (never fails) on real errors
+- [x] **4.3** Extend version cache to track integration-version — added `integration_version_bundled` and `integration_version_project` to `VersionCache`, both `#[serde(default)]` so pre-Phase-4 caches still parse (covered by `version_cache_parses_legacy_payload_without_integration_fields`)
+- [x] **Acceptance:** unit tests in `src/update.rs::tests` pin the version-diff/refresh policy: `behind_bundled_triggers_refresh_without_full`, `full_flag_forces_refresh_even_at_version`, `full_flag_does_not_mark_genuine_upgrade_as_forced`, `no_manifest_means_nothing_to_refresh`, `ahead_of_bundled_skips_when_not_full`. Bumping `INTEGRATION_VERSION` in `src/config.rs` and running `whetstone update` re-applies inits + asset refresh and updates `.claude/whetstone.json` in place; `--full` forces it
 
 ---
 
