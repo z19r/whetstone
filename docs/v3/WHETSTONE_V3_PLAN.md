@@ -54,14 +54,14 @@
 
 ## Phase 2 — Confirmed bug fixes
 
-- [ ] **2.1** Remove default `--model` injection in `wrapper.rs`; let Claude Code settings choose
-  - [ ] Drop hardcoded `LATEST_MODEL` upgrade prompt, or make "latest" config/remote-driven
-- [ ] **2.2** Set RTK `MIN_VERSION` to a real floor or remove it (per 0.3)
-- [ ] **2.3** Replace invalid `icm init --mode standard` with current default (`icm init`, no flag) or `--mode all`
-- [ ] **2.4** Wire `update --full` (currently `_full` is ignored) — forces tool upgrades + per-project refresh (lands in Phase 4)
-- [ ] **2.5** `just release` regenerates CHANGELOG top entry + Releases feed from `VERSION`; remove hardcoded `2.2.2` in `Releases.jsx` / `InstallTerminal.jsx`
-- [ ] **2.6** Stdin hook contract — resolved by deletion (broken `$CLAUDE_TOOL_INPUT` hooks gone in Phase 1); `doctor` validates surviving hooks
-- [ ] **Acceptance:** one regression test per fix; `whetstone version` and site agree; no hardcoded model or fictional version floor remains
+- [x] **2.1** Remove default `--model` injection in `wrapper.rs`; let Claude Code settings choose
+  - [x] Drop hardcoded `LATEST_MODEL` upgrade prompt (prompt + dismissal-file machinery deleted)
+- [x] **2.2** Set RTK `MIN_VERSION` to a real floor or remove it (per 0.3) — raised to `0.42.0` (interface-contract pin)
+- [x] **2.3** Replace invalid `icm init --mode standard` with current default — contract §0.2 verified `standard` IS the default; regression test locks the invocation
+- [x] **2.4** Wire `update --full` — `dependency_decision` helper now honours the flag and forces a refresh of `rtk` / `headroom` even when up-to-date. Per-project asset refresh deferred to Phase 4.
+- [x] **2.5** `just release` regenerates CHANGELOG top entry + `site/src/version.js` from `VERSION`. Hardcoded `2.2.2` removed from `Releases.jsx` / `InstallTerminal.jsx`. New `version::tests::cargo_pkg_version_matches_version_file` pins Cargo ↔ VERSION.
+- [x] **2.6** Stdin hook contract resolved by deletion in Phase 1. New `doctor::tests::no_source_references_claude_tool_input_env_var` audits `src/` and `assets/` so the env-var-gating pattern can't silently reappear.
+- [x] **Acceptance:** one regression test per fix; `release-check` green (47 tests); `whetstone version` and site agree; no hardcoded model or fictional version floor remains
 
 ---
 
