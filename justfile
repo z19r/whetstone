@@ -225,11 +225,26 @@ release LEVEL: release-check
         --title "release: v${VERSION}" \
         --body "Bump to v${VERSION} ({{LEVEL}} release)" \
         --base main
+
+    echo "Waiting for CI checks to appear..."
+    for i in $(seq 1 30); do
+        if gh pr checks --json name 2>/dev/null | grep -q name; then break; fi
+        sleep 2
+    done
+    echo "Watching CI checks..."
+    gh pr checks --watch --fail-fast
+
+    echo "CI passed. Merging..."
+    gh pr merge --squash --delete-branch
+
+    git checkout main
+    git pull --ff-only origin main
+
+    echo "Watching release workflow..."
+    gh run watch
+
     echo ""
-    echo "PR created. Next steps:"
-    echo "  gh pr checks           # watch CI"
-    echo "  gh pr merge --squash --delete-branch"
-    echo "  gh run watch           # watch release workflow"
+    echo "Release v${VERSION} complete."
 
 # ─── Cleanup ─────────────────────────────────────────────────────
 
