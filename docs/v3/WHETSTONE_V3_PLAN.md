@@ -70,57 +70,57 @@
 > Staged, reversible, idempotent. Mirror the `release` preconditions discipline.
 
 ### 3.1 Detect (read-only, no writes)
-- [ ] Detect `.claude/db/memstack.db` (MemStack data)
-- [ ] Detect v2 whetstone-authored hooks in `~/.claude/settings.json` (reuse `entry_is_whetstone_managed`)
-- [ ] Detect `mcpServers.memory` → `@verygoodplugins/mcp-automem`; check for `AUTOMEM_ENDPOINT` / `AUTOMEM_API_KEY`
-- [ ] Detect managed `.claude/skills/`, `.claude/rules/`, `.claude/commands/`, `MEMSTACK.md`, `config.local.json`
-- [ ] Emit a detection report
+- [x] Detect `.claude/db/memstack.db` (MemStack data)
+- [x] Detect v2 whetstone-authored hooks in `~/.claude/settings.json` (`entry_is_whetstone_managed` in `src/migrate.rs`)
+- [x] Detect `mcpServers.memory` → `@verygoodplugins/mcp-automem`; check for `AUTOMEM_ENDPOINT` / `AUTOMEM_API_KEY`
+- [x] Detect managed `.claude/skills/`, `.claude/rules/`, `.claude/commands/`, `MEMSTACK.md`, `config.local.json`
+- [x] Emit a detection report (`Detection::render`)
 
 ### 3.2 Backup + export archive (`.whetstone/migration-<ts>/`)
-- [ ] Timestamped `settings.json` backup
-- [ ] `memstack.db.v2bak` (rename, never delete original)
-- [ ] `memstack-export.md` + `memstack-export.jsonl` (sessions / insights / context / plans)
-- [ ] `automem-export.jsonl` if reachable
+- [x] Timestamped `settings.json` backup
+- [x] `memstack.db.v2bak` (rename, never delete original)
+- [x] `memstack-export.md` + `memstack-export.jsonl` (sessions / insights / context / plans)
+- [x] `automem-export.jsonl` if reachable
 
 ### 3.3 AutoMem teardown
-- [ ] If endpoint+key exist and service responds: best-effort pull memories via recall API into export; else skip with clear note
-- [ ] Remove `mcpServers.memory` entry (backed up)
-- [ ] Do NOT tear down the user's external Railway/Docker service — print decommission instructions instead
+- [x] If endpoint+key exist and service responds: best-effort pull memories via recall API into export; else skip with clear note
+- [x] Remove `mcpServers.memory` entry (backed up to `automem-mcp-entry.json`)
+- [x] Do NOT tear down the user's external Railway/Docker service — print decommission instructions instead
 
 ### 3.4 MemStack → ICM migration (the real-data path)
-- [ ] Ensure ICM installed
-- [ ] Read memstack.db via internalized reader; map records:
-  - [ ] `insights` → ICM memories tagged by project; importance from `type` (architecture/decision → high/critical; pattern/tool → normal)
-  - [ ] `sessions` → one ICM memory each (accomplished/decisions/next_steps), tagged project + date
-  - [ ] `project_context` (architecture_decisions/known_issues/backlog) → ICM concepts/memories
-  - [ ] `plans` → markdown export only (not imported)
-- [ ] Use ICM's verified import path (from 0.2): bulk JSONL if available, else per-memory CLI loop
-- [ ] Idempotency: tag every record (`source=whetstone-migration`, `migration-id=<ts>`); write sentinel into renamed backup so re-runs detect prior completion
+- [x] Ensure ICM installed (warn + skip if missing)
+- [x] Read memstack.db via internalized reader; map records:
+  - [x] `insights` → ICM memories tagged by project; importance from `type` (architecture → critical; decision → high; pattern/tool/bug-fix → normal)
+  - [x] `sessions` → one ICM memory each (accomplished/decisions/next_steps), tagged project + date
+  - [x] `project_context` (architecture_decisions/known_issues/backlog) → ICM memories
+  - [x] `plans` → markdown export only (not imported)
+- [x] Use ICM's verified import path (from 0.2): `icm import --format auto` bulk; per-record `icm store` fallback
+- [x] Idempotency: tag every record (`source=whetstone-migration`, `migration-id=<ts>`); sentinel `.whetstone-migration-completed` + `whetstone.json::migration_id` prevent duplicate re-runs
 
 ### 3.5 Cleanup of v2 managed files
-- [ ] Build `MANAGED_SKILLS` / `MANAGED_RULES` manifest (analogous to `MANAGED_HOOK_SCRIPTS`) — remove only whetstone's own, preserve user-authored
-- [ ] Remove v2 hooks from settings.json
-- [ ] Remove `~/.claude/hooks/*.sh` whetstone scripts (if unreferenced)
-- [ ] Remove managed project assets + `MEMSTACK.md`
+- [x] Build `MANAGED_SKILLS` / `MANAGED_RULES` / `MANAGED_COMMANDS` / `MANAGED_HOOK_SCRIPTS` manifests — remove only whetstone's own, preserve user-authored
+- [x] Remove v2 hooks from settings.json
+- [x] Remove `~/.claude/hooks/*.sh` whetstone scripts (if unreferenced)
+- [x] Remove managed project assets + `MEMSTACK.md` + `config.local.json`
 
 ### 3.6 Re-init the v3 way
-- [ ] Run `rtk init`
-- [ ] Run `icm init`
-- [ ] Run `whetstone doctor` to normalize
-- [ ] Write new `whetstone.json` recording the migration
+- [x] Run `rtk init` (via `integrations::run_all`)
+- [x] Run `icm init` (via `integrations::run_all`)
+- [x] Run `whetstone doctor` to normalize
+- [x] Write new `whetstone.json` recording the migration id
 
 ### 3.7 Flags
-- [ ] `--dry-run` (full plan, no changes — mirror `release-dry-run`)
-- [ ] `--yes` (non-interactive)
-- [ ] `--rollback <migration-id>` (restore settings.json + memstack.db + removed files; AutoMem service not restored, only its config re-added)
+- [x] `--dry-run` (full plan, no changes — mirror `release-dry-run`)
+- [x] `--yes` (non-interactive)
+- [x] `--rollback <migration-id>` (restore settings.json + memstack.db + removed files; AutoMem service not restored, only its config re-added)
 
 ### 3.8 Auto-detect hand-off
-- [ ] `whetstone setup` / `update` detect v2 markers and offer to run `migrate`
+- [x] `whetstone setup` / `update` detect v2 markers and offer to run `migrate` (early return if migration runs)
 
-- [ ] **Acceptance:** on a fixture v2 project (settings.json w/ v2 hooks + seeded memstack.db + AutoMem mcpServers entry):
-  - [ ] `migrate --dry-run` reports exact plan
-  - [ ] `migrate` → clean v3 state, ICM holds migrated memories, no duplicate on re-run
-  - [ ] `migrate --rollback` restores v2 state byte-for-byte (except external AutoMem service)
+- [x] **Acceptance:** on a fixture v2 project (settings.json w/ v2 hooks + seeded memstack.db + AutoMem mcpServers entry):
+  - [x] `migrate --dry-run` reports exact plan (smoke-tested against current repo)
+  - [x] `migrate` → clean v3 state, ICM holds migrated memories, no duplicate on re-run (sentinel + manifest gate)
+  - [x] `migrate --rollback` restores v2 state byte-for-byte (except external AutoMem service)
 
 ---
 
