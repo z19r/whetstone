@@ -74,8 +74,24 @@ pub const MANAGED_RULES: &[&str] = &[
     "work.md",
 ];
 
-/// Command files whetstone v2 bundled into `.claude/commands/`.
-pub const MANAGED_COMMANDS: &[&str] = &["memstack-headroom.md", "memstack-search.md"];
+/// Command files whetstone bundles into `.claude/commands/`. Includes
+/// both the v2 names (cleaned during migration) and the v3 names
+/// shipped today, so cleanup paths stay symmetric across upgrades.
+pub const MANAGED_COMMANDS: &[&str] = &[
+    "memstack-headroom.md",
+    "memstack-search.md",
+    "whetstone-headroom.md",
+    "whetstone-status.md",
+];
+
+/// Canonical relative path (under a project's `.claude/`) of the v2
+/// MemStack SQLite database.
+///
+/// v3 no longer writes to this file. The migration reader uses it to
+/// detect a v2 install and the legacy `whetstone db` CLI uses it for
+/// backward-compat reads — both reach for the same path through this
+/// constant.
+pub const V2_DB_RELATIVE: &str = "db/memstack.db";
 
 /// Hook scripts whetstone v2 dropped into `~/.claude/hooks/`.
 pub const MANAGED_HOOK_SCRIPTS: &[&str] = &[
@@ -211,7 +227,7 @@ pub fn detect_at(project_dir: &Path, home_dir: &Path) -> Result<Detection> {
     let claude_dir = project_dir.join(".claude");
 
     let memstack_db = {
-        let p = claude_dir.join("db").join("memstack.db");
+        let p = claude_dir.join(V2_DB_RELATIVE);
         if p.exists() {
             Some(p)
         } else {
@@ -492,13 +508,13 @@ pub fn rollback(migration_id: &str) -> Result<()> {
     }
 
     if let Some(backup) = &rb.memstack_backup {
-        let dest = project_dir.join(".claude/db/memstack.db");
+        let dest = project_dir.join(".claude").join(V2_DB_RELATIVE);
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).ok();
         }
         fs::copy(backup, &dest).with_context(|| format!("restoring {}", dest.display()))?;
         // Drop the .v2bak sibling so the v2 layout is once again canonical.
-        let bak = project_dir.join(".claude/db/memstack.db.v2bak");
+        let bak = dest.with_extension("db.v2bak");
         let _ = fs::remove_file(&bak);
         ui::ok(&format!("restored {}", dest.display()));
     }
@@ -1587,7 +1603,7 @@ mod tests {
     fn export_writes_jsonl_and_markdown() {
         let project = TempDir::new().unwrap();
         let home = TempDir::new().unwrap();
-        let db_path = project.path().join(".claude/db/memstack.db");
+        let db_path = project.path().join(".claude").join(V2_DB_RELATIVE);
         fs::create_dir_all(db_path.parent().unwrap()).unwrap();
         let conn = Connection::open(&db_path).unwrap();
         conn.execute_batch(include_str!("../assets/db/schema.sql"))

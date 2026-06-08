@@ -99,9 +99,10 @@ pub(crate) fn complete_setup(provider: MemoryProvider, assets: &Path, full: bool
 
 pub(crate) fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
     let project_dir = std::env::current_dir()?;
-    let has_existing = project_dir.join(".claude/skills").is_dir()
-        || project_dir.join(".claude/MEMSTACK.md").exists()
-        || project_dir.join(".claude/whetstone.json").exists();
+    let has_existing = project_dir.join(".claude/whetstone.json").exists()
+        || project_dir.join(".claude/commands").is_dir()
+        || project_dir.join(".claude/skills").is_dir()
+        || project_dir.join(".claude/MEMSTACK.md").exists();
 
     if full {
         if has_existing {
@@ -143,36 +144,28 @@ pub(crate) fn install_general_assets(assets: &Path, full: bool) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let claude_dir = project_dir.join(".claude");
 
-    copy_skills(assets, &claude_dir, full)?;
     copy_subdirs(assets, &claude_dir, full)?;
-    copy_memstack_md(assets, &claude_dir, full)?;
 
     Ok(())
 }
 
-/// Force-refresh the project's slash commands and rules from bundled assets.
+/// Force-refresh the project's slash commands from bundled assets.
 ///
 /// Used by `whetstone update` (Phase 4.1) when the project's recorded
 /// integration-version is behind the binary's bundled
-/// [`crate::config::INTEGRATION_VERSION`]. Skills are intentionally left
-/// alone — they are heavier and the user often customises them; `--full`
-/// goes through [`refresh_all_assets`] instead.
+/// [`crate::config::INTEGRATION_VERSION`].
 pub(crate) fn refresh_managed_subdirs(assets: &Path) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let claude_dir = project_dir.join(".claude");
     copy_subdirs(assets, &claude_dir, true)
 }
 
-/// Force-refresh skills + slash commands + rules + MEMSTACK.md.
+/// Force-refresh all bundled project assets.
 ///
-/// Triggered by `whetstone update --full`.
+/// Triggered by `whetstone update --full`. v3 only ships slash commands,
+/// so this is the same as [`refresh_managed_subdirs`] today.
 pub(crate) fn refresh_all_assets(assets: &Path) -> Result<()> {
-    let project_dir = std::env::current_dir()?;
-    let claude_dir = project_dir.join(".claude");
-    copy_skills(assets, &claude_dir, true)?;
-    copy_subdirs(assets, &claude_dir, true)?;
-    copy_memstack_md(assets, &claude_dir, true)?;
-    Ok(())
+    refresh_managed_subdirs(assets)
 }
 
 /// Expose `icm --version` parsing so callers outside `setup.rs`
@@ -245,51 +238,14 @@ fn installed_icm_version() -> Option<String> {
     crate::version::extract_semver(&raw)
 }
 
-fn copy_skills(assets: &Path, claude_dir: &Path, force: bool) -> Result<()> {
-    let src = assets.join("skills");
-    if !src.is_dir() {
-        ui::warn("no bundled skills found — skipping");
-        return Ok(());
-    }
-
-    let dest = claude_dir.join("skills");
-
-    if force {
-        ui::info("refreshing skills...");
-        copy_dir_recursive(&src, &dest)?;
-        ui::ok("skills refreshed");
-    } else if dest.is_dir() && has_subdirs(&dest) {
-        ui::ok("skills already installed");
-    } else {
-        ui::info("copying skills...");
-        copy_dir_recursive(&src, &dest)?;
-        ui::ok("skills copied");
-    }
-    Ok(())
-}
-
 fn copy_subdirs(assets: &Path, claude_dir: &Path, force: bool) -> Result<()> {
-    for subdir in ["rules", "commands"] {
-        let src = assets.join(subdir);
-        if !src.is_dir() {
-            continue;
-        }
-        let dest = claude_dir.join(subdir);
-        if force || !dest.is_dir() {
-            copy_dir_recursive(&src, &dest)?;
-        }
-    }
-    Ok(())
-}
-
-fn copy_memstack_md(assets: &Path, claude_dir: &Path, force: bool) -> Result<()> {
-    let src = assets.join("MEMSTACK.md");
-    if !src.exists() {
+    let src = assets.join("commands");
+    if !src.is_dir() {
         return Ok(());
     }
-    let dest = claude_dir.join("MEMSTACK.md");
-    if force || !dest.exists() {
-        fs::copy(&src, &dest)?;
+    let dest = claude_dir.join("commands");
+    if force || !dest.is_dir() {
+        copy_dir_recursive(&src, &dest)?;
     }
     Ok(())
 }
@@ -316,12 +272,6 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn has_subdirs(dir: &Path) -> bool {
-    fs::read_dir(dir)
-        .map(|entries| entries.filter_map(|e| e.ok()).any(|e| e.path().is_dir()))
-        .unwrap_or(false)
 }
 
 fn stack_setup_content(provider: MemoryProvider) -> String {

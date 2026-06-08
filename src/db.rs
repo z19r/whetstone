@@ -4,15 +4,15 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 use crate::cli::DbCommand;
+use crate::migrate::V2_DB_RELATIVE;
 
 const SCHEMA: &str = include_str!("../assets/db/schema.sql");
 
 fn db_path() -> PathBuf {
-    let claude_dir = std::env::current_dir()
+    std::env::current_dir()
         .unwrap_or_default()
         .join(".claude")
-        .join("db");
-    claude_dir.join("memstack.db")
+        .join(V2_DB_RELATIVE)
 }
 
 fn open(path: &Path) -> Result<Connection> {
