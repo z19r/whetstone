@@ -1683,4 +1683,107 @@ mod tests {
         assert!(!det.needs_migration());
         assert_eq!(det.already_migrated.as_deref(), Some("20260101-000000"));
     }
+
+    #[test]
+    fn rollback_manifest_round_trips_through_json() {
+        // Rollback safety leans entirely on this manifest. Serialize → parse →
+        // compare every field so a future field addition doesn't silently get
+        // dropped on disk.
+        let archived_at: chrono::DateTime<Utc> = "2026-06-07T15:30:12Z".parse().unwrap();
+        let rb = RollbackManifest {
+            migration_id: "20260607-153012".into(),
+            archived_at,
+            settings_backup: Some(PathBuf::from(
+                ".whetstone/migration-20260607-153012/settings.json.bak",
+            )),
+            memstack_backup: Some(PathBuf::from(
+                ".whetstone/migration-20260607-153012/memstack.db.bak",
+            )),
+            automem_backup: Some(PathBuf::from(
+                ".whetstone/migration-20260607-153012/automem.json.bak",
+            )),
+            removed_files: vec![RemovedFile {
+                original: PathBuf::from(".claude/skills/diary"),
+                archived: PathBuf::from(".whetstone/migration-20260607-153012/skills/diary"),
+            }],
+            removed_hook_indices: vec!["PreToolUse[0]".into(), "Stop[1]".into()],
+        };
+
+        let json = serde_json::to_string(&rb).unwrap();
+        let parsed: RollbackManifest = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.migration_id, rb.migration_id);
+        assert_eq!(parsed.archived_at, rb.archived_at);
+        assert_eq!(parsed.settings_backup, rb.settings_backup);
+        assert_eq!(parsed.memstack_backup, rb.memstack_backup);
+        assert_eq!(parsed.automem_backup, rb.automem_backup);
+        assert_eq!(parsed.removed_files.len(), 1);
+        assert_eq!(
+            parsed.removed_files[0].original,
+            rb.removed_files[0].original
+        );
+        assert_eq!(
+            parsed.removed_files[0].archived,
+            rb.removed_files[0].archived
+        );
+        assert_eq!(parsed.removed_hook_indices, rb.removed_hook_indices);
+    }
+
+    #[test]
+    fn entry_is_whetstone_managed_rejects_unmanaged_scripts() {
+        // The negative case keeps cleanup honest: a user-authored hook with
+        // an unrelated absolute path must not be classified as managed.
+        let entry = json!({
+            "matcher": "Bash",
+            "hooks": [{
+                "type": "command",
+                "command": "/home/user/.local/bin/my-custom-hook.sh"
+            }]
+        });
+        assert!(!entry_is_whetstone_managed(&entry));
+    }
+
+    #[test]
+    fn cleanup_managed_is_idempotent_on_second_run() {
+        // Running cleanup over already-cleaned state must be a no-op — the
+        // rollback story depends on cleanup being safely re-runnable.
+        let project = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let settings = json!({
+            "hooks": {
+                "PreToolUse": [
+                    { "matcher": "Bash", "hooks": [{ "type": "command", "command": "/home/x/.claude/hooks/whetstone-pre-push.sh" }] },
+                    { "matcher": "Bash", "hooks": [{ "type": "command", "command": "/usr/local/bin/keep-me.sh" }] }
+                ]
+            }
+        });
+        fs::create_dir_all(home.path().join(".claude")).unwrap();
+        let sp = home.path().join(".claude/settings.json");
+        fs::write(&sp, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
+
+        // First pass strips the v2 entry.
+        let det1 = detect_at(project.path(), home.path()).unwrap();
+        let archive = archive_dir(project.path(), "test");
+        fs::create_dir_all(&archive).unwrap();
+        let mut rb1 = empty_rb("test");
+        cleanup_managed(&det1, &archive, &mut rb1).unwrap();
+        let after_first = fs::read_to_string(&sp).unwrap();
+        assert!(!rb1.removed_hook_indices.is_empty());
+
+        // Second pass on the same project/home detects nothing to clean and
+        // leaves settings.json byte-identical.
+        let det2 = detect_at(project.path(), home.path()).unwrap();
+        let mut rb2 = empty_rb("test");
+        cleanup_managed(&det2, &archive, &mut rb2).unwrap();
+        let after_second = fs::read_to_string(&sp).unwrap();
+        assert_eq!(
+            after_first, after_second,
+            "settings.json must be unchanged on the idempotent second cleanup pass"
+        );
+        assert!(
+            rb2.removed_hook_indices.is_empty(),
+            "second pass should record no removed hook indices, got {:?}",
+            rb2.removed_hook_indices
+        );
+    }
 }

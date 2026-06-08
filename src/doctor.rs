@@ -491,6 +491,53 @@ mod tests {
         assert!(!r.green());
     }
 
+    #[test]
+    fn malformed_settings_json_is_warning_not_panic() {
+        // A truncated/corrupt settings.json must not panic the doctor.
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(b"{not valid json").unwrap();
+        let report = inspect_and_normalize(f.path()).unwrap();
+        assert!(report
+            .findings
+            .iter()
+            .any(|x| matches!(x.status, Status::Warning(_))));
+    }
+
+    #[test]
+    fn settings_json_is_array_is_treated_as_warning() {
+        // settings.json being a JSON array (not object) is malformed-but-parseable;
+        // the doctor should warn rather than crash trying to look up hooks.
+        let f = write_settings(json!(["unexpected", "shape"]));
+        let report = inspect_and_normalize(f.path()).unwrap();
+        assert!(report
+            .findings
+            .iter()
+            .any(|x| matches!(x.status, Status::Warning(_))));
+    }
+
+    #[test]
+    fn rtk_moved_to_last_among_three_entries() {
+        // Three Bash entries with rtk first: normalization must place rtk last
+        // and leave the relative order of the other two intact.
+        let f = write_settings(json!({
+            "hooks": {
+                "PreToolUse": [rtk_entry(), other_bash_entry(), json!({
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": "/opt/x/foo"}]
+                })]
+            }
+        }));
+        let report = inspect_and_normalize(f.path()).unwrap();
+        assert!(report.mutated);
+        let rewritten: Value =
+            serde_json::from_str(&fs::read_to_string(f.path()).unwrap()).unwrap();
+        let pre = rewritten["hooks"]["PreToolUse"].as_array().unwrap();
+        assert_eq!(pre.len(), 3);
+        assert!(is_rtk_entry(&pre[2]));
+        assert!(!is_rtk_entry(&pre[0]));
+        assert!(!is_rtk_entry(&pre[1]));
+    }
+
     /// Phase 2.6 regression: confirms the v2-era stdin contract is gone.
     ///
     /// v2 shipped five hook scripts under `assets/hooks/` that read

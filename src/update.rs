@@ -607,6 +607,25 @@ mod tests {
     }
 
     #[test]
+    fn full_flag_forces_refresh_even_when_project_is_ahead_of_bundled() {
+        // Project somehow runs a newer integration version than the binary
+        // (older binary copy on PATH after a partial install). `--full` should
+        // still drive the binary's bundled assets in, and mark it `forced`.
+        let d = project_refresh_decision(Some(7), 5, true);
+        match d {
+            ProjectRefreshDecision::Refresh { from, to, forced } => {
+                assert_eq!(from, 7);
+                assert_eq!(to, 5);
+                assert!(
+                    forced,
+                    "ahead-of-bundled refresh under --full must be marked forced"
+                );
+            }
+            other => panic!("expected forced refresh on downgrade, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn full_flag_does_not_mark_genuine_upgrade_as_forced() {
         // `forced: true` means "we refreshed because the user asked, not
         // because there was a version diff". A genuine 1→2 jump with

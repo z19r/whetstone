@@ -43,6 +43,16 @@ pub struct IntegrationReport {
     pub icm_ran: bool,
 }
 
+/// Arg shape for `rtk init`. Pinned by `docs/interface-contract.md` §0.2;
+/// changing it is an integration-version bump.
+pub(crate) const RTK_INIT_ARGS: [&str; 2] = ["init", "--auto-patch"];
+
+/// Arg shape for `icm init`. The `--mode` value is filled in at call time
+/// from [`IcmMode::as_arg`].
+pub(crate) fn icm_init_args(mode: IcmMode) -> [&'static str; 3] {
+    ["init", "--mode", mode.as_arg()]
+}
+
 /// Run `rtk init --auto-patch` so RTK installs its own Claude Code hook
 /// (PreToolUse Bash) and merges itself into `~/.claude/settings.json`.
 pub fn rtk_init() -> Result<()> {
@@ -50,7 +60,7 @@ pub fn rtk_init() -> Result<()> {
 
     ui::info("running `rtk init --auto-patch`");
     let output = Command::new("rtk")
-        .args(["init", "--auto-patch"])
+        .args(RTK_INIT_ARGS)
         .output()
         .context("failed to spawn `rtk init`")?;
 
@@ -64,7 +74,7 @@ pub fn icm_init(mode: IcmMode) -> Result<()> {
 
     ui::info(&format!("running `icm init --mode {}`", mode.as_arg()));
     let output = Command::new("icm")
-        .args(["init", "--mode", mode.as_arg()])
+        .args(icm_init_args(mode))
         .output()
         .context("failed to spawn `icm init`")?;
 
@@ -146,5 +156,68 @@ mod tests {
         let r = IntegrationReport::default();
         assert!(!r.rtk_ran);
         assert!(!r.icm_ran);
+    }
+
+    #[test]
+    fn rtk_init_args_pinned_to_interface_contract() {
+        // docs/interface-contract.md §0.2 pins `rtk init --auto-patch`. If this
+        // ever drifts, bump the integration version on the same PR.
+        assert_eq!(RTK_INIT_ARGS, ["init", "--auto-patch"]);
+    }
+
+    #[test]
+    fn icm_init_args_pinned_to_interface_contract_for_each_mode() {
+        // Same contract anchor as above — both modes must shape exactly the
+        // documented invocation.
+        assert_eq!(
+            icm_init_args(IcmMode::Standard),
+            ["init", "--mode", "standard"]
+        );
+        assert_eq!(icm_init_args(IcmMode::All), ["init", "--mode", "all"]);
+    }
+
+    #[test]
+    fn require_binary_errors_for_missing_command() {
+        // Pick a name no sane system has installed. The error message must
+        // include the binary name so the user can act on it.
+        let err = require_binary("definitely-not-a-real-binary-xyz123").unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("definitely-not-a-real-binary-xyz123"),
+            "error message should name the missing binary, got: {msg}"
+        );
+        assert!(
+            msg.contains("not found on PATH"),
+            "error message should mention PATH lookup, got: {msg}"
+        );
+    }
+
+    #[cfg(unix)]
+    fn synth_output(code: i32, stdout: &str, stderr: &str) -> Output {
+        use std::os::unix::process::ExitStatusExt;
+        Output {
+            status: std::process::ExitStatus::from_raw((code & 0xff) << 8),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn finish_returns_ok_on_zero_exit() {
+        let output = synth_output(0, "hello from init\n", "");
+        assert!(finish("test init", &output).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn finish_errors_on_nonzero_exit_and_surfaces_label() {
+        let output = synth_output(2, "", "boom\n");
+        let err = finish("rtk init", &output).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("rtk init failed"),
+            "error should mention the label, got: {msg}"
+        );
     }
 }
