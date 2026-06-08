@@ -25,6 +25,32 @@ Or from source: `cargo install whetstone && whetstone setup`
 
 See [docs/install.md](docs/install.md) for prerequisites, setup details, and project configuration.
 
+## Upgrading from v2 → v3
+
+v3 is a structural rewrite. **`whetstone setup` will refuse to install over a v2
+project** and hand off to `whetstone migrate`. The migration is one command,
+archive-backed, and reversible.
+
+```bash
+whetstone migrate                 # interactive
+whetstone migrate --dry-run       # preview the plan, write nothing
+whetstone migrate -y              # non-interactive (CI)
+whetstone migrate --rollback <id> # restore a prior v2 state byte-for-byte
+```
+
+Full procedure, archive contents, and rollback semantics: [docs/migration.md](docs/migration.md).
+
+## Breaking changes (v3.0.0)
+
+- **AutoMem provider removed.** `MemoryProvider` is now `{ Icm, Skip }`. The `mcpServers.memory` block is torn out of `~/.claude/settings.json` (archived). If you ran an external FalkorDB + Qdrant service, tear it down yourself — it's no longer in whetstone's blast radius.
+- **Bundled skills, rules, and hook scripts removed.** The `assets/hooks/*.sh`, `assets/skills/`, `assets/rules/`, and the `MEMSTACK.md` shim are gone. ICM owns its own assets; whetstone delegates to `icm init --mode standard`.
+- **Hooks are tool-managed.** Whetstone no longer hand-merges `~/.claude/settings.json`. `rtk init --auto-patch` and `icm init` write their own hook entries. `whetstone doctor` reports drift.
+- **Migration is mandatory.** Existing v2 installs must run `whetstone migrate` before any v3 command will configure them.
+- **`config.local.json` replaced by `.claude/whetstone.json`** (schema version, integration version, provider, tool versions, timestamps).
+- **Hardcoded `--model` injection removed.** `whetstone claude` no longer forces a model; Claude Code's own settings choose it.
+
+Full release notes in [CHANGELOG.md](CHANGELOG.md).
+
 ## Architecture
 
 ```
