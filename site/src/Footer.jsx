@@ -11,7 +11,7 @@ function Footer() {
       <div className="ws-wrap" style={{ position: 'relative', zIndex: 1 }}>
 
         <div className="ws-release-banner" style={{ marginBottom: 'var(--s-7)' }}>
-          <span className="ver">v2.6.0</span>
+          <span className="ver">v3.0.0</span>
           <div>
             <div className="title">
               <span className="acid">SHIPPED</span> · idempotent setup, hardened RTK collision detection
@@ -33,7 +33,7 @@ function Footer() {
               Rust binary installs and configures Headroom, RTK, and persistent memory.
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <span className="ws-badge ws-badge--acid"><span className="pulse"></span>v2.6.0 · STABLE</span>
+              <span className="ws-badge ws-badge--acid"><span className="pulse"></span>v3.0.0 · STABLE</span>
               <span className="ws-badge ws-badge--mag">MIT</span>
               <span className="ws-badge ws-badge--royal">RUST 2021</span>
             </div>
@@ -62,7 +62,7 @@ function Footer() {
         </div>
 
         <div className="meta">
-          <span>// WHETSTONE · v2.6.0 · {new Date().getFullYear()}</span>
+          <span>// WHETSTONE · v3.0.0 · {new Date().getFullYear()}</span>
           <span>MADE IN CHICAGO, WITH 🫀 ©2026 z19r. All rights reserved.</span>
           <span>BUILT IN A SHED · NO TELEMETRY</span>
         </div>

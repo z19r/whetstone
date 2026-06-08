@@ -160,7 +160,7 @@ function InstallTerminal() {
             style={{ flex: 1 }}
           >
             <span className="ix">✓</span>
-            <span>SUCCESS BRANCH · v2.6.0</span>
+            <span>SUCCESS BRANCH · v3.0.0</span>
           </button>
           <button
             className={'demo-tab' + (!isSuccess ? ' is-active' : '')}
@@ -181,7 +181,7 @@ function InstallTerminal() {
             marginBottom: 'var(--s-3)',
             fontFamily: 'var(--f-mono)',
           }}>
-            {isSuccess ? '// WHETSTONE SETUP · v2.6.0' : '// ERROR · RTK COLLISION DETECTED'}
+            {isSuccess ? '// WHETSTONE SETUP · v3.0.0' : '// ERROR · RTK COLLISION DETECTED'}
           </div>
 
           <TerminalView lines={lines} active={true} showCursorAtEnd={isSuccess} key={branch} />
