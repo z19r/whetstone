@@ -61,9 +61,10 @@ function HeroDisplay() {
       </h1>
 
       <p className="sub">
-        One Rust binary. Installs and configures <b>Headroom</b> (context proxy),
-        {' '}<b>RTK</b> (tool-output hook), and persistent project memory. Drops average
-        context to <b>~19%</b> at 97% accuracy on SQuAD&nbsp;v2.
+        One Rust binary that installs and orchestrates <b>Headroom</b> (context proxy),
+        {' '}<b>RTK</b> (Bash-output hook), and <b>ICM</b> (project memory) — idempotent
+        setup, version dashboard, release automation. Compression is upstream's job;
+        the glue is whetstone's.
       </p>
 
       <div className="hero-cta">
@@ -101,10 +102,10 @@ function HeroBigNumber() {
       </h1>
 
       <p className="sub">
-        Whetstone installs three layers of token optimization for Claude Code, Cursor and
-        friends: <b>RTK</b> shrinks every CLI output, <b>Headroom</b> compresses the rest of
-        the context, <b>Memory</b> remembers what mattered. <b>50–90%</b> savings,
-        compounded.
+        Whetstone installs and orchestrates three upstream tools for Claude Code,
+        Cursor and friends: <b>RTK</b> rewrites Bash output, <b>Headroom</b> proxies the
+        rest of the context, <b>ICM</b> remembers what mattered. One <code>setup</code>,
+        one <code>update</code>, one <code>migrate</code>.
       </p>
 
       <div className="hero-cta">
@@ -133,8 +134,8 @@ function HeroArchitecture() {
 
       <p className="sub">
         A single Rust install sits between your AI coding tool and the LLM API. RTK
-        compresses tool output, Headroom compresses the context, ICM or AutoMem keeps
-        project memory across sessions.
+        compresses Bash output, Headroom proxies the context, ICM keeps project memory
+        across sessions.
       </p>
 
       <div className="hero-cta">

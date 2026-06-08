@@ -55,10 +55,10 @@ function Numbers() {
     <section className="section ws-wrap" id="numbers">
       <div className="ws-sec-head">
         <div className="ws-sec-tag">04 · NUMBERS</div>
-        <h2>Measured against<br />a clean baseline.</h2>
+        <h2>What the glue<br />is actually doing.</h2>
       </div>
 
-      {/* big diff */}
+      {/* big diff — example RTK run on this repo */}
       <div className="ws-diff" style={{ marginBottom: 'var(--s-7)' }}>
         <div className="ws-diff-cell is-in">
           <div className="label">IN · CARGO TEST</div>
@@ -70,39 +70,46 @@ function Numbers() {
           <span className="savings">-99.8%</span>
         </div>
         <div className="ws-diff-cell is-out">
-          <div className="label">OUT · COMPRESSED</div>
+          <div className="label">OUT · RTK REWRITE</div>
           <div className="value">11</div>
           <div className="unit">TOKENS</div>
         </div>
       </div>
+      <div style={{
+        fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--fg-dim)',
+        letterSpacing: '0.04em', textAlign: 'center',
+        marginTop: 'calc(-1 * var(--s-6))', marginBottom: 'var(--s-7)',
+      }}>
+        ONE EXAMPLE RUN · WHETSTONE TEST SUITE · SAVINGS CREDITED TO RTK
+      </div>
 
-      {/* stat rail */}
+      {/* stat rail — whetstone-specific shipping facts, not upstream compression numbers */}
       <div className="stat-rail-x">
         <StatCell
           ix="// HEADROOM"
           value={90}
           format={(v) => Math.round(v) + '%'}
-          unit=""
+          unit=" UP TO"
           color="acid"
-          label="CONTEXT COMPRESSED"
-          sub="UP TO · MULTI-STAGE PIPELINE"
+          label="CONTEXT REDUCTION"
+          sub="HEADROOM PROJECT FIGURE · NOT A WHETSTONE NUMBER"
         />
         <StatCell
-          ix="// SQUAD V2"
-          value={97}
+          ix="// WHETSTONE"
+          value={1}
           format={(v) => Math.round(v) + ''}
-          unit="% ACC"
-          label="ACCURACY @ 19% TOK"
-          sub="EXTRACTIVE QA BENCHMARK"
+          unit=" BINARY"
+          label="RUST 2021 · IDEMPOTENT SETUP"
+          sub="HEADROOM + RTK + ICM, ORCHESTRATED"
         />
         <StatCell
-          ix="// RTK"
-          value={99.8}
-          format={(v) => v.toFixed(1)}
-          unit="% SAVED"
+          ix="// MIGRATE"
+          value={1}
+          format={(v) => Math.round(v) + ''}
+          unit=" COMMAND"
           color="mag"
-          label="CARGO TEST · 4,800 → 11"
-          sub="REAL RUN · WHETSTONE TESTS"
+          label="v2 → v3 WITH --rollback"
+          sub="ARCHIVE-BACKED, REVERSIBLE"
         />
       </div>
     </section>

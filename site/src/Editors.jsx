@@ -48,7 +48,7 @@ const ROWS = [
   },
   {
     label: 'PROVIDER',
-    sub: 'ICM or AutoMem',
+    sub: 'ICM via icm init',
     cells: ['full', '—', '—', '—', '—', '—', '—', '—'],
   },
 ];

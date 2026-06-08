@@ -8,8 +8,8 @@ const FAQS = [
     q: 'Do I need all three modules?',
     a: (
       <>
-        <p>No. <code>whetstone setup</code> prompts for a memory provider (ICM, AutoMem, or
-        Skip) and <code>--headroom-extras none</code> ships Headroom base-only. RTK and
+        <p>No. <code>whetstone setup</code> prompts for a memory provider (ICM or Skip)
+        and <code>--headroom-extras none</code> ships Headroom base-only. RTK and
         Headroom run independently; you can disable either without touching the other.</p>
       </>
     ),
@@ -44,8 +44,29 @@ const FAQS = [
       <>
         <p>Five stages: cache alignment, content routing, statistical JSON compression,
         AST-aware code compression, and score-based message dropping. Optional
-        <code>--llmlingua</code> adds   an ML pass at ~2 GB model download.</p>
-        <p>Benchmarks: <strong>97% accuracy at 19% tokens</strong> on SQuAD v2.</p>
+        <code>--llmlingua</code> adds an ML pass at ~2&nbsp;GB model download.</p>
+        <p>Compression numbers belong to the Headroom project, not whetstone — see the
+        upstream <a href="https://pypi.org/project/headroom-ai/" target="_blank"
+        rel="noreferrer">headroom-ai</a> docs and run <code>curl localhost:8787/stats</code>
+        to measure your own.</p>
+      </>
+    ),
+  },
+  {
+    q: 'Does RTK ever cost more tokens than it saves?',
+    a: (
+      <>
+        <p>Yes — compression can strip context the model needed, and RTK&apos;s own
+        tracker has logged a ~<strong>18% net cost-increase</strong> case. Two things
+        to know:</p>
+        <ul>
+          <li>The whetstone hook only rewrites <strong>Bash</strong> tool calls. Claude
+          Code&apos;s native <code>Read</code>, <code>Grep</code>, <code>Glob</code>, and
+          file-edit tools bypass RTK entirely.</li>
+          <li>Run <code>rtk gain</code> for cumulative savings, <code>rtk discover</code>
+          to spot Bash commands you&apos;re not rewriting yet, and consider RTK&apos;s audit
+          mode if you suspect a particular rewrite is hurting more than helping.</li>
+        </ul>
       </>
     ),
   },
@@ -62,13 +83,17 @@ const FAQS = [
     ),
   },
   {
-    q: 'ICM or AutoMem?',
+    q: 'Which memory provider does whetstone install?',
     a: (
       <>
-        <p><strong>ICM</strong> is an embedded SQLite database with zero runtime
-        dependencies &mdash; it's the default for new projects. <strong>AutoMem</strong>
-        is a graph-backed provider using FalkorDB + Qdrant; richer retrieval, but you run
-        two extra services.</p>
+        <p><strong>ICM</strong> (<code>icm init --mode standard</code>) — an embedded
+        SQLite store with zero runtime dependencies. Skills, hooks, and the CLI are
+        configured by ICM itself; whetstone&apos;s job is to call <code>icm init</code>
+        with the right flags, version-pin it in the per-project manifest, and refresh
+        it on <code>whetstone update</code>.</p>
+        <p>v2 shipped a second graph-backed provider (AutoMem). v3 drops it and uses
+        ICM exclusively. If you&apos;re migrating from v2, <code>whetstone migrate</code>
+        archives the v2 MemStack store and re-initialises against ICM.</p>
       </>
     ),
   },
