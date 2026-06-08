@@ -4,8 +4,13 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
+const PROXY_HEALTH_URL: &str = "http://127.0.0.1:8787/health";
+const PROXY_READY_TIMEOUT: Duration = Duration::from_secs(15);
+const PROXY_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const PROXY_PROBE_TIMEOUT: Duration = Duration::from_millis(800);
 
 fn set_proxy_env() {
     if std::env::var("ANTHROPIC_BASE_URL").is_err() {
@@ -15,11 +20,60 @@ fn set_proxy_env() {
 
 pub fn wrap_claude(args: &[String]) -> ! {
     set_proxy_env();
+    ensure_proxy_ready();
 
     let skip_rtk_setup = should_skip_headroom_rtk_setup();
     let cmd_args = build_claude_args(args, skip_rtk_setup);
 
     exec("headroom", &cmd_args);
+}
+
+/// Phase 6.3: claude's first API call must hit a live proxy. The SessionStart
+/// hook auto-starts headroom, but it fires after claude has already launched —
+/// so the proxy may still be down by the time claude makes its first request.
+/// Probe `/health`; if dead, spawn `headroom proxy` detached and poll until it
+/// answers or we hit `PROXY_READY_TIMEOUT`. Soft-fail with a warning rather
+/// than refusing to exec — if the user has a custom upstream, headroom wrap's
+/// own logic should still be allowed to run.
+fn ensure_proxy_ready() {
+    if probe_proxy() {
+        return;
+    }
+
+    let spawned = spawn_proxy_detached().is_ok();
+
+    let deadline = Instant::now() + PROXY_READY_TIMEOUT;
+    while Instant::now() < deadline {
+        if probe_proxy() {
+            return;
+        }
+        std::thread::sleep(PROXY_POLL_INTERVAL);
+    }
+
+    let tail = if spawned {
+        "(spawned a background headroom proxy, but it did not respond in time)"
+    } else {
+        "(could not spawn `headroom proxy` — is headroom installed?)"
+    };
+    eprintln!("[WARN] whetstone: proxy at {DEFAULT_PROXY} is not responding {tail}");
+}
+
+fn probe_proxy() -> bool {
+    ureq::get(PROXY_HEALTH_URL)
+        .timeout(PROXY_PROBE_TIMEOUT)
+        .call()
+        .is_ok()
+}
+
+fn spawn_proxy_detached() -> std::io::Result<()> {
+    use std::process::Stdio;
+    Command::new("headroom")
+        .args(["proxy", "--port", "8787"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
 }
 
 // Phase 2 task 2.1: whetstone does NOT inject `--model`. Model selection is
