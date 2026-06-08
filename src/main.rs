@@ -1,3 +1,4 @@
+mod changelog;
 mod cli;
 mod config;
 mod dashboard;
@@ -121,6 +122,15 @@ fn main() {
                     ui::fail(&format!("{e:#}"));
                 }
             }
+            Command::ChangelogSync {
+                input,
+                output,
+                limit,
+            } => {
+                if let Err(e) = run_changelog_sync(input, output, limit) {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
             Command::Stats => {
                 if let Err(e) = stats::run() {
                     ui::fail(&format!("{e:#}"));
@@ -146,4 +156,34 @@ fn main() {
             }
         },
     }
+}
+
+fn run_changelog_sync(
+    input: Option<String>,
+    output: Option<String>,
+    limit: usize,
+) -> anyhow::Result<()> {
+    let cwd = std::env::current_dir()?;
+    let input_path = input
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| cwd.join("CHANGELOG.md"));
+    let output_path = output
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| cwd.join("site/src/changelog.js"));
+
+    let entries = changelog::parse_file(&input_path, limit)?;
+    let js = changelog::render_js(&entries);
+
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&output_path, js)?;
+
+    ui::ok(&format!(
+        "changelog: {} -> {} ({} releases)",
+        input_path.display(),
+        output_path.display(),
+        entries.len()
+    ));
+    Ok(())
 }

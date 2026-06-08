@@ -230,6 +230,9 @@ release LEVEL: release-check
     # and reinsert an empty [Unreleased] header above it.
     TODAY=$(date -u +%Y-%m-%d)
     sed -i "s|^## \[Unreleased\]|## [Unreleased]\n\n## [${VERSION}] - ${TODAY}|" CHANGELOG.md
+    # Regenerate site/src/changelog.js from the now-promoted CHANGELOG.md
+    # so the marketing site's Releases section always matches what shipped.
+    cargo run --quiet -- changelog-sync
     git checkout -b "release/v${VERSION}"
     git add Cargo.toml Cargo.lock VERSION site/ CHANGELOG.md
     git commit -m "release: v${VERSION}"

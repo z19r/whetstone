@@ -94,6 +94,21 @@ pub enum Command {
         action: ReleaseAction,
     },
 
+    /// Regenerate site/src/changelog.js from CHANGELOG.md
+    ChangelogSync {
+        /// Path to CHANGELOG.md (defaults to repo root)
+        #[arg(long)]
+        input: Option<String>,
+
+        /// Output JS file (defaults to site/src/changelog.js)
+        #[arg(long)]
+        output: Option<String>,
+
+        /// Max number of releases to include
+        #[arg(long, default_value_t = 8)]
+        limit: usize,
+    },
+
     /// Show token savings across all whetstone components
     Stats,
 
