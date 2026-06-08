@@ -75,10 +75,10 @@ The setup command will:
 4. Configure the RTK PreToolUse hook in `~/.claude/settings.json`
 5. Add `ANTHROPIC_BASE_URL` to your shell profile
 6. Copy the whetstone binary to `~/.local/bin`
-7. Prompt for memory provider (ICM, AutoMem, or Skip)
-8. Copy skills, rules, commands into `.claude/`
-9. Install and configure chosen memory provider
-10. Merge hooks into `~/.claude/settings.json`
+7. Prompt for memory provider (ICM or Skip)
+8. Copy v3 slash commands into `.claude/commands/`
+9. Run `icm init --mode standard` (skills + CLI + session hooks; no MCP)
+10. Write `.claude/whetstone.json` (manifest pinning whetstone + headroom + rtk + icm versions)
 11. Generate `STACK-SETUP.md` in your project root
 
 ## Setting Up an Existing Project

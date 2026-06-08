@@ -2,18 +2,22 @@
 
 | Command | Description |
 |---------|-------------|
-| `whetstone` | Start Claude Code through Headroom (`headroom wrap claude`) |
-| `whetstone setup [--full] [--headroom-extras EXTRAS]` | Install/configure all components |
+| `whetstone` | Start Claude Code through Headroom (waits for proxy, then `headroom wrap claude`) |
+| `whetstone setup [--full] [--headroom-extras EXTRAS]` | Install/configure all components (auto-detects v2 and hands off to `migrate`) |
 | `whetstone uninstall` | Interactive removal of components |
 | `whetstone claude [args...]` | Run Claude Code through Headroom |
 | `whetstone code [args...]` | Alias for `claude` |
 | `whetstone proxy [args...]` | Run `headroom proxy` |
 | `whetstone rtk [args...]` | Run RTK |
+| `whetstone doctor` | Inspect installed tool versions, `~/.claude/settings.json` hooks, and the per-project manifest |
+| `whetstone dashboard` | TUI dashboard for installed tool versions vs. pinned floors |
+| `whetstone migrate [--dry-run] [-y] [--rollback ID]` | Migrate a v2 install to v3 (or roll back) — see [Migration Guide](migration.md) |
 | `whetstone version` | Print version |
-| `whetstone update [--full]` | Check for updates |
+| `whetstone stats` | Token-savings summary from RTK + Headroom stats endpoints |
+| `whetstone update [--full]` | Check for newer release; `--full` force-refreshes Headroom/RTK and bundled assets |
 | `whetstone release patch\|minor\|major\|set X.Y.Z` | Verify, bump version, and open a release PR |
-| `whetstone release-publish ...` | Deprecated legacy path |
-| `whetstone db <subcommand>` | Session database operations |
+| `whetstone release-publish ...` | **Deprecated** — use `whetstone release` |
+| `whetstone db <subcommand>` | Session database operations (init / add-session / add-insight / search / get-sessions / get-insights / stats) |
 
 ## Headroom Extras
 
@@ -61,6 +65,13 @@ headroom proxy [OPTIONS]
 ```
 
 ## RTK Quick Reference
+
+> **Heads up — RTK is not always a net win.** The PreToolUse hook only fires on
+> **Bash** tool calls; Claude Code's native `Read`, `Grep`, `Glob`, and file-edit
+> tools bypass it. Compression can also strip context the model needed — RTK's own
+> tracker has logged a ~18% net cost-increase case. Run `rtk gain` for cumulative
+> savings, `rtk discover` for missed opportunities, and consider RTK's audit mode
+> when a particular rewrite feels suspect.
 
 ```bash
 # Analytics

@@ -64,17 +64,14 @@ curl -s localhost:8787/stats
 ## Skills not loading
 
 ```bash
-# Are skills installed?
-ls .claude/skills/
+# v3: skills live under whichever provider you picked (ICM by default).
+# Whetstone itself does not own .claude/skills/ in v3.
 
-# Are rules present?
-ls .claude/rules/
+# Re-run ICM's init to refresh its skills + hooks
+icm init --mode standard --force
 
-# Is the database initialized?
-whetstone db stats
-
-# Re-initialize DB
-whetstone db init
+# Or run the whetstone doctor to see what's actually installed
+whetstone doctor
 ```
 
 ## Hooks not firing at all
@@ -101,10 +98,11 @@ Interactive prompts let you choose which components to remove (whetstone binary,
 
 ### Manual removal
 
-**Remove whetstone files (per-project):**
+**Remove whetstone files (per-project, v3):**
 ```bash
-rm -rf .claude/skills .claude/rules .claude/commands .claude/db
-rm -f config.local.json STACK-SETUP.md
+rm -rf .claude/commands .claude/whetstone.json
+rm -f STACK-SETUP.md
+# ICM (skills + db) is the provider's; remove it with `icm uninstall` if desired.
 ```
 
 **Remove RTK (global):**

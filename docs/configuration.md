@@ -14,13 +14,16 @@
 
 | File | Owner | Purpose |
 |------|-------|---------|
-| `.claude/skills/` | whetstone | Skills directories |
-| `.claude/rules/` | whetstone | Rule files |
-| `.claude/commands/` | whetstone | Command files |
-| `config.local.json` | whetstone | Project-specific configuration |
-| `.claude/db/memstack.db` | whetstone | Session/memory database |
+| `.claude/whetstone.json` | whetstone | Manifest — provider, pinned tool versions, integration version |
+| `.claude/commands/` | whetstone | Slash commands (`/whetstone-status`, `/whetstone-headroom`) |
+| `.claude/skills/` | ICM | Skills written by `icm init --mode standard` |
+| `.claude/icm.db` | ICM | Session / memory store |
 | `STACK-SETUP.md` | whetstone setup | Per-project quick reference |
 | `CLAUDE.md` | Claude Code | Project-specific instructions |
+
+> v3 does **not** bundle skills or rules. The provider (ICM) owns its own
+> assets; whetstone only writes the v3 slash commands and the manifest.
+> Migrating from v2? See the [Migration Guide](migration.md).
 
 ## Environment Variables
 
