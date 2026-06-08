@@ -158,13 +158,12 @@
 
 ## Phase 7 — Honesty pass (site + docs)
 
-- [ ] **7.1** Replace "97% @ 19% on SQuAD v2" with a cited Headroom benchmark OR numbers from your own `python -m headroom.evals benchmark` run (Headroom's published figures: ~95%+ accuracy preservation at 40–90% reduction)
-- [ ] **7.2** Add RTK net-cost caveat + "run `rtk gain` / `rtk discover`, consider audit mode" note (RTK's tracker documents a ~18% cost increase case)
-- [ ] **7.3** Reposition pitch around the one-binary orchestration/polish you built, not compression numbers owned by Headroom/RTK
-- [ ] **7.4** Rewrite editors matrix (Memory = ICM via `icm init`; AutoMem row removed); update all `docs/*` for v3 commands
-  - [ ] Add a **Migration Guide** (v2→v3, including `--dry-run` / `--rollback`)
-- [ ] **7.5** Repo housekeeping: stop tracking/shipping dev-env config (`.claude/` ecc-tooling, `.serena/`); reconcile the `/.claude` gitignore
-- [ ] **Acceptance:** every published stat is traceable; docs describe only v3 commands; standalone migration guide exists
+- [x] **7.1** Replaced "97% @ 19% on SQuAD v2" everywhere user-facing. Hero/Numbers/Marquee/FAQ now cite Headroom as the source of compression numbers (`localhost:8787/stats` for measure-your-own); no unverifiable benchmark claims remain in site copy or `README.md`.
+- [x] **7.2** Added the RTK net-cost caveat (~18% cost-increase case + Bash-only hook scope) to `FAQ.jsx`, `docs/cli-reference.md`, `Modules.jsx`, and `README.md`. Each callout mentions `rtk gain` / `rtk discover` / audit mode.
+- [x] **7.3** Rewrote the pitch in `Hero.jsx`, `Modules.jsx`, `Numbers.jsx`, and `README.md` around whetstone's actual contribution — single Rust binary, idempotent setup, `migrate`/`doctor`/`update`, manifest-pinned tool versions, release automation — instead of upstream compression numbers.
+- [x] **7.4** Updated the editors matrix (`Editors.jsx`) to "ICM via `icm init`" with the AutoMem row removed. Refreshed `docs/cli-reference.md` (v3 commands: `doctor`, `dashboard`, `migrate`, `stats`; removed/clarified `release-publish`), `docs/install.md` (ICM-only install steps), `docs/configuration.md` (per-project files now keyed off `.claude/whetstone.json` + ICM-owned `.claude/skills/` and `.claude/icm.db`), `docs/troubleshooting.md` (v3 skill/uninstall paths), and added a standalone `docs/migration.md` covering `migrate`, `--dry-run`, `-y`, and `--rollback <ID>`.
+- [x] **7.5** Untracked 46 dev-env files (`.claude/`, `.serena/`) via `git rm --cached -r`. Replaced the dual-purpose `/.claude` line in `.gitignore` with explicit `/​.claude/` + `/​.serena/` entries and a comment explaining that whetstone ships nothing from this repo's `.claude/`.
+- [x] **Acceptance:** every user-facing stat is traceable; `docs/*` describes only v3 commands; `docs/migration.md` is the standalone guide; dev-env config no longer ships. `just release-check` green (68 tests).
 
 ---
 
