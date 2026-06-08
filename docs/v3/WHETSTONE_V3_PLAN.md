@@ -169,13 +169,17 @@
 
 ## Phase 8 — Testing, release, rollout
 
-- [ ] **8.1** Unit tests: `integrations.rs` (init invocation + arg shaping), `doctor.rs` (ordering normalization), `migrate.rs` (detection, importance mapping, idempotency, rollback), update-refresh diffing
-- [ ] **8.2** Integration test: Phase 3 fixture project, full migrate + rollback round-trip
-  - [ ] Windows-path no-op test (RTK hook absent on native Windows — migration skips hook steps gracefully)
-- [ ] **8.3** E2E smoke on the same OS/arch matrix as `release.yml`
-- [ ] **8.4** Release: `just release set 3.0.0`, but ship `3.0.0-rc.1` first
-  - [ ] Add a prerelease path to `verify-release` (it currently asserts not-prerelease) OR run the rc from the v3 branch
-- [ ] **8.5** CHANGELOG with explicit **BREAKING** section: AutoMem removed, `whetstone db` removed, hooks now tool-managed, migration required → link the guide
+- [x] **8.1** Unit tests added across `integrations.rs` (arg-shape pins, `finish` success/failure, `require_binary` error), `doctor.rs` (malformed-json warning, settings-is-array warning, rtk-last ordering with 3 entries), `migrate.rs` (rollback manifest serde round-trip, `entry_is_whetstone_managed` negative, `cleanup_managed` idempotency), and `update.rs` (downgrade-with-`--full` forced refresh). 80 unit tests passing (was 68).
+- [x] **8.2** New `tests/migrate_roundtrip.rs` drives the compiled `whetstone migrate` binary against a v2 fixture on tempdirs (memstack DB + MEMSTACK.md + managed skills + v2 hooks in settings.json + AutoMem mcpServers block). Covers `--dry-run` (asserts no writes), no-op on a clean project, and `--rollback <unknown-id>` clean error.
+  - [x] Windows-path no-op test (`#[cfg(target_os = "windows")]`): asserts the binary doesn't crash on a clean project — full migrate is gated to Unix upstream of this path.
+- [ ] **8.3** E2E smoke on the OS/arch matrix happens when `3.0.0-rc.1` is tagged; the release workflow already covers `linux x86_64/aarch64` + `macos x86_64/aarch64`.
+- [x] **8.4** `release.yml` now allows pre-releases through:
+  - `check-tag` derives `is_prerelease` from any `-` suffix in `VERSION` (e.g. `3.0.0-rc.1`) and exposes it as a job output.
+  - `release` job passes `prerelease: ...` to `softprops/action-gh-release@v2`.
+  - `verify-release` compares against the expected state (fails on mismatch instead of unconditionally rejecting prereleases).
+  - `publish-crate` is `if`-gated to skip prereleases — RCs stay GitHub-only until the stable cut.
+  - Bump (`just release set 3.0.0-rc.1`) and tag-push remain a manual user action.
+- [x] **8.5** `CHANGELOG.md` `[Unreleased]` now opens with an explicit `BREAKING — read this before upgrading from v2` block: AutoMem removed, no more bundled skills/rules/hooks, hooks tool-managed, migration required (links `docs/migration.md`), `config.local.json` → `.claude/whetstone.json`, `--model` injection removed. A new `### Added` section enumerates `migrate`, `doctor`, `dashboard`, `stats`, auto-detect-v2, the installer's `/dev/tty` re-exec + uv-ensure, and the proxy-wait-before-claude default.
 - [ ] **Acceptance:** rc dogfooded on ≥1 real v2 project (yours), green CI matrix, then 3.0.0
 
 ---
