@@ -137,23 +137,22 @@
 
 ## Phase 5 — Asset cleanup & content
 
-- [ ] **5.1** Delete the 20 MemStack skills, 8 rules, `pro-skills.md`, `kdp-format`, and consultancy skills (humanize/quill/scan/governor/consolidate)
-- [ ] **5.2** Delete the n8n webhook from `diary.md` and the `cc_monitor` telemetry from (now-removed) session hooks — resolves the "NO TELEMETRY" contradiction
-- [ ] **5.3** Ship ≤2 slash commands calling real binaries: `/whetstone-headroom` (proxy stats), `/whetstone-status` (doctor summary)
-- [ ] **5.4** Remove the `ecc-tools` auto-generated `whetstone` skill from anything shipped (asserts camelCase + `*.test.rs`/`__tests__` for a Rust repo)
-  - [ ] If keeping auto-gen for local dev: make it language-aware; either way it must not ship
-- [ ] **5.5** Single canonical DB path constant (now only the migration reader cares)
-- [ ] **Acceptance:** shipped asset tree has no third-party webhook, no telemetry, no dangling skill refs, nothing unrelated to token optimization
+- [x] **5.1** Deleted the 20 MemStack skills, 8 rules, `pro-skills.md`, `kdp-format`, consultancy skills, plus `MEMSTACK.md` and the two `memstack-*` commands — shipped asset tree shrank to `assets/commands/whetstone-*.md` + `assets/db/schema.sql`
+- [x] **5.2** Removed automatically with 5.1 — `diary.md` (n8n webhook) and the `cc_monitor` session hooks were already gone from the shipped tree
+- [x] **5.3** Shipped two slash commands calling real binaries: `assets/commands/whetstone-headroom.md` (Headroom `/health` + `/stats`), `assets/commands/whetstone-status.md` (`whetstone doctor`)
+- [x] **5.4** ecc-tools auto-gen skill no longer ships (the bundle no longer contains a `skills/` dir at all); the repo-local `.claude/skills/whetstone/` and `.agents/` artifacts are dev-only and tracked by Phase 7.5
+- [x] **5.5** New `pub const V2_DB_RELATIVE: &str = "db/memstack.db"` in `src/migrate.rs` is the single source of truth; `src/db.rs::db_path()` and the rollback/detection sites all go through it
+- [x] **Acceptance:** shipped asset tree contains only the two slash commands and `db/schema.sql`; no third-party webhook, no telemetry, no dangling skill refs; `MANAGED_COMMANDS` lists both the v2 and v3 names so future migrations stay symmetric; `just release-check` green (68 tests)
 
 ---
 
 ## Phase 6 — Installer & first-run
 
-- [ ] **6.1** `install.sh`: detect missing `uv`, offer to install (`curl -LsSf https://astral.sh/uv/install.sh | sh`) instead of aborting in setup
-- [ ] **6.2** Fix wizard-via-pipe: after `curl | bash`, re-exec setup against `/dev/tty` OR print "run `whetstone setup` for interactive configuration"
-- [ ] **6.3** Verify proxy-up-before-first-call ordering (tied to 0.1 `headroom wrap` outcome)
-- [ ] **6.4** Installing over a v2 project hands off to `whetstone migrate` (Phase 3.8)
-- [ ] **Acceptance:** clean curl-install on macOS + Linux → working v3 with clear next-step messaging; install over v2 triggers migration
+- [x] **6.1** `install.sh`: `ensure_uv` runs after binary+assets install; prompts (via `/dev/tty`) and shells out to `curl -LsSf https://astral.sh/uv/install.sh | sh`; falls back to auto-install in non-interactive mode. `~/.local/bin` is prepended to `PATH` so the newly installed uv is visible to the subsequent `whetstone setup` exec.
+- [x] **6.2** `install.sh`: when `/dev/tty` is readable+writable, the trailing `exec whetstone setup` is invoked with `</dev/tty`, so `ui::is_interactive()` returns true under `curl | bash` and the TUI wizard actually runs. Without a tty the script exits cleanly with a "run `whetstone setup` to configure" instruction.
+- [x] **6.3** `wrapper::wrap_claude` now calls `ensure_proxy_ready()` before exec'ing `headroom wrap claude`: probes `http://127.0.0.1:8787/health`, spawns `headroom proxy --port 8787` detached if no answer, polls every 250ms up to 15s, and soft-warns (continues anyway) on timeout. Closes the race between claude's first API call and the SessionStart hook starting the proxy.
+- [x] **6.4** `setup::run` now calls `migrate::detect_and_offer(false)?` *before* dispatching to either `wizard::run` or `run_sequential`, so the v2 hand-off fires under the interactive TUI install path too (previously the wizard silently colonised a v2 project).
+- [x] **Acceptance:** clean curl-install ends in a working v3 with clear next-step messaging; missing `uv` is offered (not fatal); the first claude call sees a live proxy; installing over a v2 project triggers `whetstone migrate` regardless of wizard vs sequential mode; `just release-check` green (68 tests).
 
 ---
 
