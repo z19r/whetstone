@@ -22,6 +22,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,12 +33,20 @@ jobs:
         run: |
           VERSION=$(cat VERSION | tr -d '[:space:]')
           TAG="v${VERSION}"
+          # SemVer pre-release: anything after a '-' in the version core
+          # (e.g. 3.0.0-rc.1, 3.0.0-beta.2, 3.0.0-alpha.1) → prerelease.
+          if [[ "$VERSION" == *-* ]]; then
+            IS_PRE="true"
+          else
+            IS_PRE="false"
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRE}" >> "$GITHUB_OUTPUT"
           if git rev-parse "${TAG}" >/dev/null 2>&1; then
             echo "Tag ${TAG} already exists; continuing in recovery mode"
           else
-            echo "Will create release ${TAG}"
+            echo "Will create release ${TAG} (prerelease=${IS_PRE})"
           fi
 
   verify:
@@ -162,6 +171,7 @@ jobs:
         with:
           tag_name: ${{ needs.check-tag.outputs.tag }}
           generate_release_notes: true
+          prerelease: ${{ needs.check-tag.outputs.is_prerelease == 'true' }}
           files: |
             whetstone-*.tar.gz
             SHA256SUMS.txt
@@ -176,6 +186,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.check-tag.outputs.tag }}
+          EXPECTED_PRERELEASE: ${{ needs.check-tag.outputs.is_prerelease }}
         run: |
           gh release view "$TAG" \
             --json tagName,isDraft,isPrerelease,assets \
@@ -204,8 +215,13 @@ jobs:
               sys.exit("release tag mismatch")
           if data["isDraft"]:
               sys.exit("release is still a draft")
-          if data["isPrerelease"]:
-              sys.exit("release is unexpectedly marked prerelease")
+          expected_pre = os.environ.get("EXPECTED_PRERELEASE", "false") == "true"
+          if data["isPrerelease"] != expected_pre:
+              expected = "prerelease" if expected_pre else "stable"
+              actual = "prerelease" if data["isPrerelease"] else "stable"
+              sys.exit(
+                  f"release prerelease state mismatch: expected {expected}, got {actual}"
+              )
 
           missing = sorted(required - assets)
           if missing:
@@ -231,6 +247,9 @@ jobs:
   publish-crate:
     name: Publish to crates.io
     needs: [check-tag, verify, verify-release]
+    # Prereleases (3.0.0-rc.1 etc.) stay GitHub-only — don't auto-publish to
+    # crates.io until the stable cut.
+    if: needs.check-tag.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check crates.io version
