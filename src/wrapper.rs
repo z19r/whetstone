@@ -76,16 +76,24 @@ fn spawn_proxy_detached() -> std::io::Result<()> {
         .map(|_| ())
 }
 
-// Phase 2 task 2.1: whetstone does NOT inject `--model`. Model selection is
-// owned by Claude Code's own settings (`~/.claude/settings.json`,
-// `.claude/settings.local.json`) and any `--model` the user passes on the
-// command line. Hardcoding a default here just bakes a stale model name into
-// every release.
+// Default model — whetstone pins claude-opus-4-6 until it is fully deprecated.
+// If the user (or a wrapping CLI layer) already passes `--model`, we leave it
+// alone.
+const DEFAULT_MODEL: &str = "claude-opus-4-6";
+
 fn build_claude_args(args: &[String], skip_rtk_setup: bool) -> Vec<String> {
     let mut cmd_args = vec!["wrap".to_string(), "claude".to_string()];
 
     if skip_rtk_setup {
         cmd_args.push("--no-rtk".into());
+    }
+
+    let user_set_model = args
+        .iter()
+        .any(|a| a == "--model" || a.starts_with("--model="));
+    if !user_set_model {
+        cmd_args.push("--model".into());
+        cmd_args.push(DEFAULT_MODEL.into());
     }
 
     cmd_args.extend_from_slice(args);
@@ -297,24 +305,32 @@ exit 0
     }
 
     #[test]
-    fn build_claude_args_does_not_inject_model_when_absent() {
-        // Phase 2.1 regression: whetstone must NOT add `--model` itself.
-        // Claude Code's own settings choose the model — hardcoding a default
-        // here is exactly the bug we just removed.
+    fn build_claude_args_injects_default_model_when_absent() {
         let args = build_claude_args(&[], true);
 
-        assert_eq!(args, strings(&["wrap", "claude", "--no-rtk"]));
-        assert!(!args.iter().any(|a| a == "--model"));
+        assert_eq!(
+            args,
+            strings(&["wrap", "claude", "--no-rtk", "--model", DEFAULT_MODEL])
+        );
     }
 
     #[test]
     fn build_claude_args_preserves_explicit_model() {
         let args = build_claude_args(&["--model".into(), "claude-sonnet".into()], false);
 
+        // Explicit user --model wins; we do NOT add our default on top.
         assert_eq!(
             args,
             strings(&["wrap", "claude", "--model", "claude-sonnet"])
         );
+        assert_eq!(args.iter().filter(|a| a.as_str() == "--model").count(), 1);
+    }
+
+    #[test]
+    fn build_claude_args_preserves_explicit_model_equals_form() {
+        let args = build_claude_args(&["--model=claude-sonnet".into()], false);
+
+        assert_eq!(args, strings(&["wrap", "claude", "--model=claude-sonnet"]));
     }
 
     #[test]
@@ -324,11 +340,14 @@ exit 0
             false,
         );
 
+        // Default --model goes ahead of pass-through args.
         assert_eq!(
             args,
             strings(&[
                 "wrap",
                 "claude",
+                "--model",
+                DEFAULT_MODEL,
                 "--dangerously-skip-permissions",
                 "--print",
             ])

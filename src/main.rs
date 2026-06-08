@@ -39,7 +39,10 @@ fn show_upgrade_banner(cmd: &Option<Command>) {
         return;
     }
     let outdated = update::check_cached_upgrade();
-    ui::upgrade_banner(&outdated);
+    let v2_project = migrate::detect()
+        .map(|d| d.needs_migration())
+        .unwrap_or(false);
+    ui::upgrade_banner(&outdated, v2_project);
 }
 
 fn main() {

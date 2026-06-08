@@ -4,10 +4,9 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, Paragraph},
+    widgets::{Block, Borders, Paragraph},
     DefaultTerminal, Frame,
 };
-use std::io;
 use std::time::Duration;
 
 use crate::memory::MemoryProvider;
@@ -18,67 +17,55 @@ const TOTAL_STEPS: usize = 7;
 pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
     welcome_screen()?;
 
+    // Reserve the bottom rows of the terminal for the progress gauge. All
+    // subsequent ui::info/ok/warn lines are pushed above the gauge via
+    // ratatui's insert_before — no more line-vs-gauge overdraw.
+    ui::enter_wizard();
+
+    // RAII guard so the wizard tears down even if a step bails with `?`.
+    struct WizardGuard;
+    impl Drop for WizardGuard {
+        fn drop(&mut self) {
+            ui::exit_wizard();
+        }
+    }
+    let _guard = WizardGuard;
+
     let assets = setup::resolve_assets_dir()?;
     ui::ok(&format!("assets at {}", assets.display()));
 
-    step_progress(1, "Dependencies");
+    ui::wizard_step(1, TOTAL_STEPS, "Dependencies");
     preflight::check_all()?;
 
-    step_progress(2, "Headroom");
+    ui::wizard_step(2, TOTAL_STEPS, "Headroom");
     headroom::install(headroom_extras, full)?;
 
-    step_progress(3, "RTK");
+    ui::wizard_step(3, TOTAL_STEPS, "RTK");
     rtk::install(full)?;
 
-    step_progress(4, "Shell profile");
+    ui::wizard_step(4, TOTAL_STEPS, "Shell profile");
     shell::set_anthropic_base_url(setup::DEFAULT_PROXY)?;
     shell::ensure_path_contains_local_bin()?;
 
-    step_progress(5, "Binary install");
+    ui::wizard_step(5, TOTAL_STEPS, "Binary install");
     setup::self_install()?;
 
-    step_progress(6, "Memory provider");
+    ui::wizard_step(6, TOTAL_STEPS, "Memory provider");
     let provider = setup::prompt_memory_provider(full)?;
 
     if provider != MemoryProvider::Skip {
-        step_progress(7, "Integrations & manifest");
+        ui::wizard_step(7, TOTAL_STEPS, "Integrations & manifest");
         setup::complete_setup(provider, &assets, full)?;
     } else {
         ui::info("skipped memory provider, skills, integrations, manifest");
     }
 
+    // Tear the gauge down before the full-screen completion takeover so
+    // ratatui's alternate-screen mode starts from a clean cursor.
+    drop(_guard);
+
     completion_screen(provider)?;
     Ok(())
-}
-
-fn step_progress(step: usize, name: &str) {
-    ui::section(&format!("Step {step}/{TOTAL_STEPS} — {name}"));
-    render_gauge(step);
-}
-
-fn render_gauge(step: usize) {
-    let ratio = (step.saturating_sub(1) as f64 / TOTAL_STEPS as f64).min(1.0);
-    let label = format!(" {}/{TOTAL_STEPS} ", step.saturating_sub(1));
-
-    let gauge = Gauge::default()
-        .gauge_style(Style::default().fg(Color::Cyan).bg(Color::DarkGray))
-        .ratio(ratio)
-        .label(Span::styled(
-            label,
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
-
-    let backend = ratatui::backend::CrosstermBackend::new(io::stderr());
-    if let Ok(mut terminal) = ratatui::Terminal::with_options(
-        backend,
-        ratatui::TerminalOptions {
-            viewport: ratatui::Viewport::Inline(1),
-        },
-    ) {
-        let _ = terminal.draw(|frame| {
-            frame.render_widget(gauge, frame.area());
-        });
-    }
 }
 
 fn welcome_screen() -> Result<()> {
