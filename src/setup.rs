@@ -39,6 +39,13 @@ pub fn resolve_assets_dir() -> Result<PathBuf> {
 }
 
 pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
+    // Phase 3.8 / 6.4: detect a v2 install up front, before either the wizard
+    // or the sequential path runs anything. This guarantees the migration
+    // prompt fires even when stdin is /dev/tty inside the TUI wizard.
+    if migrate::detect_and_offer(false)? {
+        return Ok(());
+    }
+
     if ui::is_interactive() {
         return crate::wizard::run(full, headroom_extras);
     }
@@ -47,11 +54,6 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
 
 fn run_sequential(full: bool, headroom_extras: &str) -> Result<()> {
     ui::info("whetstone setup");
-
-    // Phase 3.8: if a v2 install is detected, offer migration before doing anything else.
-    if migrate::detect_and_offer(false)? {
-        return Ok(());
-    }
 
     let assets = resolve_assets_dir()?;
     ui::ok(&format!("assets at {}", assets.display()));
