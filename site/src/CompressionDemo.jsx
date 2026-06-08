@@ -13,7 +13,7 @@ const DEMOS = [
     outTokens: 11,
     savings: '-99.8%',
     raw:
-`   Compiling whetstone-cli v3.0.0 (/Users/dev/whetstone)
+`   Compiling whetstone-cli v3.1.0 (/Users/dev/whetstone)
     Finished test [unoptimized + debuginfo] target(s) in 4.32s
      Running unittests src/main.rs
 
@@ -78,7 +78,7 @@ M  src/version.rs      +2 −0  L17  derive Hash on Version
 M  src/cli.rs          +12 −0 L201 add 'whetstone update --force' flag
 M  src/preflight.rs    +4 −2  L31  warn instead of fail on uv version <0.4
 M  src/db.rs           +18 −3 L155 add session.add_insight migration v3
-M  CHANGELOG.md        +24 −0 L1   v3.0.0 release notes
+M  CHANGELOG.md        +24 −0 L1   v3.1.0 release notes
 + 8 files · 217 added · 64 removed`,
   },
   {
