@@ -26,7 +26,7 @@ install:
 
 # Run whetstone with arguments (e.g. `just run -- setup --full`)
 run *ARGS:
-    cargo run -- {{ARGS}}
+    cargo run -- {{ ARGS }}
 
 # Watch for changes and rebuild on save
 watch:
@@ -36,10 +36,9 @@ watch:
 check:
     cargo check --all-targets --all-features
 
-
 # Open whetstone in Cursor classic editor (full LSP)
 edit-classic:
-    cursor --classic {{justfile_directory()}}
+    cursor --classic {{ justfile_directory() }}
 
 # Diagnose rust-analyzer / Cursor LSP wiring
 ra-doctor:
@@ -83,7 +82,7 @@ ra-restart:
 
 # Run whetstone setup
 setup *ARGS:
-    cargo run -- setup {{ARGS}}
+    cargo run -- setup {{ ARGS }}
 
 # Run whetstone uninstall
 uninstall:
@@ -101,7 +100,7 @@ test:
 
 # Run a single test by name
 test-one NAME:
-    cargo test {{NAME}} -- --nocapture
+    cargo test {{ NAME }} -- --nocapture
 
 # Run tests with stdout visible
 test-verbose:
@@ -114,7 +113,7 @@ test-coverage:
 
 # Generate coverage and fail if below threshold
 test-coverage-check THRESHOLD="80":
-    cargo tarpaulin --fail-under {{THRESHOLD}}
+    cargo tarpaulin --fail-under {{ THRESHOLD }}
 
 # ─── Linting & Formatting ───────────────────────────────────────
 
@@ -186,21 +185,21 @@ release-check:
 release-dry-run LEVEL:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! "{{LEVEL}}" =~ ^(patch|minor|major)$ ]]; then
+    if [[ ! "{{ LEVEL }}" =~ ^(patch|minor|major)$ ]]; then
         echo "Usage: just release-dry-run patch|minor|major"; exit 1
     fi
     CURRENT=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     echo "Current version: $CURRENT"
-    echo "Bump level: {{LEVEL}}"
+    echo "Bump level: {{ LEVEL }}"
     just release-check
     echo ""
-    echo "All checks passed. Run: just release {{LEVEL}}"
+    echo "All checks passed. Run: just release {{ LEVEL }}"
 
 # Bump version, create release branch + PR (requires: cargo-set-version, gh)
 release LEVEL: release-check
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! "{{LEVEL}}" =~ ^(patch|minor|major)$ ]]; then
+    if [[ ! "{{ LEVEL }}" =~ ^(patch|minor|major)$ ]]; then
         echo "Usage: just release patch|minor|major"; exit 1
     fi
     if [[ -n "$(git status --porcelain)" ]]; then
@@ -212,7 +211,7 @@ release LEVEL: release-check
     fi
     git pull --ff-only origin main
     OLD_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-    cargo set-version --bump {{LEVEL}}
+    cargo set-version --bump {{ LEVEL }}
     cargo check --quiet
     VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     echo "$VERSION" > VERSION
@@ -247,7 +246,7 @@ release LEVEL: release-check
     git push -u origin "release/v${VERSION}"
     gh pr create \
         --title "release: v${VERSION}" \
-        --body "Bump to v${VERSION} ({{LEVEL}} release)" \
+        --body "Bump to v${VERSION} ({{ LEVEL }} release)" \
         --base main
 
     echo "Waiting for CI checks to appear..."
@@ -284,7 +283,7 @@ clean-all: clean
 
 # Show project and toolchain versions
 info:
-    @echo "Whetstone v{{version}}"
+    @echo "Whetstone v{{ version }}"
     @echo ""
     @echo "Toolchain"
     @echo "  rustc:  $(rustc --version)"
