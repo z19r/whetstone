@@ -14,44 +14,20 @@ const EDITORS = [
   { id: 'gemini',   name: 'GEMINI CLI' },
 ];
 
-// row × editor matrix; values: full / wrap / env / settings / sdk / manual / none
-const ROWS = [
-  {
-    label: 'HEADROOM PROXY',
-    sub: 'Context compression',
-    cells: ['wrap', 'url', 'sdk', 'env', 'set', 'wrap', 'wrap', 'env'],
-  },
-  {
-    label: 'HEADROOM MCP',
-    sub: 'In-context compress tool',
-    cells: ['install', 'manual', '—', '—', '—', '—', '—', '—'],
-  },
-  {
-    label: 'RTK HOOKS',
-    sub: 'Pre/Before tool-call rewrite',
-    cells: ['hook', 'hook', 'hook', 'rules', 'rules', 'manual', 'instr', 'hook'],
-  },
-  {
-    label: 'RTK SCOPE',
-    sub: 'Global vs per-project install',
-    cells: ['global', 'global', 'global', 'project', 'project', '—', 'global', 'global'],
-  },
-  {
-    label: 'MEMORY SKILLS',
-    sub: '20 keyword-triggered skills',
-    cells: ['full', '—', '—', '—', '—', '—', '—', '—'],
-  },
-  {
-    label: 'MEMORY HOOKS',
-    sub: 'SessionStart / Stop / commit / push',
-    cells: ['full', '—', '—', '—', '—', '—', '—', '—'],
-  },
-  {
-    label: 'PROVIDER',
-    sub: 'ICM via icm init',
-    cells: ['full', '—', '—', '—', '—', '—', '—', '—'],
-  },
-];
+// row × editor matrix — labels/subs from metadata, cells define per-editor support
+const META_MODULES = window.WHETSTONE_META.modules;
+const CELLS_BY_ID = {
+  'headroom':     ['wrap', 'url', 'sdk', 'env', 'set', 'wrap', 'wrap', 'env'],
+  'headroom-mcp': ['install', 'manual', '—', '—', '—', '—', '—', '—'],
+  'rtk-hooks':    ['hook', 'hook', 'hook', 'rules', 'rules', 'manual', 'instr', 'hook'],
+  'rtk-scope':    ['global', 'global', 'global', 'project', 'project', '—', 'global', 'global'],
+  'icm-memory':   ['full', '—', '—', '—', '—', '—', '—', '—'],
+  'icm-hooks':    ['full', '—', '—', '—', '—', '—', '—', '—'],
+  'provider':     ['full', '—', '—', '—', '—', '—', '—', '—'],
+};
+const ROWS = META_MODULES.map(function (m) {
+  return { label: m.label, sub: m.sub, cells: CELLS_BY_ID[m.id] || [] };
+});
 
 const TIER = {
   'full':    { cls: 'cell-yes cell-bg-yes',  glyph: '●' },

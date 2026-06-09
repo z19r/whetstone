@@ -91,7 +91,7 @@ function App() {
               <span>ONE BINARY <span className="sep">·</span></span>
               <span>IDEMPOTENT SETUP <span className="sep">·</span></span>
               <span>RTK CARGO TEST 4,800 → 11 <span className="sep">·</span></span>
-              <span>v3.1.1 <span className="sep">·</span></span>
+              <span>v{window.WHETSTONE_VERSION} <span className="sep">·</span></span>
               {/* duplicate for seamless loop */}
               <span>RUST 2021 <span className="sep">·</span></span>
               <span>MIT <span className="sep">·</span></span>
@@ -99,7 +99,7 @@ function App() {
               <span>ONE BINARY <span className="sep">·</span></span>
               <span>IDEMPOTENT SETUP <span className="sep">·</span></span>
               <span>RTK CARGO TEST 4,800 → 11 <span className="sep">·</span></span>
-              <span>v3.1.1 <span className="sep">·</span></span>
+              <span>v{window.WHETSTONE_VERSION} <span className="sep">·</span></span>
             </div>
           </div>
         )}

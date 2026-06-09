@@ -20,7 +20,7 @@ const SUCCESS_LINES = [
   { t: 400,  text: '  ┌─ CONFIGURE ─────────────────────────',  cls: 'rule' },
   { t: 200,  text: '   ✓ ANTHROPIC_BASE_URL → ~/.bashrc',  cls: 'ok' },
   { t: 200,  text: '   ✓ rtk PreToolUse hook → ~/.claude/settings.json', cls: 'ok' },
-  { t: 200,  text: '   ✓ 20 skills · 5 hooks · 8 rules → .claude/', cls: 'ok' },
+  { t: 200,  text: '   ✓ ' + window.WHETSTONE_META.install.assetLine, cls: 'ok' },
   { t: 200,  text: '   ✓ memory provider: icm (sqlite)',  cls: 'ok' },
   { t: 200,  text: '  └─────────────────────────────────────',   cls: 'rule' },
   { t: 600,  text: '',                                    cls: '' },
@@ -160,7 +160,7 @@ function InstallTerminal() {
             style={{ flex: 1 }}
           >
             <span className="ix">✓</span>
-            <span>SUCCESS BRANCH · v3.1.1</span>
+            <span>SUCCESS BRANCH · v{window.WHETSTONE_VERSION}</span>
           </button>
           <button
             className={'demo-tab' + (!isSuccess ? ' is-active' : '')}
@@ -181,7 +181,7 @@ function InstallTerminal() {
             marginBottom: 'var(--s-3)',
             fontFamily: 'var(--f-mono)',
           }}>
-            {isSuccess ? '// WHETSTONE SETUP · v3.1.1' : '// ERROR · RTK COLLISION DETECTED'}
+            {isSuccess ? '// WHETSTONE SETUP · v' + window.WHETSTONE_VERSION : '// ERROR · RTK COLLISION DETECTED'}
           </div>
 
           <TerminalView lines={lines} active={true} showCursorAtEnd={isSuccess} key={branch} />
@@ -223,8 +223,8 @@ function InstallTerminal() {
             <div className="ws-kv-row"><div className="k">HEADROOM</div><div className="v">proxy :8787 · indexing</div><div className="s ok">running</div></div>
             <div className="ws-kv-row"><div className="k">RTK</div><div className="v">hook · pretooluse(bash)</div><div className="s ok">active</div></div>
             <div className="ws-kv-row"><div className="k">MEMORY</div><div className="v">icm · .claude/db/whetstone.db</div><div className="s ok">ready</div></div>
-            <div className="ws-kv-row"><div className="k">SKILLS</div><div className="v">20 copied to .claude/skills/</div><div className="s ok">ok</div></div>
-            <div className="ws-kv-row"><div className="k">HOOKS</div><div className="v">5 hooks merged into ~/.claude/settings.json</div><div className="s ok">ok</div></div>
+            <div className="ws-kv-row"><div className="k">ASSETS</div><div className="v">{window.WHETSTONE_META.install.assetLine}</div><div className="s ok">ok</div></div>
+            <div className="ws-kv-row"><div className="k">HOOKS</div><div className="v">{window.WHETSTONE_META.install.hooksLine}</div><div className="s ok">ok</div></div>
             <div className="ws-kv-row"><div className="k">SHELL</div><div className="v">ANTHROPIC_BASE_URL → ~/.bashrc</div><div className="s err">action</div></div>
           </div>
         </div>

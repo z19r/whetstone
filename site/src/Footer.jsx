@@ -11,12 +11,12 @@ function Footer() {
       <div className="ws-wrap" style={{ position: 'relative', zIndex: 1 }}>
 
         <div className="ws-release-banner" style={{ marginBottom: 'var(--s-7)' }}>
-          <span className="ver">v3.1.1</span>
+          <span className="ver">v{window.WHETSTONE_VERSION}</span>
           <div>
             <div className="title">
-              <span className="acid">SHIPPED</span> · idempotent setup, hardened RTK collision detection
+              <span className="acid">SHIPPED</span> · {window.WHETSTONE_META.tagline}
             </div>
-            <div className="sub">2026-05-24 · whetstone-cli · MIT · sha 9c4e8a1</div>
+            <div className="sub">{window.WHETSTONE_META.releaseDate} · whetstone-cli · MIT · sha {window.WHETSTONE_META.sha}</div>
           </div>
           <a className="ws-btn ws-btn--sm ws-btn--primary" href="https://github.com/z19r/whetstone/releases" target="_blank" rel="noreferrer">
             RELEASE NOTES <span className="glyph">→</span>
@@ -33,7 +33,7 @@ function Footer() {
               Rust binary installs and configures Headroom, RTK, and persistent memory.
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <span className="ws-badge ws-badge--acid"><span className="pulse"></span>v3.1.1 · STABLE</span>
+              <span className="ws-badge ws-badge--acid"><span className="pulse"></span>v{window.WHETSTONE_VERSION} · STABLE</span>
               <span className="ws-badge ws-badge--mag">MIT</span>
               <span className="ws-badge ws-badge--royal">RUST 2021</span>
             </div>
@@ -62,7 +62,7 @@ function Footer() {
         </div>
 
         <div className="meta">
-          <span>// WHETSTONE · v3.1.1 · {new Date().getFullYear()}</span>
+          <span>// WHETSTONE · v{window.WHETSTONE_VERSION} · {new Date().getFullYear()}</span>
           <span>MADE IN CHICAGO, WITH 🫀 ©2026 z19r. All rights reserved.</span>
           <span>BUILT IN A SHED · NO TELEMETRY</span>
         </div>

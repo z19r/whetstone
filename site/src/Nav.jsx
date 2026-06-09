@@ -53,7 +53,7 @@ function Nav({ theme, onToggleTheme }) {
       </div>
 
       <div className="ws-nav-right">
-        <span className="ws-badge ws-badge--acid"><span className="pulse"></span>v3.1.1</span>
+        <span className="ws-badge ws-badge--acid"><span className="pulse"></span>v{window.WHETSTONE_VERSION}</span>
         <button className="theme-toggle" onClick={onToggleTheme} aria-label="Toggle theme">
           <span className="dot"></span>
           {isLight ? 'LIGHT' : 'NIGHT'}
