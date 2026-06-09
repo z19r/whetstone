@@ -2,6 +2,11 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.1.2",
+    "date": "2026-06-09",
+    "sections": []
+  },
+  {
     "ver": "3.1.1",
     "date": "2026-06-08",
     "sections": []
