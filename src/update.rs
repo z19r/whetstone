@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::{ToolVersions, WhetstoneManifest, INTEGRATION_VERSION};
 use crate::memory::MemoryProvider;
-use crate::{doctor, headroom, integrations, migrate, rtk, setup, ui, version};
+use crate::{claude_code, doctor, headroom, integrations, migrate, rtk, setup, ui, version};
 
 const REMOTE_VERSION_URL: &str = "https://raw.githubusercontent.com/z19r/whetstone/main/VERSION";
 const RELEASE_URL_BASE: &str = "https://github.com/z19r/whetstone/releases/download";
@@ -24,6 +24,10 @@ struct VersionCache {
     headroom_latest: Option<String>,
     #[serde(default)]
     headroom_current: Option<String>,
+    #[serde(default)]
+    claude_code_latest: Option<String>,
+    #[serde(default)]
+    claude_code_current: Option<String>,
     /// Phase 4.3: bundled `INTEGRATION_VERSION` at last cache write.
     /// `#[serde(default)]` so v1-format caches still parse.
     #[serde(default)]
@@ -72,6 +76,8 @@ fn read_cache() -> Option<VersionCache> {
         rtk_current: None,
         headroom_latest: None,
         headroom_current: None,
+        claude_code_latest: None,
+        claude_code_current: None,
         integration_version_bundled: None,
         integration_version_project: None,
         timestamp: ts,
@@ -129,6 +135,16 @@ pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
         if version::is_older(current, latest) {
             outdated.push(OutdatedComponent {
                 name: "headroom",
+                current: current.clone(),
+                latest: latest.clone(),
+            });
+        }
+    }
+
+    if let (Some(current), Some(latest)) = (&cache.claude_code_current, &cache.claude_code_latest) {
+        if version::is_older(current, latest) {
+            outdated.push(OutdatedComponent {
+                name: "claude code",
                 current: current.clone(),
                 latest: latest.clone(),
             });
@@ -230,7 +246,21 @@ fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
     Ok(ui::ComponentStatus::Updated(current, latest.to_string()))
 }
 
-/// Decision for a single managed dependency (rtk / headroom).
+/// Warn when an upgrade was attempted but the version didn't change and the
+/// remote claims a newer release exists.
+fn warn_if_upgrade_stuck(name: &str, status: &ui::ComponentStatus, remote: Option<&str>) {
+    if let ui::ComponentStatus::UpToDate(installed) = status {
+        if let Some(latest) = remote {
+            if version::is_older(installed, latest) {
+                ui::warn(&format!(
+                    "{name} {installed} — upgrade to {latest} was attempted but did not install"
+                ));
+            }
+        }
+    }
+}
+
+/// Decision for a single managed dependency (rtk / headroom / claude code).
 ///
 /// Pure function so we can pin the `full` semantics in a unit test without
 /// touching the network or shelling out.
@@ -412,11 +442,13 @@ pub fn run(full: bool) -> Result<()> {
     let whetstone_latest = fetch_remote_version()?;
     let rtk_remote = rtk::latest_remote_version();
     let headroom_remote = headroom::latest_remote_version();
+    let claude_code_remote = claude_code::latest_remote_version();
     sp.finish_and_clear();
 
     let current = version::current().to_string();
     let rtk_current = rtk::installed_version();
     let headroom_current = headroom::installed_version();
+    let claude_code_current = claude_code::installed_version();
     let mut updated_count = 0u32;
 
     let whetstone_status = match self_update(&whetstone_latest) {
@@ -432,7 +464,10 @@ pub fn run(full: bool) -> Result<()> {
     {
         DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
         DependencyDecision::Refresh => match rtk::update() {
-            Ok(status) => status,
+            Ok(status) => {
+                warn_if_upgrade_stuck("rtk", &status, rtk_remote.as_deref());
+                status
+            }
             Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
         },
         DependencyDecision::NotInstalled => ui::ComponentStatus::NotInstalled,
@@ -449,7 +484,10 @@ pub fn run(full: bool) -> Result<()> {
     ) {
         DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
         DependencyDecision::Refresh => match headroom::update() {
-            Ok(status) => status,
+            Ok(status) => {
+                warn_if_upgrade_stuck("headroom", &status, headroom_remote.as_deref());
+                status
+            }
             Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
         },
         DependencyDecision::NotInstalled => ui::ComponentStatus::NotInstalled,
@@ -458,6 +496,36 @@ pub fn run(full: bool) -> Result<()> {
         updated_count += 1;
     }
     ui::component_line("headroom", &headroom_status);
+
+    let claude_code_status = match dependency_decision(
+        claude_code_current.as_deref(),
+        claude_code_remote.as_deref(),
+        full,
+    ) {
+        DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
+        DependencyDecision::Refresh => {
+            let cur = claude_code_current.as_deref().unwrap_or("?");
+            let latest = claude_code_remote.as_deref().unwrap_or("?");
+            if ui::confirm(
+                &format!("Claude Code update available ({cur} → {latest}). Update now?"),
+                true,
+            ) {
+                match claude_code::update() {
+                    Ok(status) => {
+                        if matches!(&status, ui::ComponentStatus::Updated(_, _)) {
+                            updated_count += 1;
+                        }
+                        status
+                    }
+                    Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+                }
+            } else {
+                ui::ComponentStatus::UpToDate(cur.to_string())
+            }
+        }
+        DependencyDecision::NotInstalled => ui::ComponentStatus::NotInstalled,
+    };
+    ui::component_line("claude code", &claude_code_status);
 
     let memory_status = ui::ComponentStatus::UpToDate("embedded".into());
     ui::component_line("memory (ICM)", &memory_status);
@@ -472,12 +540,18 @@ pub fn run(full: bool) -> Result<()> {
         }
     };
 
+    // Use post-update installed versions as effective latest for the cache.
+    // If an upgrade was attempted but didn't change the version (e.g.,
+    // Python constraints prevent the PyPI latest from installing), this
+    // prevents the startup banner from nagging about an unreachable version.
     write_cache(&VersionCache {
         whetstone_latest: whetstone_latest.clone(),
         rtk_current: rtk::installed_version(),
-        rtk_latest: rtk_remote,
+        rtk_latest: rtk::installed_version().or(rtk_remote),
         headroom_current: headroom::installed_version(),
-        headroom_latest: headroom_remote,
+        headroom_latest: headroom::installed_version().or(headroom_remote),
+        claude_code_current: claude_code::installed_version(),
+        claude_code_latest: claude_code::installed_version().or(claude_code_remote),
         integration_version_bundled: Some(INTEGRATION_VERSION),
         integration_version_project: project_integration_version,
         timestamp: now_epoch(),
@@ -494,7 +568,8 @@ pub fn run(full: bool) -> Result<()> {
     } else {
         let has_failures = matches!(&whetstone_status, ui::ComponentStatus::Failed(_))
             || matches!(&rtk_status, ui::ComponentStatus::Failed(_))
-            || matches!(&headroom_status, ui::ComponentStatus::Failed(_));
+            || matches!(&headroom_status, ui::ComponentStatus::Failed(_))
+            || matches!(&claude_code_status, ui::ComponentStatus::Failed(_));
 
         if has_failures {
             ui::summary_info("Some components failed to update — see errors above");
@@ -650,6 +725,8 @@ mod tests {
             rtk_current: Some("0.42.3".into()),
             headroom_latest: Some("0.23.0".into()),
             headroom_current: Some("0.23.0".into()),
+            claude_code_latest: Some("2.1.0".into()),
+            claude_code_current: Some("2.1.0".into()),
             integration_version_bundled: Some(INTEGRATION_VERSION),
             integration_version_project: Some(1),
             timestamp: 1_700_000_000,

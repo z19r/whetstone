@@ -1,4 +1,5 @@
 mod changelog;
+mod claude_code;
 mod cli;
 mod config;
 mod dashboard;
@@ -86,6 +87,11 @@ fn main() {
                         name: "whetstone",
                         version: Some(version::current().to_string()),
                         outdated: is_outdated("whetstone"),
+                    },
+                    ui::VersionEntry {
+                        name: "claude code",
+                        version: claude_code::installed_version(),
+                        outdated: is_outdated("claude code"),
                     },
                     ui::VersionEntry {
                         name: "headroom",
