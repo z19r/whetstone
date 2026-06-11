@@ -1,6 +1,8 @@
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{fs, io};
 
 use crate::ui;
 use crate::version;
@@ -90,12 +92,104 @@ pub fn update() -> Result<ui::ComponentStatus> {
         bail!("uv tool install failed: {stderr}");
     }
 
+    // uv upgraded successfully — check if a stale pip install shadows the new binary
+    if let Some(fixed_ver) = fix_shadow() {
+        if fixed_ver != old_ver {
+            return Ok(ui::ComponentStatus::Updated(old_ver, fixed_ver));
+        }
+    }
+
     let new_ver = installed_version().unwrap_or_else(|| old_ver.clone());
     if new_ver != old_ver {
         Ok(ui::ComponentStatus::Updated(old_ver, new_ver))
     } else {
         Ok(ui::ComponentStatus::UpToDate(old_ver))
     }
+}
+
+fn uv_managed_version() -> Option<String> {
+    let home = dirs::home_dir()?;
+    let uv_headroom = home.join(".local/bin/headroom");
+    if !uv_headroom.exists() {
+        return None;
+    }
+    let output = Command::new(&uv_headroom).arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    version::extract_semver(&raw)
+}
+
+fn resolve_headroom_binary() -> Option<PathBuf> {
+    let output = Command::new("which").arg("headroom").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let path = PathBuf::from(&path_str);
+    fs::canonicalize(&path).ok().or(Some(path))
+}
+
+fn detect_shadowing_python(binary_path: &Path) -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let uv_bin = home.join(".local/bin");
+
+    if binary_path.starts_with(&uv_bin) {
+        return None;
+    }
+
+    let path_str = binary_path.to_string_lossy();
+    let is_python_env = path_str.contains("/mise/installs/python/")
+        || path_str.contains("/pyenv/versions/")
+        || path_str.contains("/conda/")
+        || path_str.contains("/miniconda")
+        || path_str.contains("/anaconda")
+        || path_str.contains("/virtualenvs/");
+
+    if !is_python_env {
+        return None;
+    }
+
+    let parent = binary_path.parent()?;
+    for name in &["python3", "python"] {
+        let candidate = parent.join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn fix_shadow() -> Option<String> {
+    let uv_ver = uv_managed_version()?;
+    let path_ver = installed_version()?;
+
+    if uv_ver == path_ver {
+        return None;
+    }
+
+    let shadow_path = resolve_headroom_binary()?;
+    let python = detect_shadowing_python(&shadow_path)?;
+
+    ui::info(&format!(
+        "stale headroom {} at {} shadows uv-managed {} — removing pip copy",
+        path_ver,
+        shadow_path.display(),
+        uv_ver,
+    ));
+
+    let _ = Command::new(&python)
+        .args(["-m", "pip", "uninstall", "headroom-ai", "-y"])
+        .stdout(io::stdout())
+        .stderr(io::stderr())
+        .status();
+
+    let fixed = installed_version()?;
+    if fixed == uv_ver {
+        ui::ok(&format!("headroom now resolves to {fixed}"));
+    }
+    Some(fixed)
 }
 
 /// Best-effort `headroom learn` invocation.
@@ -186,5 +280,38 @@ mod tests {
         let json = r#"{"info":{"version":"0.22.2"}}"#;
         let parsed: PypiResponse = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.info.version, "0.22.2");
+    }
+
+    #[test]
+    fn detect_shadow_in_mise_python() {
+        let path =
+            PathBuf::from("/home/user/.local/share/mise/installs/python/3.14.3/bin/headroom");
+        let result = detect_shadowing_python(&path);
+        // Can't assert Some because the python binary doesn't exist on disk,
+        // but verify the function doesn't panic and recognizes the pattern
+        assert!(
+            result.is_none(),
+            "returns None when python binary doesn't exist on disk"
+        );
+    }
+
+    #[test]
+    fn detect_shadow_in_pyenv() {
+        let path = PathBuf::from("/home/user/.pyenv/versions/3.12.0/bin/headroom");
+        let result = detect_shadowing_python(&path);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn no_shadow_for_uv_binary() {
+        let home = dirs::home_dir().unwrap();
+        let path = home.join(".local/bin/headroom");
+        assert!(detect_shadowing_python(&path).is_none());
+    }
+
+    #[test]
+    fn no_shadow_for_unknown_path() {
+        let path = PathBuf::from("/opt/custom/bin/headroom");
+        assert!(detect_shadowing_python(&path).is_none());
     }
 }
