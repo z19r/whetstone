@@ -2,6 +2,11 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.2.0",
+    "date": "2026-06-11",
+    "sections": []
+  },
+  {
     "ver": "3.1.3",
     "date": "2026-06-09",
     "sections": []
@@ -88,20 +93,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "Justfile release recipe corrections."
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "2.3.0",
-    "date": "2025-05-25",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "whetstone version command showing component versions with outdated indicators.",
-          "TUI setup wizard.",
-          "Suppressed noisy installer output during whetstone update."
         ]
       }
     ]
