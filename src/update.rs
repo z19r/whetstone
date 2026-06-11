@@ -442,7 +442,7 @@ pub fn run(full: bool) -> Result<()> {
     let whetstone_latest = fetch_remote_version()?;
     let rtk_remote = rtk::latest_remote_version();
     let headroom_remote = headroom::latest_remote_version();
-    let claude_code_remote = claude_code::latest_remote_version();
+    let claude_code_remote = claude_code::latest_npm_version();
     sp.finish_and_clear();
 
     let current = version::current().to_string();
@@ -725,8 +725,8 @@ mod tests {
             rtk_current: Some("0.42.3".into()),
             headroom_latest: Some("0.23.0".into()),
             headroom_current: Some("0.23.0".into()),
-            claude_code_latest: Some("2.1.0".into()),
-            claude_code_current: Some("2.1.0".into()),
+            claude_code_latest: Some("2.1.172".into()),
+            claude_code_current: Some("2.1.153".into()),
             integration_version_bundled: Some(INTEGRATION_VERSION),
             integration_version_project: Some(1),
             timestamp: 1_700_000_000,
@@ -739,6 +739,8 @@ mod tests {
             Some(INTEGRATION_VERSION)
         );
         assert_eq!(parsed.integration_version_project, Some(1));
+        assert_eq!(parsed.claude_code_latest, Some("2.1.172".into()));
+        assert_eq!(parsed.claude_code_current, Some("2.1.153".into()));
     }
 
     #[test]
@@ -757,5 +759,7 @@ mod tests {
         let parsed: VersionCache = serde_json::from_str(legacy).unwrap();
         assert_eq!(parsed.integration_version_bundled, None);
         assert_eq!(parsed.integration_version_project, None);
+        assert_eq!(parsed.claude_code_latest, None);
+        assert_eq!(parsed.claude_code_current, None);
     }
 }
