@@ -2,6 +2,11 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.3.0",
+    "date": "2026-06-11",
+    "sections": []
+  },
+  {
     "ver": "3.2.0",
     "date": "2026-06-11",
     "sections": []
@@ -81,18 +86,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "Release workflow: give verify-release job explicit repo context so gh release commands work without a local git checkout."
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "2.3.1",
-    "date": "2025-05-26",
-    "sections": [
-      {
-        "name": "fixed",
-        "bullets": [
-          "Justfile release recipe corrections."
         ]
       }
     ]

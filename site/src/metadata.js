@@ -2,8 +2,8 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-06-11",
   releaseDateHuman: "JUN 11 2026",
-  sha: "94f6b97",
-  tagline: "AutoMem provider removed. `MemoryProvider` is now `{ Icm, Skip }`. The",
+  sha: "bc68a83",
+  tagline: "Release workflow: give verify-release job explicit repo context so `gh release` commands work without a local git checkout.",
   assets: { commands: 2 },
   modules: [
     { id: "headroom", label: "HEADROOM PROXY", sub: "Context compression" },
