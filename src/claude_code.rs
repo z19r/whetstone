@@ -94,10 +94,14 @@ pub fn update() -> Result<ui::ComponentStatus> {
 
     let method = install_method();
 
-    match method {
+    let result = match method {
         InstallMethod::NativeBinary => update_from_native(&old_ver),
         InstallMethod::Npm | InstallMethod::Unknown => update_via_npm(&old_ver),
-    }
+    };
+
+    ensure_config_install_method_is_npm();
+
+    result
 }
 
 fn update_from_native(old_ver: &str) -> Result<ui::ComponentStatus> {
@@ -163,6 +167,47 @@ fn cleanup_native_install() {
         ui::info("removing stale native versions directory (~/.local/share/claude/)");
         let _ = fs::remove_dir_all(&versions_dir);
     }
+}
+
+fn ensure_config_install_method_is_npm() {
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+    fix_install_method_in_config(&home);
+}
+
+fn fix_install_method_in_config(home: &std::path::Path) {
+    let config_path = home.join(".claude.json");
+
+    let content = match fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let mut config: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let obj = match config.as_object_mut() {
+        Some(o) => o,
+        None => return,
+    };
+
+    if obj.get("installMethod").and_then(|v| v.as_str()) == Some("npm") {
+        return;
+    }
+
+    obj.insert(
+        "installMethod".to_string(),
+        serde_json::Value::String("npm".to_string()),
+    );
+
+    ui::info("fixing installMethod in ~/.claude.json (native → npm)");
+    let _ = fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&config).unwrap_or_default(),
+    );
 }
 
 #[cfg(test)]
@@ -264,5 +309,64 @@ mod tests {
             detect_install_method_from_path(path),
             InstallMethod::Unknown,
         );
+    }
+
+    #[test]
+    fn fix_install_method_rewrites_native_to_npm() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join(".claude.json");
+        fs::write(&config, r#"{"installMethod":"native","numStartups":10}"#).unwrap();
+
+        fix_install_method_in_config(dir.path());
+
+        let result: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+        assert_eq!(result["installMethod"], "npm");
+        assert_eq!(result["numStartups"], 10);
+    }
+
+    #[test]
+    fn fix_install_method_noop_when_already_npm() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join(".claude.json");
+        let original = r#"{"installMethod":"npm","numStartups":5}"#;
+        fs::write(&config, original).unwrap();
+
+        fix_install_method_in_config(dir.path());
+
+        let after = fs::read_to_string(&config).unwrap();
+        assert_eq!(after, original, "file should not be rewritten");
+    }
+
+    #[test]
+    fn fix_install_method_adds_field_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join(".claude.json");
+        fs::write(&config, r#"{"numStartups":1}"#).unwrap();
+
+        fix_install_method_in_config(dir.path());
+
+        let result: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+        assert_eq!(result["installMethod"], "npm");
+    }
+
+    #[test]
+    fn fix_install_method_noop_when_no_config_file() {
+        let dir = tempfile::tempdir().unwrap();
+        fix_install_method_in_config(dir.path());
+        assert!(!dir.path().join(".claude.json").exists());
+    }
+
+    #[test]
+    fn fix_install_method_noop_for_invalid_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join(".claude.json");
+        let garbage = "not json {{{";
+        fs::write(&config, garbage).unwrap();
+
+        fix_install_method_in_config(dir.path());
+
+        assert_eq!(fs::read_to_string(&config).unwrap(), garbage);
     }
 }

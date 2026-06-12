@@ -67,13 +67,42 @@ fn probe_proxy() -> bool {
 
 fn spawn_proxy_detached() -> std::io::Result<()> {
     use std::process::Stdio;
+    let args = build_proxy_args(headroom_proxy_supports_savings_profile());
     Command::new("headroom")
-        .args(["proxy", "--port", "8787", "--savings-profile"])
+        .args(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .map(|_| ())
+}
+
+fn build_proxy_args(savings_profile: bool) -> Vec<&'static str> {
+    let mut args = vec!["proxy", "--port", "8787"];
+    if savings_profile {
+        args.push("--savings-profile");
+    }
+    args
+}
+
+fn headroom_proxy_supports_savings_profile() -> bool {
+    let output = Command::new("headroom")
+        .args(["proxy", "--help"])
+        .output()
+        .ok();
+
+    let Some(output) = output else {
+        return false;
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    proxy_help_mentions_flag(&stdout, "--savings-profile")
+        || proxy_help_mentions_flag(&stderr, "--savings-profile")
+}
+
+fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
+    help_text.contains(flag)
 }
 
 // Default model — whetstone pins claude-opus-4-6 until it is fully deprecated.
@@ -435,5 +464,122 @@ exit 0
 
         assert!(path_has_rtk_binary(dir.clone()));
         cleanup_fake_rtk(&dir, &binary);
+    }
+
+    #[test]
+    fn build_proxy_args_without_savings_profile() {
+        let args = build_proxy_args(false);
+        assert_eq!(args, vec!["proxy", "--port", "8787"]);
+    }
+
+    #[test]
+    fn build_proxy_args_with_savings_profile() {
+        let args = build_proxy_args(true);
+        assert_eq!(args, vec!["proxy", "--port", "8787", "--savings-profile"]);
+    }
+
+    #[test]
+    fn proxy_help_mentions_flag_finds_present_flag() {
+        let help = "  --port INTEGER  Port to listen on\n  --savings-profile  Enable savings\n";
+        assert!(proxy_help_mentions_flag(help, "--savings-profile"));
+    }
+
+    #[test]
+    fn proxy_help_mentions_flag_rejects_absent_flag() {
+        let help = "  --port INTEGER  Port to listen on\n  --verbose  Verbose output\n";
+        assert!(!proxy_help_mentions_flag(help, "--savings-profile"));
+    }
+
+    #[test]
+    fn proxy_help_mentions_flag_empty_text() {
+        assert!(!proxy_help_mentions_flag("", "--savings-profile"));
+    }
+
+    #[test]
+    fn rtk_hook_program_extracts_bare_name() {
+        assert_eq!(rtk_hook_program("rtk hook claude"), Some("rtk"));
+    }
+
+    #[test]
+    fn rtk_hook_program_extracts_absolute_path() {
+        assert_eq!(
+            rtk_hook_program("/usr/local/bin/rtk hook claude"),
+            Some("/usr/local/bin/rtk")
+        );
+    }
+
+    #[test]
+    fn rtk_hook_program_strips_quotes() {
+        assert_eq!(rtk_hook_program("\"rtk\" hook claude"), Some("rtk"));
+    }
+
+    #[test]
+    fn rtk_hook_program_rejects_non_hook_command() {
+        assert_eq!(rtk_hook_program("rtk gain"), None);
+        assert_eq!(rtk_hook_program("echo hello"), None);
+    }
+
+    #[test]
+    fn program_ends_with_rtk_matches_bare_and_pathed() {
+        assert!(program_ends_with_rtk("rtk"));
+        assert!(program_ends_with_rtk("/usr/local/bin/rtk"));
+        assert!(program_ends_with_rtk("/home/user/.local/bin/rtk"));
+    }
+
+    #[test]
+    fn program_ends_with_rtk_rejects_non_rtk() {
+        assert!(!program_ends_with_rtk("not-rtk"));
+        assert!(!program_ends_with_rtk("/usr/bin/rtkx"));
+        assert!(!program_ends_with_rtk("rtk-rewrite.sh"));
+    }
+
+    #[test]
+    fn is_bare_rtk_program_only_matches_bare() {
+        assert!(is_bare_rtk_program("rtk"));
+        assert!(!is_bare_rtk_program("/usr/bin/rtk"));
+        assert!(!is_bare_rtk_program("./rtk"));
+    }
+
+    #[test]
+    fn build_claude_args_skips_no_rtk_when_not_requested() {
+        let args = build_claude_args(&[], false);
+        assert!(!args.contains(&"--no-rtk".to_string()));
+        assert!(args.contains(&"--model".to_string()));
+    }
+
+    #[test]
+    fn rtk_exists_on_path_returns_false_for_none() {
+        assert!(!rtk_exists_on_path(None));
+    }
+
+    #[test]
+    fn rtk_exists_on_path_returns_false_for_empty_path() {
+        assert!(!rtk_exists_on_path(Some(std::ffi::OsStr::new(""))));
+    }
+
+    #[test]
+    fn rtk_exists_on_path_finds_in_path_var() {
+        let (dir, binary) = create_fake_rtk_binary();
+        let path_str = dir.to_str().unwrap();
+        assert!(rtk_exists_on_path(Some(std::ffi::OsStr::new(path_str))));
+        cleanup_fake_rtk(&dir, &binary);
+    }
+
+    #[test]
+    fn settings_hook_detection_handles_empty_settings() {
+        let settings = json!({});
+        assert!(!settings_has_headroom_rtk_hook(&settings));
+    }
+
+    #[test]
+    fn settings_hook_detection_handles_empty_hooks() {
+        let settings = json!({ "hooks": {} });
+        assert!(!settings_has_headroom_rtk_hook(&settings));
+    }
+
+    #[test]
+    fn settings_hook_detection_handles_empty_pre_tool_use() {
+        let settings = json!({ "hooks": { "PreToolUse": [] } });
+        assert!(!settings_has_headroom_rtk_hook(&settings));
     }
 }
