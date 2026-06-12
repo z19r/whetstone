@@ -4,6 +4,8 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-06-12
+
 ## [3.3.0] - 2026-06-11
 
 ## [3.2.0] - 2026-06-11
