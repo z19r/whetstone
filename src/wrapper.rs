@@ -68,7 +68,7 @@ fn probe_proxy() -> bool {
 fn spawn_proxy_detached() -> std::io::Result<()> {
     use std::process::Stdio;
     Command::new("headroom")
-        .args(["proxy", "--port", "8787"])
+        .args(["proxy", "--port", "8787", "--savings-profile"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
