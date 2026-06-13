@@ -70,6 +70,7 @@ fn spawn_proxy_detached() -> std::io::Result<()> {
     let args = build_proxy_args(headroom_proxy_supports_savings_profile());
     Command::new("headroom")
         .args(&args)
+        .env("HEADROOM_SAVINGS_PROFILE", required_savings_profile())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -83,6 +84,27 @@ fn build_proxy_args(savings_profile: bool) -> Vec<&'static str> {
         args.push("--savings-profile");
     }
     args
+}
+
+// The savings profile `headroom wrap claude` requires (headroom
+// `cli/wrap.py` `_DEFAULT_AGENT_SAVINGS_PROFILE`). The proxy must report this
+// profile via `/health`, or `headroom wrap claude` decides it is "missing:
+// --savings-profile", hot-restarts it, and crashes binding the port before
+// the old proxy releases it ([Errno 98]). The proxy reads the profile from
+// the `HEADROOM_SAVINGS_PROFILE` env var, not a CLI flag, in current headroom.
+const DEFAULT_SAVINGS_PROFILE: &str = "agent-90";
+
+fn required_savings_profile() -> String {
+    resolve_savings_profile(env::var("HEADROOM_SAVINGS_PROFILE").ok())
+}
+
+// Honor an existing override (matching what `headroom wrap claude` will read),
+// falling back to headroom's default so a whetstone-spawned proxy always
+// matches the profile wrap demands.
+fn resolve_savings_profile(override_value: Option<String>) -> String {
+    override_value
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_SAVINGS_PROFILE.to_string())
 }
 
 fn headroom_proxy_supports_savings_profile() -> bool {
@@ -476,6 +498,27 @@ exit 0
     fn build_proxy_args_with_savings_profile() {
         let args = build_proxy_args(true);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--savings-profile"]);
+    }
+
+    #[test]
+    fn resolve_savings_profile_defaults_when_unset() {
+        assert_eq!(resolve_savings_profile(None), DEFAULT_SAVINGS_PROFILE);
+    }
+
+    #[test]
+    fn resolve_savings_profile_defaults_when_empty() {
+        assert_eq!(
+            resolve_savings_profile(Some(String::new())),
+            DEFAULT_SAVINGS_PROFILE
+        );
+    }
+
+    #[test]
+    fn resolve_savings_profile_honors_override() {
+        assert_eq!(
+            resolve_savings_profile(Some("agent-50".to_string())),
+            "agent-50"
+        );
     }
 
     #[test]
