@@ -20,10 +20,10 @@ fn set_proxy_env() {
 
 pub fn wrap_claude(args: &[String]) -> ! {
     set_proxy_env();
-    ensure_proxy_ready();
+    let proxy_ready = ensure_proxy_ready();
 
     let skip_rtk_setup = should_skip_headroom_rtk_setup();
-    let cmd_args = build_claude_args(args, skip_rtk_setup);
+    let cmd_args = build_claude_args(args, skip_rtk_setup, proxy_ready);
 
     exec("headroom", &cmd_args);
 }
@@ -32,12 +32,14 @@ pub fn wrap_claude(args: &[String]) -> ! {
 /// hook auto-starts headroom, but it fires after claude has already launched —
 /// so the proxy may still be down by the time claude makes its first request.
 /// Probe `/health`; if dead, spawn `headroom proxy` detached and poll until it
-/// answers or we hit `PROXY_READY_TIMEOUT`. Soft-fail with a warning rather
-/// than refusing to exec — if the user has a custom upstream, headroom wrap's
-/// own logic should still be allowed to run.
-fn ensure_proxy_ready() {
+/// answers or we hit `PROXY_READY_TIMEOUT`. Returns whether a proxy is up, so
+/// the caller can pass `--no-proxy` to `headroom wrap` — whetstone owns the
+/// proxy lifecycle, and letting wrap manage it risks a hot-restart crash. On
+/// failure we soft-warn and return false so wrap may still try its own proxy
+/// startup as a last-resort fallback (e.g. a custom upstream).
+fn ensure_proxy_ready() -> bool {
     if probe_proxy() {
-        return;
+        return true;
     }
 
     let spawned = spawn_proxy_detached().is_ok();
@@ -45,7 +47,7 @@ fn ensure_proxy_ready() {
     let deadline = Instant::now() + PROXY_READY_TIMEOUT;
     while Instant::now() < deadline {
         if probe_proxy() {
-            return;
+            return true;
         }
         std::thread::sleep(PROXY_POLL_INTERVAL);
     }
@@ -56,6 +58,7 @@ fn ensure_proxy_ready() {
         "(could not spawn `headroom proxy` — is headroom installed?)"
     };
     eprintln!("[WARN] whetstone: proxy at {DEFAULT_PROXY} is not responding {tail}");
+    false
 }
 
 fn probe_proxy() -> bool {
@@ -132,8 +135,18 @@ fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
 // alone.
 const DEFAULT_MODEL: &str = "claude-opus-4-6";
 
-fn build_claude_args(args: &[String], skip_rtk_setup: bool) -> Vec<String> {
+fn build_claude_args(args: &[String], skip_rtk_setup: bool, proxy_ready: bool) -> Vec<String> {
     let mut cmd_args = vec!["wrap".to_string(), "claude".to_string()];
+
+    // whetstone owns the proxy lifecycle (`ensure_proxy_ready`). When a proxy
+    // is already up, tell `headroom wrap` to skip its own proxy management with
+    // `--no-proxy`. Otherwise wrap compares the running proxy's savings profile
+    // and, on a mismatch, hot-restarts it — binding the port before the old
+    // proxy releases it and crashing with [Errno 98]. If we could not bring a
+    // proxy up, omit the flag so wrap can still try to start one as a fallback.
+    if proxy_ready {
+        cmd_args.push("--no-proxy".into());
+    }
 
     if skip_rtk_setup {
         cmd_args.push("--no-rtk".into());
@@ -357,7 +370,7 @@ exit 0
 
     #[test]
     fn build_claude_args_injects_default_model_when_absent() {
-        let args = build_claude_args(&[], true);
+        let args = build_claude_args(&[], true, false);
 
         assert_eq!(
             args,
@@ -367,7 +380,7 @@ exit 0
 
     #[test]
     fn build_claude_args_preserves_explicit_model() {
-        let args = build_claude_args(&["--model".into(), "claude-sonnet".into()], false);
+        let args = build_claude_args(&["--model".into(), "claude-sonnet".into()], false, false);
 
         // Explicit user --model wins; we do NOT add our default on top.
         assert_eq!(
@@ -379,7 +392,7 @@ exit 0
 
     #[test]
     fn build_claude_args_preserves_explicit_model_equals_form() {
-        let args = build_claude_args(&["--model=claude-sonnet".into()], false);
+        let args = build_claude_args(&["--model=claude-sonnet".into()], false, false);
 
         assert_eq!(args, strings(&["wrap", "claude", "--model=claude-sonnet"]));
     }
@@ -388,6 +401,7 @@ exit 0
     fn build_claude_args_passes_through_arbitrary_args_unchanged() {
         let args = build_claude_args(
             &["--dangerously-skip-permissions".into(), "--print".into()],
+            false,
             false,
         );
 
@@ -585,9 +599,23 @@ exit 0
 
     #[test]
     fn build_claude_args_skips_no_rtk_when_not_requested() {
-        let args = build_claude_args(&[], false);
+        let args = build_claude_args(&[], false, false);
         assert!(!args.contains(&"--no-rtk".to_string()));
         assert!(args.contains(&"--model".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_adds_no_proxy_when_proxy_ready() {
+        let args = build_claude_args(&[], false, true);
+        assert!(args.contains(&"--no-proxy".to_string()));
+        // wrap subcommand stays first; --no-proxy is an option after it.
+        assert_eq!(&args[0..2], &["wrap".to_string(), "claude".to_string()]);
+    }
+
+    #[test]
+    fn build_claude_args_omits_no_proxy_when_proxy_not_ready() {
+        let args = build_claude_args(&[], false, false);
+        assert!(!args.contains(&"--no-proxy".to_string()));
     }
 
     #[test]
