@@ -134,6 +134,9 @@ impl SettingsState {
     }
 
     fn current_model_display(&self, id: SettingId) -> Option<&str> {
+        if id != SettingId::ApiModel {
+            return None;
+        }
         match self.scope(id) {
             Scope::Off => None,
             Scope::Global => self.global.api_model.as_deref(),
