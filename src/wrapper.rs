@@ -23,9 +23,22 @@ pub fn wrap_claude(args: &[String]) -> ! {
     let proxy_ready = ensure_proxy_ready();
 
     let skip_rtk_setup = should_skip_headroom_rtk_setup();
-    let cmd_args = build_claude_args(args, skip_rtk_setup, proxy_ready);
+    let resolved = resolved_settings();
+    let model = resolved.api_model.as_deref().unwrap_or(DEFAULT_MODEL);
+    let cmd_args = build_claude_args(args, skip_rtk_setup, proxy_ready, model);
 
     exec("headroom", &cmd_args);
+}
+
+fn resolved_settings() -> crate::config::ResolvedSettings {
+    let global = crate::config::GlobalSettings::load().unwrap_or_default();
+    let cwd = env::current_dir().ok();
+    let project = cwd
+        .map(|d| crate::config::WhetstoneManifest::path_for(&d))
+        .and_then(|p| crate::config::WhetstoneManifest::load(&p).ok().flatten())
+        .map(|m| m.settings)
+        .unwrap_or_default();
+    crate::config::ResolvedSettings::resolve(&global, &project)
 }
 
 /// Phase 6.3: claude's first API call must hit a live proxy. The SessionStart
@@ -70,23 +83,36 @@ fn probe_proxy() -> bool {
 
 fn spawn_proxy_detached() -> std::io::Result<()> {
     use std::process::Stdio;
-    let args = build_proxy_args(headroom_proxy_supports_savings_profile());
-    Command::new("headroom")
-        .args(&args)
+    let telemetry_disabled = !headroom_telemetry_enabled();
+    let args = build_proxy_args(
+        headroom_proxy_supports_savings_profile(),
+        telemetry_disabled,
+    );
+    let mut cmd = Command::new("headroom");
+    cmd.args(&args)
         .env("HEADROOM_SAVINGS_PROFILE", required_savings_profile())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map(|_| ())
+        .stderr(Stdio::null());
+    if telemetry_disabled {
+        cmd.env("HEADROOM_TELEMETRY", "off");
+    }
+    cmd.spawn().map(|_| ())
 }
 
-fn build_proxy_args(savings_profile: bool) -> Vec<&'static str> {
+fn build_proxy_args(savings_profile: bool, no_telemetry: bool) -> Vec<&'static str> {
     let mut args = vec!["proxy", "--port", "8787"];
     if savings_profile {
         args.push("--savings-profile");
     }
+    if no_telemetry {
+        args.push("--no-telemetry");
+    }
     args
+}
+
+fn headroom_telemetry_enabled() -> bool {
+    resolved_settings().headroom_telemetry
 }
 
 // The savings profile `headroom wrap claude` requires (headroom
@@ -135,15 +161,14 @@ fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
 // alone.
 const DEFAULT_MODEL: &str = "claude-opus-4-6";
 
-fn build_claude_args(args: &[String], skip_rtk_setup: bool, proxy_ready: bool) -> Vec<String> {
+fn build_claude_args(
+    args: &[String],
+    skip_rtk_setup: bool,
+    proxy_ready: bool,
+    model: &str,
+) -> Vec<String> {
     let mut cmd_args = vec!["wrap".to_string(), "claude".to_string()];
 
-    // whetstone owns the proxy lifecycle (`ensure_proxy_ready`). When a proxy
-    // is already up, tell `headroom wrap` to skip its own proxy management with
-    // `--no-proxy`. Otherwise wrap compares the running proxy's savings profile
-    // and, on a mismatch, hot-restarts it — binding the port before the old
-    // proxy releases it and crashing with [Errno 98]. If we could not bring a
-    // proxy up, omit the flag so wrap can still try to start one as a fallback.
     if proxy_ready {
         cmd_args.push("--no-proxy".into());
     }
@@ -157,7 +182,7 @@ fn build_claude_args(args: &[String], skip_rtk_setup: bool, proxy_ready: bool) -
         .any(|a| a == "--model" || a.starts_with("--model="));
     if !user_set_model {
         cmd_args.push("--model".into());
-        cmd_args.push(DEFAULT_MODEL.into());
+        cmd_args.push(model.into());
     }
 
     cmd_args.extend_from_slice(args);
@@ -370,7 +395,7 @@ exit 0
 
     #[test]
     fn build_claude_args_injects_default_model_when_absent() {
-        let args = build_claude_args(&[], true, false);
+        let args = build_claude_args(&[], true, false, DEFAULT_MODEL);
 
         assert_eq!(
             args,
@@ -380,9 +405,13 @@ exit 0
 
     #[test]
     fn build_claude_args_preserves_explicit_model() {
-        let args = build_claude_args(&["--model".into(), "claude-sonnet".into()], false, false);
+        let args = build_claude_args(
+            &["--model".into(), "claude-sonnet".into()],
+            false,
+            false,
+            DEFAULT_MODEL,
+        );
 
-        // Explicit user --model wins; we do NOT add our default on top.
         assert_eq!(
             args,
             strings(&["wrap", "claude", "--model", "claude-sonnet"])
@@ -392,7 +421,12 @@ exit 0
 
     #[test]
     fn build_claude_args_preserves_explicit_model_equals_form() {
-        let args = build_claude_args(&["--model=claude-sonnet".into()], false, false);
+        let args = build_claude_args(
+            &["--model=claude-sonnet".into()],
+            false,
+            false,
+            DEFAULT_MODEL,
+        );
 
         assert_eq!(args, strings(&["wrap", "claude", "--model=claude-sonnet"]));
     }
@@ -403,9 +437,9 @@ exit 0
             &["--dangerously-skip-permissions".into(), "--print".into()],
             false,
             false,
+            DEFAULT_MODEL,
         );
 
-        // Default --model goes ahead of pass-through args.
         assert_eq!(
             args,
             strings(&[
@@ -416,6 +450,16 @@ exit 0
                 "--dangerously-skip-permissions",
                 "--print",
             ])
+        );
+    }
+
+    #[test]
+    fn build_claude_args_uses_configured_model() {
+        let args = build_claude_args(&[], false, false, "claude-sonnet-4-6");
+
+        assert_eq!(
+            args,
+            strings(&["wrap", "claude", "--model", "claude-sonnet-4-6"])
         );
     }
 
@@ -504,14 +548,35 @@ exit 0
 
     #[test]
     fn build_proxy_args_without_savings_profile() {
-        let args = build_proxy_args(false);
+        let args = build_proxy_args(false, false);
         assert_eq!(args, vec!["proxy", "--port", "8787"]);
     }
 
     #[test]
     fn build_proxy_args_with_savings_profile() {
-        let args = build_proxy_args(true);
+        let args = build_proxy_args(true, false);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--savings-profile"]);
+    }
+
+    #[test]
+    fn build_proxy_args_with_no_telemetry() {
+        let args = build_proxy_args(false, true);
+        assert_eq!(args, vec!["proxy", "--port", "8787", "--no-telemetry"]);
+    }
+
+    #[test]
+    fn build_proxy_args_with_savings_profile_and_no_telemetry() {
+        let args = build_proxy_args(true, true);
+        assert_eq!(
+            args,
+            vec![
+                "proxy",
+                "--port",
+                "8787",
+                "--savings-profile",
+                "--no-telemetry"
+            ]
+        );
     }
 
     #[test]
@@ -599,22 +664,21 @@ exit 0
 
     #[test]
     fn build_claude_args_skips_no_rtk_when_not_requested() {
-        let args = build_claude_args(&[], false, false);
+        let args = build_claude_args(&[], false, false, DEFAULT_MODEL);
         assert!(!args.contains(&"--no-rtk".to_string()));
         assert!(args.contains(&"--model".to_string()));
     }
 
     #[test]
     fn build_claude_args_adds_no_proxy_when_proxy_ready() {
-        let args = build_claude_args(&[], false, true);
+        let args = build_claude_args(&[], false, true, DEFAULT_MODEL);
         assert!(args.contains(&"--no-proxy".to_string()));
-        // wrap subcommand stays first; --no-proxy is an option after it.
         assert_eq!(&args[0..2], &["wrap".to_string(), "claude".to_string()]);
     }
 
     #[test]
     fn build_claude_args_omits_no_proxy_when_proxy_not_ready() {
-        let args = build_claude_args(&[], false, false);
+        let args = build_claude_args(&[], false, false, DEFAULT_MODEL);
         assert!(!args.contains(&"--no-proxy".to_string()));
     }
 

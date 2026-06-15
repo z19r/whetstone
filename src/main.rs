@@ -12,6 +12,7 @@ mod migrate;
 mod preflight;
 mod release;
 mod rtk;
+mod settings;
 mod setup;
 mod shell;
 mod stats;
@@ -172,6 +173,11 @@ fn main() {
             }
             Command::Dashboard => {
                 if let Err(e) = dashboard::run() {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
+            Command::Settings => {
+                if let Err(e) = settings::run() {
                     ui::fail(&format!("{e:#}"));
                 }
             }

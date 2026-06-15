@@ -17,7 +17,7 @@ use crate::memory::MemoryProvider;
 
 /// Bump this whenever the manifest schema gains/changes a required field.
 /// `whetstone update` uses it to decide when to rewrite the manifest in place.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Bump this whenever whetstone's *integration contract* changes — e.g. the
 /// expected hook layout shifts because we now delegate to a tool's init that
@@ -62,6 +62,72 @@ pub struct ToolVersions {
     pub headroom: Option<String>,
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headroom_telemetry: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_model: Option<String>,
+}
+
+const GLOBAL_DIR: &str = ".whetstone";
+const GLOBAL_SETTINGS_FILENAME: &str = "settings.json";
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GlobalSettings {
+    #[serde(default)]
+    pub headroom_telemetry: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_model: Option<String>,
+}
+
+impl GlobalSettings {
+    pub fn path() -> Option<PathBuf> {
+        dirs::home_dir().map(|h| h.join(GLOBAL_DIR).join(GLOBAL_SETTINGS_FILENAME))
+    }
+
+    pub fn load() -> Result<Self> {
+        let Some(path) = Self::path() else {
+            return Ok(Self::default());
+        };
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let raw =
+            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        serde_json::from_str(&raw).with_context(|| format!("parsing {}", path.display()))
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::path().context("could not determine home directory")?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+        }
+        let pretty = serde_json::to_string_pretty(self).context("serializing global settings")?;
+        fs::write(&path, pretty).with_context(|| format!("writing {}", path.display()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSettings {
+    pub headroom_telemetry: bool,
+    pub api_model: Option<String>,
+}
+
+impl ResolvedSettings {
+    pub fn resolve(global: &GlobalSettings, project: &ProjectSettings) -> Self {
+        Self {
+            headroom_telemetry: project
+                .headroom_telemetry
+                .unwrap_or(global.headroom_telemetry),
+            api_model: project
+                .api_model
+                .clone()
+                .or_else(|| global.api_model.clone()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WhetstoneManifest {
     pub schema: u32,
@@ -70,6 +136,8 @@ pub struct WhetstoneManifest {
     pub provider: ProviderTag,
     #[serde(default)]
     pub tool_versions: ToolVersions,
+    #[serde(default)]
+    pub settings: ProjectSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub migration_id: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -86,6 +154,7 @@ impl WhetstoneManifest {
             integration_version: INTEGRATION_VERSION,
             provider: provider.into(),
             tool_versions,
+            settings: ProjectSettings::default(),
             migration_id: None,
             created_at: now,
             updated_at: now,

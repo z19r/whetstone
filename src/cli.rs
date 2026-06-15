@@ -58,6 +58,9 @@ pub enum Command {
     /// Interactive dashboard
     Dashboard,
 
+    /// Modify project settings interactively
+    Settings,
+
     /// Inspect ~/.claude/settings.json and report problems (Phase 1 task 1.2)
     Doctor,
 
