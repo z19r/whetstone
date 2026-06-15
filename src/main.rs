@@ -46,6 +46,37 @@ fn show_upgrade_banner(cmd: &Option<Command>) {
     ui::upgrade_banner(&outdated, v2_project);
 }
 
+fn maybe_offer_setup() -> bool {
+    let cwd = match std::env::current_dir() {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+
+    let manifest_path = config::WhetstoneManifest::path_for(&cwd);
+    if manifest_path.exists() {
+        return false;
+    }
+
+    if !ui::is_interactive() {
+        return false;
+    }
+
+    let project_name = cwd
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("this project");
+
+    let prompt = format!("Set up whetstone for {project_name}?");
+    if !ui::confirm(&prompt, true) {
+        return false;
+    }
+
+    if let Err(e) = setup::run(false, "all") {
+        ui::fail(&format!("{e:#}"));
+    }
+    true
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -53,6 +84,9 @@ fn main() {
 
     match cli.command {
         None => {
+            if maybe_offer_setup() {
+                return;
+            }
             wrapper::wrap_claude(&[]);
         }
         Some(cmd) => match cmd {
