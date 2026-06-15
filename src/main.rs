@@ -46,35 +46,82 @@ fn show_upgrade_banner(cmd: &Option<Command>) {
     ui::upgrade_banner(&outdated, v2_project);
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SetupCheck {
+    AlreadyConfigured,
+    NotInteractive,
+    NeedsSetup { offered: bool },
+}
+
+fn check_needs_setup(manifest_exists: bool, interactive: bool) -> SetupCheck {
+    if manifest_exists {
+        return SetupCheck::AlreadyConfigured;
+    }
+    if !interactive {
+        return SetupCheck::NotInteractive;
+    }
+    SetupCheck::NeedsSetup { offered: false }
+}
+
 fn maybe_offer_setup() -> bool {
     let cwd = match std::env::current_dir() {
         Ok(d) => d,
         Err(_) => return false,
     };
 
-    let manifest_path = config::WhetstoneManifest::path_for(&cwd);
-    if manifest_path.exists() {
-        return false;
+    let manifest_exists = config::WhetstoneManifest::path_for(&cwd).exists();
+    let interactive = ui::is_interactive();
+
+    match check_needs_setup(manifest_exists, interactive) {
+        SetupCheck::AlreadyConfigured | SetupCheck::NotInteractive => false,
+        SetupCheck::NeedsSetup { .. } => {
+            let project_name = cwd
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("this project");
+
+            let prompt = format!("Set up whetstone for {project_name}?");
+            if !ui::confirm(&prompt, true) {
+                return true;
+            }
+
+            if let Err(e) = setup::run(false, "all") {
+                ui::fail(&format!("{e:#}"));
+            }
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn already_configured_skips_prompt() {
+        assert_eq!(check_needs_setup(true, true), SetupCheck::AlreadyConfigured,);
     }
 
-    if !ui::is_interactive() {
-        return false;
+    #[test]
+    fn already_configured_non_interactive_skips_prompt() {
+        assert_eq!(
+            check_needs_setup(true, false),
+            SetupCheck::AlreadyConfigured,
+        );
     }
 
-    let project_name = cwd
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("this project");
-
-    let prompt = format!("Set up whetstone for {project_name}?");
-    if !ui::confirm(&prompt, true) {
-        return false;
+    #[test]
+    fn unconfigured_non_interactive_skips_prompt() {
+        assert_eq!(check_needs_setup(false, false), SetupCheck::NotInteractive,);
     }
 
-    if let Err(e) = setup::run(false, "all") {
-        ui::fail(&format!("{e:#}"));
+    #[test]
+    fn unconfigured_interactive_needs_setup() {
+        assert_eq!(
+            check_needs_setup(false, true),
+            SetupCheck::NeedsSetup { offered: false },
+        );
     }
-    true
 }
 
 fn main() {
