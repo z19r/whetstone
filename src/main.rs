@@ -93,37 +93,6 @@ fn maybe_offer_setup() -> bool {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn already_configured_skips_prompt() {
-        assert_eq!(check_needs_setup(true, true), SetupCheck::AlreadyConfigured,);
-    }
-
-    #[test]
-    fn already_configured_non_interactive_skips_prompt() {
-        assert_eq!(
-            check_needs_setup(true, false),
-            SetupCheck::AlreadyConfigured,
-        );
-    }
-
-    #[test]
-    fn unconfigured_non_interactive_skips_prompt() {
-        assert_eq!(check_needs_setup(false, false), SetupCheck::NotInteractive,);
-    }
-
-    #[test]
-    fn unconfigured_interactive_needs_setup() {
-        assert_eq!(
-            check_needs_setup(false, true),
-            SetupCheck::NeedsSetup { offered: false },
-        );
-    }
-}
-
 fn main() {
     let cli = Cli::parse();
 
@@ -285,4 +254,35 @@ fn run_changelog_sync(
         entries.len()
     ));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn already_configured_skips_prompt() {
+        assert_eq!(check_needs_setup(true, true), SetupCheck::AlreadyConfigured,);
+    }
+
+    #[test]
+    fn already_configured_non_interactive_skips_prompt() {
+        assert_eq!(
+            check_needs_setup(true, false),
+            SetupCheck::AlreadyConfigured,
+        );
+    }
+
+    #[test]
+    fn unconfigured_non_interactive_skips_prompt() {
+        assert_eq!(check_needs_setup(false, false), SetupCheck::NotInteractive,);
+    }
+
+    #[test]
+    fn unconfigured_interactive_needs_setup() {
+        assert_eq!(
+            check_needs_setup(false, true),
+            SetupCheck::NeedsSetup { offered: false },
+        );
+    }
 }
