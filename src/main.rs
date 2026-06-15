@@ -104,12 +104,21 @@ fn main() {
                 }
             }
             Command::Claude { args } | Command::Code { args } => {
+                if maybe_offer_setup() {
+                    return;
+                }
                 wrapper::wrap_claude(&args);
             }
             Command::Proxy { args } => {
+                if maybe_offer_setup() {
+                    return;
+                }
                 wrapper::wrap_proxy(&args);
             }
             Command::Rtk { args } => {
+                if maybe_offer_setup() {
+                    return;
+                }
                 wrapper::wrap_rtk(&args);
             }
             Command::Version => {
