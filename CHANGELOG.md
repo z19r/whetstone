@@ -6,21 +6,68 @@ All notable changes to whetstone will be documented in this file.
 
 ## [3.5.1] - 2026-06-15
 
+### Added
+
+- settings TUI with global/project layering
+
 ## [3.5.0] - 2026-06-15
+
+### Added
+
+- prompt to run setup in unconfigured projects
+
+### Fixed
+
+- pass --no-proxy so headroom wrap never hot-restarts the proxy
+- start headroom proxy with HEADROOM_SAVINGS_PROFILE
 
 ## [3.4.0] - 2026-06-12
 
+### Fixed
+
+- conditional --savings-profile and installMethod mismatch fix
+
 ## [3.3.0] - 2026-06-11
+
+### Changed
+
+- version bump (no user-facing changes)
 
 ## [3.2.0] - 2026-06-11
 
+### Added
+
+- detect and fix stale headroom pip installs shadowing uv-managed binary
+- detect and fix stale Claude Code native binary installs
+
+### Fixed
+
+- clause update logic
+
 ## [3.1.3] - 2026-06-09
+
+### Fixed
+
+- correct MIN_VERSION grep patterns in metadata generation
 
 ## [3.1.2] - 2026-06-09
 
+### Added
+
+- metadata-driven dynamic site content
+
 ## [3.1.1] - 2026-06-08
 
+### Added
+
+- ratatui inline viewport for wizard, pin default model
+
 ## [3.1.0] - 2026-06-08
+
+### Added
+
+- site changelog driven from CHANGELOG.md
+- drive Releases section from CHANGELOG.md
 
 ## [3.0.0] - 2026-06-08
 
