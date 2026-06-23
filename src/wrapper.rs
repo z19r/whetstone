@@ -177,6 +177,8 @@ fn build_claude_args(
         cmd_args.push("--no-rtk".into());
     }
 
+    cmd_args.push("--no-serena".into());
+
     let user_set_model = args
         .iter()
         .any(|a| a == "--model" || a.starts_with("--model="));
@@ -399,7 +401,14 @@ exit 0
 
         assert_eq!(
             args,
-            strings(&["wrap", "claude", "--no-rtk", "--model", DEFAULT_MODEL])
+            strings(&[
+                "wrap",
+                "claude",
+                "--no-rtk",
+                "--no-serena",
+                "--model",
+                DEFAULT_MODEL,
+            ])
         );
     }
 
@@ -414,7 +423,7 @@ exit 0
 
         assert_eq!(
             args,
-            strings(&["wrap", "claude", "--model", "claude-sonnet"])
+            strings(&["wrap", "claude", "--no-serena", "--model", "claude-sonnet"])
         );
         assert_eq!(args.iter().filter(|a| a.as_str() == "--model").count(), 1);
     }
@@ -428,7 +437,10 @@ exit 0
             DEFAULT_MODEL,
         );
 
-        assert_eq!(args, strings(&["wrap", "claude", "--model=claude-sonnet"]));
+        assert_eq!(
+            args,
+            strings(&["wrap", "claude", "--no-serena", "--model=claude-sonnet"])
+        );
     }
 
     #[test]
@@ -445,6 +457,7 @@ exit 0
             strings(&[
                 "wrap",
                 "claude",
+                "--no-serena",
                 "--model",
                 DEFAULT_MODEL,
                 "--dangerously-skip-permissions",
@@ -459,7 +472,13 @@ exit 0
 
         assert_eq!(
             args,
-            strings(&["wrap", "claude", "--model", "claude-sonnet-4-6"])
+            strings(&[
+                "wrap",
+                "claude",
+                "--no-serena",
+                "--model",
+                "claude-sonnet-4-6"
+            ])
         );
     }
 
@@ -666,6 +685,7 @@ exit 0
     fn build_claude_args_skips_no_rtk_when_not_requested() {
         let args = build_claude_args(&[], false, false, DEFAULT_MODEL);
         assert!(!args.contains(&"--no-rtk".to_string()));
+        assert!(args.contains(&"--no-serena".to_string()));
         assert!(args.contains(&"--model".to_string()));
     }
 
