@@ -4,6 +4,16 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.5.2] - 2026-06-23
+
+### Added
+
+- settings TUI with global/project layering (#57)
+
+### Fixed
+
+- store changelog regex patterns in variables for bash compatibility
+
 ## [3.5.1] - 2026-06-15
 
 ### Added

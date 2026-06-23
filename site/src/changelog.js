@@ -2,43 +2,119 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.5.2",
+    "date": "2026-06-23",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "settings TUI with global/project layering (#57)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "store changelog regex patterns in variables for bash compatibility"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.5.1",
     "date": "2026-06-15",
-    "sections": []
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "settings TUI with global/project layering"
+        ]
+      }
+    ]
   },
   {
     "ver": "3.5.0",
     "date": "2026-06-15",
-    "sections": []
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "prompt to run setup in unconfigured projects"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "pass --no-proxy so headroom wrap never hot-restarts the proxy",
+          "start headroom proxy with HEADROOM_SAVINGS_PROFILE"
+        ]
+      }
+    ]
   },
   {
     "ver": "3.4.0",
     "date": "2026-06-12",
-    "sections": []
+    "sections": [
+      {
+        "name": "fixed",
+        "bullets": [
+          "conditional --savings-profile and installMethod mismatch fix"
+        ]
+      }
+    ]
   },
   {
     "ver": "3.3.0",
     "date": "2026-06-11",
-    "sections": []
+    "sections": [
+      {
+        "name": "changed",
+        "bullets": [
+          "version bump (no user-facing changes)"
+        ]
+      }
+    ]
   },
   {
     "ver": "3.2.0",
     "date": "2026-06-11",
-    "sections": []
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "detect and fix stale headroom pip installs shadowing uv-managed binary",
+          "detect and fix stale Claude Code native binary installs"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "clause update logic"
+        ]
+      }
+    ]
   },
   {
     "ver": "3.1.3",
     "date": "2026-06-09",
-    "sections": []
+    "sections": [
+      {
+        "name": "fixed",
+        "bullets": [
+          "correct MIN_VERSION grep patterns in metadata generation"
+        ]
+      }
+    ]
   },
   {
     "ver": "3.1.2",
     "date": "2026-06-09",
-    "sections": []
-  },
-  {
-    "ver": "3.1.1",
-    "date": "2026-06-08",
-    "sections": []
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "metadata-driven dynamic site content"
+        ]
+      }
+    ]
   }
 ];
