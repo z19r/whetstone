@@ -207,7 +207,12 @@ release LEVEL: release-check
     fi
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
     if [[ "$BRANCH" != "main" ]]; then
-        echo "Error: must be on main (currently on $BRANCH)"; exit 1
+        read -r -p "Not on main (currently on $BRANCH). Switch to main? [y/N] " REPLY || REPLY=""
+        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+            git checkout main
+        else
+            echo "Aborted: release must run from main"; exit 1
+        fi
     fi
     git pull --ff-only origin main
     OLD_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
