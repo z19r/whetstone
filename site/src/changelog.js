@@ -2,6 +2,31 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.6.2",
+    "date": "2026-06-28",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "integrate self-update and migration into setup command (#62)",
+          "settings TUI with global/project layering (#57)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "store changelog regex patterns in variables for bash compatibility"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "update the claude models (#64)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.6.1",
     "date": "2026-06-28",
     "sections": [
@@ -114,25 +139,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "changed",
         "bullets": [
           "version bump (no user-facing changes)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.2.0",
-    "date": "2026-06-11",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "detect and fix stale headroom pip installs shadowing uv-managed binary",
-          "detect and fix stale Claude Code native binary installs"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "clause update logic"
         ]
       }
     ]

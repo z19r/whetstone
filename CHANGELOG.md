@@ -4,6 +4,21 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.6.2] - 2026-06-28
+
+### Added
+
+- integrate self-update and migration into setup command (#62)
+- settings TUI with global/project layering (#57)
+
+### Fixed
+
+- store changelog regex patterns in variables for bash compatibility
+
+### Changed
+
+- update the claude models (#64)
+
 ## [3.6.1] - 2026-06-28
 
 ### Added

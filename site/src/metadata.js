@@ -2,7 +2,7 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-06-28",
   releaseDateHuman: "JUN 28 2026",
-  sha: "b404607",
+  sha: "9ff4910",
   tagline: "integrate self-update and migration into setup command (#62)",
   assets: { commands: 2 },
   modules: [
