@@ -2,8 +2,8 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-06-28",
   releaseDateHuman: "JUN 28 2026",
-  sha: "a4fe706",
-  tagline: "settings TUI with global/project layering (#57)",
+  sha: "b404607",
+  tagline: "integrate self-update and migration into setup command (#62)",
   assets: { commands: 2 },
   modules: [
     { id: "headroom", label: "HEADROOM PROXY", sub: "Context compression" },
