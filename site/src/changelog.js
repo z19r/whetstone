@@ -2,6 +2,25 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.6.0",
+    "date": "2026-06-28",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "integrate self-update and migration into setup command (#62)",
+          "settings TUI with global/project layering (#57)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "store changelog regex patterns in variables for bash compatibility"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.5.2",
     "date": "2026-06-23",
     "sections": [
@@ -101,18 +120,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "correct MIN_VERSION grep patterns in metadata generation"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.1.2",
-    "date": "2026-06-09",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "metadata-driven dynamic site content"
         ]
       }
     ]
