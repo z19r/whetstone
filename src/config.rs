@@ -67,6 +67,8 @@ pub struct ProjectSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub headroom_telemetry: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headroom_memory: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_model: Option<String>,
 }
 
@@ -77,6 +79,8 @@ const GLOBAL_SETTINGS_FILENAME: &str = "settings.json";
 pub struct GlobalSettings {
     #[serde(default)]
     pub headroom_telemetry: bool,
+    #[serde(default)]
+    pub headroom_memory: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_model: Option<String>,
 }
@@ -111,6 +115,7 @@ impl GlobalSettings {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSettings {
     pub headroom_telemetry: bool,
+    pub headroom_memory: bool,
     pub api_model: Option<String>,
 }
 
@@ -120,6 +125,7 @@ impl ResolvedSettings {
             headroom_telemetry: project
                 .headroom_telemetry
                 .unwrap_or(global.headroom_telemetry),
+            headroom_memory: project.headroom_memory.unwrap_or(global.headroom_memory),
             api_model: project
                 .api_model
                 .clone()

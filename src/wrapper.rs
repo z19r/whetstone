@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
 const PROXY_HEALTH_URL: &str = "http://127.0.0.1:8787/health";
 const PROXY_READY_TIMEOUT: Duration = Duration::from_secs(15);
+const PROXY_KILL_TIMEOUT: Duration = Duration::from_secs(10);
 const PROXY_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const PROXY_PROBE_TIMEOUT: Duration = Duration::from_millis(800);
 
@@ -18,16 +19,126 @@ fn set_proxy_env() {
     }
 }
 
-pub fn wrap_claude(args: &[String]) -> ! {
+pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     set_proxy_env();
-    let proxy_ready = ensure_proxy_ready();
+
+    let resolved = resolved_settings();
+    let want_memory = memory_flag || resolved.headroom_memory;
+    let decision = resolve_proxy(want_memory);
 
     let skip_rtk_setup = should_skip_headroom_rtk_setup();
-    let resolved = resolved_settings();
     let model = resolved.api_model.as_deref().unwrap_or(DEFAULT_MODEL);
-    let cmd_args = build_claude_args(args, skip_rtk_setup, proxy_ready, model);
+    let cmd_args = build_claude_args(
+        args,
+        skip_rtk_setup,
+        decision.proxy_ready,
+        decision.wrap_memory,
+        model,
+    );
 
     exec("headroom", &cmd_args);
+}
+
+/// How whetstone should hand the proxy off to `headroom wrap claude`.
+struct ProxyDecision {
+    /// A live proxy already serves :8787 — pass `--no-proxy` so wrap reuses it.
+    proxy_ready: bool,
+    /// Let `headroom wrap` own a session-bound proxy started with `--memory`.
+    wrap_memory: bool,
+}
+
+/// Reconcile the running proxy (if any) with whether this session wants
+/// persistent memory. When a proxy is already up *without* memory but memory
+/// is wanted, prompt the user before replacing it.
+fn resolve_proxy(want_memory: bool) -> ProxyDecision {
+    match probe_proxy_health() {
+        Some(health) => {
+            if want_memory && !health.memory {
+                resolve_memory_conflict(want_memory, health.pid)
+            } else {
+                // A live proxy already satisfies this session.
+                ProxyDecision {
+                    proxy_ready: true,
+                    wrap_memory: false,
+                }
+            }
+        }
+        None => start_detached_decision(want_memory),
+    }
+}
+
+/// Spawn a detached proxy (optionally with memory) and wait for it to answer.
+/// If it never comes up, fall back to letting `headroom wrap` start its own
+/// session-bound proxy — carrying the memory preference across.
+fn start_detached_decision(want_memory: bool) -> ProxyDecision {
+    let ready = start_proxy_detached_ready(want_memory);
+    ProxyDecision {
+        proxy_ready: ready,
+        wrap_memory: if ready { false } else { want_memory },
+    }
+}
+
+/// The running proxy lacks memory but this session wants it. Ask what to do.
+fn resolve_memory_conflict(want_memory: bool, pid: Option<u32>) -> ProxyDecision {
+    // Non-interactive: never kill a proxy other sessions may be sharing.
+    if !crate::ui::is_interactive() {
+        eprintln!(
+            "[WARN] whetstone: a proxy is already running without --memory; \
+             continuing without memory (run interactively to replace it)"
+        );
+        return ProxyDecision {
+            proxy_ready: true,
+            wrap_memory: false,
+        };
+    }
+
+    let choices = [
+        "Restart the proxy with memory (replaces it for all sessions)",
+        "Start a memory proxy for this session only",
+        "Cancel and abort launch",
+    ];
+    let prompt = "A Headroom proxy is already running without --memory. What now?";
+    match crate::ui::select(prompt, &choices, 0) {
+        0 => {
+            kill_proxy(pid);
+            start_detached_decision(want_memory)
+        }
+        1 => {
+            kill_proxy(pid);
+            // `headroom wrap claude --memory` brings up its own session proxy.
+            ProxyDecision {
+                proxy_ready: false,
+                wrap_memory: true,
+            }
+        }
+        _ => {
+            crate::ui::info("aborted; proxy left untouched");
+            std::process::exit(0);
+        }
+    }
+}
+
+/// SIGTERM the running proxy by PID and wait for the port to free up, so a
+/// replacement can bind :8787 without an [Errno 98] address-in-use race.
+fn kill_proxy(pid: Option<u32>) {
+    match pid {
+        Some(pid) => {
+            let _ = Command::new("kill").arg(pid.to_string()).status();
+        }
+        None => {
+            eprintln!("[WARN] whetstone: running proxy did not report a pid; cannot kill it");
+            return;
+        }
+    }
+
+    let deadline = Instant::now() + PROXY_KILL_TIMEOUT;
+    while Instant::now() < deadline {
+        if !probe_proxy() {
+            return;
+        }
+        std::thread::sleep(PROXY_POLL_INTERVAL);
+    }
+    eprintln!("[WARN] whetstone: proxy at {DEFAULT_PROXY} did not shut down in time");
 }
 
 fn resolved_settings() -> crate::config::ResolvedSettings {
@@ -44,18 +155,14 @@ fn resolved_settings() -> crate::config::ResolvedSettings {
 /// Phase 6.3: claude's first API call must hit a live proxy. The SessionStart
 /// hook auto-starts headroom, but it fires after claude has already launched —
 /// so the proxy may still be down by the time claude makes its first request.
-/// Probe `/health`; if dead, spawn `headroom proxy` detached and poll until it
-/// answers or we hit `PROXY_READY_TIMEOUT`. Returns whether a proxy is up, so
-/// the caller can pass `--no-proxy` to `headroom wrap` — whetstone owns the
+/// Spawn `headroom proxy` (optionally with `--memory`) detached and poll until
+/// it answers or we hit `PROXY_READY_TIMEOUT`. Returns whether a proxy is up,
+/// so the caller can pass `--no-proxy` to `headroom wrap` — whetstone owns the
 /// proxy lifecycle, and letting wrap manage it risks a hot-restart crash. On
 /// failure we soft-warn and return false so wrap may still try its own proxy
 /// startup as a last-resort fallback (e.g. a custom upstream).
-fn ensure_proxy_ready() -> bool {
-    if probe_proxy() {
-        return true;
-    }
-
-    let spawned = spawn_proxy_detached().is_ok();
+fn start_proxy_detached_ready(memory: bool) -> bool {
+    let spawned = spawn_proxy_detached(memory).is_ok();
 
     let deadline = Instant::now() + PROXY_READY_TIMEOUT;
     while Instant::now() < deadline {
@@ -81,12 +188,46 @@ fn probe_proxy() -> bool {
         .is_ok()
 }
 
-fn spawn_proxy_detached() -> std::io::Result<()> {
+/// A live proxy's relevant state, read from `/health` `config`.
+struct ProxyHealth {
+    /// Whether the running proxy was started with persistent memory enabled.
+    memory: bool,
+    /// The proxy's process id, used to replace it cleanly. `None` if absent.
+    pid: Option<u32>,
+}
+
+/// Probe `/health` and parse memory state + pid. `None` when no proxy answers.
+fn probe_proxy_health() -> Option<ProxyHealth> {
+    let body = ureq::get(PROXY_HEALTH_URL)
+        .timeout(PROXY_PROBE_TIMEOUT)
+        .call()
+        .ok()?
+        .into_string()
+        .ok()?;
+    parse_proxy_health(&body)
+}
+
+fn parse_proxy_health(body: &str) -> Option<ProxyHealth> {
+    let json: Value = serde_json::from_str(body).ok()?;
+    let config = json.get("config");
+    let memory = config
+        .and_then(|c| c.get("memory"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let pid = config
+        .and_then(|c| c.get("pid"))
+        .and_then(Value::as_u64)
+        .map(|p| p as u32);
+    Some(ProxyHealth { memory, pid })
+}
+
+fn spawn_proxy_detached(memory: bool) -> std::io::Result<()> {
     use std::process::Stdio;
     let telemetry_disabled = !headroom_telemetry_enabled();
     let args = build_proxy_args(
         headroom_proxy_supports_savings_profile(),
         telemetry_disabled,
+        memory,
     );
     let mut cmd = Command::new("headroom");
     cmd.args(&args)
@@ -100,13 +241,16 @@ fn spawn_proxy_detached() -> std::io::Result<()> {
     cmd.spawn().map(|_| ())
 }
 
-fn build_proxy_args(savings_profile: bool, no_telemetry: bool) -> Vec<&'static str> {
+fn build_proxy_args(savings_profile: bool, no_telemetry: bool, memory: bool) -> Vec<&'static str> {
     let mut args = vec!["proxy", "--port", "8787"];
     if savings_profile {
         args.push("--savings-profile");
     }
     if no_telemetry {
         args.push("--no-telemetry");
+    }
+    if memory {
+        args.push("--memory");
     }
     args
 }
@@ -165,6 +309,7 @@ fn build_claude_args(
     args: &[String],
     skip_rtk_setup: bool,
     proxy_ready: bool,
+    wrap_memory: bool,
     model: &str,
 ) -> Vec<String> {
     let mut cmd_args = vec!["wrap".to_string(), "claude".to_string()];
@@ -178,6 +323,12 @@ fn build_claude_args(
     }
 
     cmd_args.push("--no-serena".into());
+
+    // Only when whetstone is *not* managing the proxy itself — wrap brings up
+    // its own session-bound proxy and needs `--memory` to enable it there.
+    if wrap_memory {
+        cmd_args.push("--memory".into());
+    }
 
     let user_set_model = args
         .iter()
@@ -321,9 +472,14 @@ fn path_is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
-pub fn wrap_proxy(args: &[String]) -> ! {
+pub fn wrap_proxy(args: &[String], memory: bool) -> ! {
     set_proxy_env();
-    exec("headroom", &[&["proxy".to_string()], args].concat());
+    let mut proxy_args = vec!["proxy".to_string()];
+    if memory && !args.iter().any(|a| a == "--memory") {
+        proxy_args.push("--memory".into());
+    }
+    proxy_args.extend_from_slice(args);
+    exec("headroom", &proxy_args);
 }
 
 pub fn wrap_rtk(args: &[String]) -> ! {
@@ -397,7 +553,7 @@ exit 0
 
     #[test]
     fn build_claude_args_injects_default_model_when_absent() {
-        let args = build_claude_args(&[], true, false, DEFAULT_MODEL);
+        let args = build_claude_args(&[], true, false, false, DEFAULT_MODEL);
 
         assert_eq!(
             args,
@@ -418,6 +574,7 @@ exit 0
             &["--model".into(), "claude-sonnet".into()],
             false,
             false,
+            false,
             DEFAULT_MODEL,
         );
 
@@ -434,6 +591,7 @@ exit 0
             &["--model=claude-sonnet".into()],
             false,
             false,
+            false,
             DEFAULT_MODEL,
         );
 
@@ -447,6 +605,7 @@ exit 0
     fn build_claude_args_passes_through_arbitrary_args_unchanged() {
         let args = build_claude_args(
             &["--dangerously-skip-permissions".into(), "--print".into()],
+            false,
             false,
             false,
             DEFAULT_MODEL,
@@ -468,7 +627,7 @@ exit 0
 
     #[test]
     fn build_claude_args_uses_configured_model() {
-        let args = build_claude_args(&[], false, false, "claude-sonnet-4-6");
+        let args = build_claude_args(&[], false, false, false, "claude-sonnet-4-6");
 
         assert_eq!(
             args,
@@ -567,25 +726,83 @@ exit 0
 
     #[test]
     fn build_proxy_args_without_savings_profile() {
-        let args = build_proxy_args(false, false);
+        let args = build_proxy_args(false, false, false);
         assert_eq!(args, vec!["proxy", "--port", "8787"]);
     }
 
     #[test]
     fn build_proxy_args_with_savings_profile() {
-        let args = build_proxy_args(true, false);
+        let args = build_proxy_args(true, false, false);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--savings-profile"]);
     }
 
     #[test]
     fn build_proxy_args_with_no_telemetry() {
-        let args = build_proxy_args(false, true);
+        let args = build_proxy_args(false, true, false);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--no-telemetry"]);
     }
 
     #[test]
+    fn build_proxy_args_with_memory() {
+        let args = build_proxy_args(false, false, true);
+        assert_eq!(args, vec!["proxy", "--port", "8787", "--memory"]);
+    }
+
+    #[test]
+    fn build_proxy_args_with_savings_profile_and_memory() {
+        let args = build_proxy_args(true, false, true);
+        assert_eq!(
+            args,
+            vec!["proxy", "--port", "8787", "--savings-profile", "--memory"]
+        );
+    }
+
+    #[test]
+    fn build_claude_args_injects_memory_when_wrap_manages_proxy() {
+        let args = build_claude_args(&[], false, false, true, DEFAULT_MODEL);
+        assert!(args.contains(&"--memory".to_string()));
+        // wrap owns the proxy here, so --no-proxy must NOT be present.
+        assert!(!args.contains(&"--no-proxy".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_omits_memory_by_default() {
+        let args = build_claude_args(&[], false, true, false, DEFAULT_MODEL);
+        assert!(!args.contains(&"--memory".to_string()));
+    }
+
+    #[test]
+    fn parse_proxy_health_reads_memory_and_pid() {
+        let body = r#"{"config":{"memory":true,"pid":4242}}"#;
+        let health = parse_proxy_health(body).unwrap();
+        assert!(health.memory);
+        assert_eq!(health.pid, Some(4242));
+    }
+
+    #[test]
+    fn parse_proxy_health_defaults_memory_false_when_absent() {
+        let body = r#"{"config":{"pid":7}}"#;
+        let health = parse_proxy_health(body).unwrap();
+        assert!(!health.memory);
+        assert_eq!(health.pid, Some(7));
+    }
+
+    #[test]
+    fn parse_proxy_health_handles_missing_config() {
+        let body = r#"{"status":"healthy"}"#;
+        let health = parse_proxy_health(body).unwrap();
+        assert!(!health.memory);
+        assert_eq!(health.pid, None);
+    }
+
+    #[test]
+    fn parse_proxy_health_rejects_garbage() {
+        assert!(parse_proxy_health("not json").is_none());
+    }
+
+    #[test]
     fn build_proxy_args_with_savings_profile_and_no_telemetry() {
-        let args = build_proxy_args(true, true);
+        let args = build_proxy_args(true, true, false);
         assert_eq!(
             args,
             vec![
@@ -683,7 +900,7 @@ exit 0
 
     #[test]
     fn build_claude_args_skips_no_rtk_when_not_requested() {
-        let args = build_claude_args(&[], false, false, DEFAULT_MODEL);
+        let args = build_claude_args(&[], false, false, false, DEFAULT_MODEL);
         assert!(!args.contains(&"--no-rtk".to_string()));
         assert!(args.contains(&"--no-serena".to_string()));
         assert!(args.contains(&"--model".to_string()));
@@ -691,14 +908,14 @@ exit 0
 
     #[test]
     fn build_claude_args_adds_no_proxy_when_proxy_ready() {
-        let args = build_claude_args(&[], false, true, DEFAULT_MODEL);
+        let args = build_claude_args(&[], false, true, false, DEFAULT_MODEL);
         assert!(args.contains(&"--no-proxy".to_string()));
         assert_eq!(&args[0..2], &["wrap".to_string(), "claude".to_string()]);
     }
 
     #[test]
     fn build_claude_args_omits_no_proxy_when_proxy_not_ready() {
-        let args = build_claude_args(&[], false, false, DEFAULT_MODEL);
+        let args = build_claude_args(&[], false, false, false, DEFAULT_MODEL);
         assert!(!args.contains(&"--no-proxy".to_string()));
     }
 
