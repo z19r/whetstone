@@ -14,15 +14,11 @@ use crate::{headroom, preflight, rtk, setup, shell, ui, version};
 
 const TOTAL_STEPS: usize = 7;
 
-pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
+pub fn run(full: bool, headroom_extras: &str, migrated: bool) -> Result<()> {
     welcome_screen()?;
 
-    // Reserve the bottom rows of the terminal for the progress gauge. All
-    // subsequent ui::info/ok/warn lines are pushed above the gauge via
-    // ratatui's insert_before — no more line-vs-gauge overdraw.
     ui::enter_wizard();
 
-    // RAII guard so the wizard tears down even if a step bails with `?`.
     struct WizardGuard;
     impl Drop for WizardGuard {
         fn drop(&mut self) {
@@ -51,7 +47,13 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
     setup::self_install()?;
 
     ui::wizard_step(6, TOTAL_STEPS, "Memory provider");
-    let provider = setup::prompt_memory_provider(full)?;
+    let provider = if migrated {
+        let p = setup::detect_installed_provider()?;
+        ui::ok(&format!("using {} (configured during migration)", p.name()));
+        p
+    } else {
+        setup::prompt_memory_provider(full)?
+    };
 
     if provider != MemoryProvider::Skip {
         ui::wizard_step(7, TOTAL_STEPS, "Integrations & manifest");
@@ -60,8 +62,6 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
         ui::info("skipped memory provider, skills, integrations, manifest");
     }
 
-    // Tear the gauge down before the full-screen completion takeover so
-    // ratatui's alternate-screen mode starts from a clean cursor.
     drop(_guard);
 
     completion_screen(provider)?;

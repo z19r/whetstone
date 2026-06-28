@@ -30,7 +30,8 @@ fn show_upgrade_banner(cmd: &Option<Command>) {
     let skip = matches!(
         cmd,
         Some(
-            Command::Update { .. }
+            Command::Setup { .. }
+                | Command::Update { .. }
                 | Command::Version
                 | Command::Dashboard
                 | Command::Stats

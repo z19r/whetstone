@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{ToolVersions, WhetstoneManifest};
 use crate::memory::MemoryProvider;
-use crate::{config, doctor, headroom, integrations, migrate, preflight, rtk, shell, ui};
+use crate::{config, doctor, headroom, integrations, migrate, preflight, rtk, shell, ui, update};
 
 pub(crate) const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
 
@@ -39,20 +39,61 @@ pub fn resolve_assets_dir() -> Result<PathBuf> {
 }
 
 pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
-    // Phase 3.8 / 6.4: detect a v2 install up front, before either the wizard
-    // or the sequential path runs anything. This guarantees the migration
-    // prompt fires even when stdin is /dev/tty inside the TUI wizard.
-    if migrate::detect_and_offer(false)? {
-        return Ok(());
-    }
+    maybe_self_update(full, headroom_extras);
+
+    let migrated = migrate::detect_and_offer(false)?;
 
     if ui::is_interactive() {
-        return crate::wizard::run(full, headroom_extras);
+        return crate::wizard::run(full, headroom_extras, migrated);
     }
-    run_sequential(full, headroom_extras)
+    run_sequential(full, headroom_extras, migrated)
 }
 
-fn run_sequential(full: bool, headroom_extras: &str) -> Result<()> {
+fn maybe_self_update(full: bool, headroom_extras: &str) {
+    if std::env::var("WHETSTONE_SETUP_UPDATED").is_ok() {
+        return;
+    }
+
+    let remote = match update::fetch_remote_version() {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    if let Ok(ui::ComponentStatus::Updated(from, to)) = update::self_update(&remote) {
+        ui::ok(&format!(
+            "updated whetstone {from} → {to}, restarting setup…"
+        ));
+        re_exec_setup(full, headroom_extras);
+    }
+}
+
+fn re_exec_setup(full: bool, headroom_extras: &str) -> ! {
+    let exe = std::env::current_exe().expect("current exe path");
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.arg("setup");
+    if full {
+        cmd.arg("--full");
+    }
+    cmd.args(["--headroom-extras", headroom_extras]);
+    cmd.env("WHETSTONE_SETUP_UPDATED", "1");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let err = cmd.exec();
+        ui::fail(&format!("failed to restart setup: {err}"));
+    }
+
+    #[cfg(not(unix))]
+    {
+        match cmd.status() {
+            Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+            Err(e) => ui::fail(&format!("failed to restart setup: {e}")),
+        }
+    }
+}
+
+fn run_sequential(full: bool, headroom_extras: &str, migrated: bool) -> Result<()> {
     ui::info("whetstone setup");
 
     let assets = resolve_assets_dir()?;
@@ -74,7 +115,12 @@ fn run_sequential(full: bool, headroom_extras: &str) -> Result<()> {
     ui::info("step 4/7 — install whetstone binary");
     self_install()?;
 
-    let provider = prompt_memory_provider(full)?;
+    let provider = if migrated {
+        ui::info("step 5/7 — memory provider (configured during migration)");
+        detect_installed_provider()?
+    } else {
+        prompt_memory_provider(full)?
+    };
 
     if provider != MemoryProvider::Skip {
         complete_setup(provider, &assets, full)?;
@@ -120,7 +166,7 @@ pub(crate) fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
     Ok(choices[idx])
 }
 
-fn detect_installed_provider() -> Result<MemoryProvider> {
+pub(crate) fn detect_installed_provider() -> Result<MemoryProvider> {
     // Prefer the v3 manifest if present.
     let project_dir = std::env::current_dir()?;
     let manifest_path = WhetstoneManifest::path_for(&project_dir);
@@ -225,7 +271,14 @@ fn write_manifest(provider: MemoryProvider) -> Result<()> {
         icm: installed_icm_version(),
         headroom: headroom::installed_version(),
     };
-    let manifest = config::WhetstoneManifest::new(provider, tools);
+    let mut manifest = config::WhetstoneManifest::new(provider, tools);
+
+    if let Ok(Some(existing)) = WhetstoneManifest::load(&manifest_path) {
+        if let Some(mid) = existing.migration_id() {
+            manifest.set_migration_id(mid);
+        }
+    }
+
     manifest.save(&manifest_path)?;
     ui::ok(&format!("wrote manifest to {}", manifest_path.display()));
     Ok(())

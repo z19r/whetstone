@@ -92,7 +92,7 @@ fn write_cache(cache: &VersionCache) {
     }
 }
 
-fn fetch_remote_version() -> Result<String> {
+pub(crate) fn fetch_remote_version() -> Result<String> {
     let body = ureq::get(REMOTE_VERSION_URL)
         .call()
         .context("fetching remote VERSION")?
@@ -167,7 +167,7 @@ fn detect_target() -> Option<&'static str> {
     }
 }
 
-fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
+pub(crate) fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
     let current = version::current().to_string();
 
     if !version::is_older(&current, latest) {
