@@ -149,3 +149,6 @@ AGENTS.md
 
 # Local Netlify folder
 .netlify
+/.headroom/memories/projects
+/.headroom
+/.tokensave
