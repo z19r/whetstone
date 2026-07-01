@@ -46,7 +46,7 @@ Single binary distribution. Users run `whetstone setup` from inside a git projec
 
 <!-- AUTO-GENERATED: cli -->
 ```
-whetstone                              # Default: headroom wrap claude --model claude-opus-4-6
+whetstone                              # Default: headroom wrap claude (auto-selects newest available Sonnet; falls back to claude-opus-4-6)
 whetstone setup [--full] [--headroom-extras EXTRAS]
 whetstone uninstall
 whetstone claude [args...]

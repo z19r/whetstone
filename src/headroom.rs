@@ -235,6 +235,51 @@ pub fn learn() -> Result<bool> {
     );
 }
 
+/// Whether a serde_json value has a `mcpServers.headroom` entry.
+fn json_has_headroom_mcp(v: &serde_json::Value) -> bool {
+    v.get("mcpServers")
+        .and_then(|servers| servers.get("headroom"))
+        .is_some()
+}
+
+/// Whether the Headroom MCP server is registered in Claude Code's config
+/// (`~/.claude.json`). We only re-sync registrations the user already opted
+/// into — never force-add MCP for users who kept it off.
+fn mcp_registered() -> bool {
+    let Some(home) = dirs::home_dir() else {
+        return false;
+    };
+    let Ok(content) = fs::read_to_string(home.join(".claude.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .map(|json| json_has_headroom_mcp(&json))
+        .unwrap_or(false)
+}
+
+/// After a headroom upgrade the registered MCP command (bare `headroom` vs. the
+/// absolute uv path) and `--proxy-url` can drift out of sync, which makes the
+/// `headroom_retrieve` tool warn on every session start. Re-run `mcp install`
+/// (scoped to Claude Code) to rewrite the entry — but only when it already
+/// exists. Best-effort; returns `Ok(false)` when nothing was registered.
+pub fn resync_mcp_if_registered() -> Result<bool> {
+    if !mcp_registered() {
+        return Ok(false);
+    }
+
+    let output = Command::new("headroom")
+        .args(["mcp", "install", "--agent", "claude", "--force"])
+        .output()
+        .context("failed to run `headroom mcp install`")?;
+
+    if output.status.success() {
+        Ok(true)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("headroom mcp install failed: {}", stderr.trim());
+    }
+}
+
 fn run_uv_install(spec: &str, upgrade: bool) -> Result<()> {
     let mut args = vec!["tool", "install"];
     if upgrade {
@@ -259,6 +304,28 @@ fn run_uv_install(spec: &str, upgrade: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_registered_headroom_mcp() {
+        let json = serde_json::json!({
+            "mcpServers": { "headroom": { "command": "headroom", "args": ["mcp", "serve"] } }
+        });
+        assert!(json_has_headroom_mcp(&json));
+    }
+
+    #[test]
+    fn ignores_config_without_headroom_mcp() {
+        let json = serde_json::json!({
+            "mcpServers": { "icm": { "command": "icm" } }
+        });
+        assert!(!json_has_headroom_mcp(&json));
+    }
+
+    #[test]
+    fn ignores_config_without_mcp_servers() {
+        let json = serde_json::json!({ "projects": {} });
+        assert!(!json_has_headroom_mcp(&json));
+    }
 
     #[test]
     fn extras_all() {

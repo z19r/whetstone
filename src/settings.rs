@@ -19,6 +19,7 @@ use crate::ui;
 const FALLBACK_MODELS: &[&str] = &[
     "claude-opus-4-8",
     "claude-opus-4-6",
+    "claude-sonnet-5",
     "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
     "claude-fable-5",
@@ -156,17 +157,45 @@ fn fetch_models_from_api() -> Option<Vec<String>> {
     Some(models)
 }
 
-fn load_available_models() -> Vec<String> {
+/// Available models from the 12h cache or the live API, or `None` when neither
+/// is reachable. Distinct from [`load_available_models`], which substitutes the
+/// static `FALLBACK_MODELS` — callers that need to know whether availability
+/// was *actually* determined (vs. guessed) use this instead.
+fn live_available_models() -> Option<Vec<String>> {
     if let Some(cached) = read_models_cache() {
-        return cached;
+        return Some(cached);
     }
 
     if let Some(fetched) = fetch_models_from_api() {
         write_models_cache(&fetched);
-        return fetched;
+        return Some(fetched);
     }
 
-    FALLBACK_MODELS.iter().map(|s| s.to_string()).collect()
+    None
+}
+
+fn load_available_models() -> Vec<String> {
+    live_available_models()
+        .unwrap_or_else(|| FALLBACK_MODELS.iter().map(|s| s.to_string()).collect())
+}
+
+/// Newest Sonnet in `models`, by lexical id (matching the descending sort the
+/// picker uses: `claude-sonnet-5` > `claude-sonnet-4-6`). `None` when the list
+/// has no Sonnet. Independent of input ordering so it's safe to unit-test.
+fn newest_sonnet(models: &[String]) -> Option<String> {
+    models
+        .iter()
+        .filter(|id| id.contains("-sonnet-"))
+        .max_by(|a, b| a.as_str().cmp(b.as_str()))
+        .cloned()
+}
+
+/// The model whetstone uses when the user hasn't pinned one: the newest
+/// available Sonnet per the live/cached models list. Returns `None` when
+/// availability can't be determined (offline / no `ANTHROPIC_API_KEY`) so the
+/// caller falls back to its own pinned default rather than guessing.
+pub fn preferred_default_model() -> Option<String> {
+    newest_sonnet(&live_available_models()?)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -623,6 +652,35 @@ mod tests {
             selected: 0,
             models: test_models(),
         }
+    }
+
+    #[test]
+    fn newest_sonnet_picks_highest_version() {
+        let models = vec![
+            "claude-opus-4-8".to_string(),
+            "claude-sonnet-4-6".to_string(),
+            "claude-sonnet-5".to_string(),
+            "claude-haiku-4-5".to_string(),
+        ];
+        assert_eq!(newest_sonnet(&models).as_deref(), Some("claude-sonnet-5"));
+    }
+
+    #[test]
+    fn newest_sonnet_ignores_input_order() {
+        let models = vec![
+            "claude-sonnet-5".to_string(),
+            "claude-sonnet-4-6".to_string(),
+        ];
+        assert_eq!(newest_sonnet(&models).as_deref(), Some("claude-sonnet-5"));
+    }
+
+    #[test]
+    fn newest_sonnet_none_when_absent() {
+        let models = vec![
+            "claude-opus-4-8".to_string(),
+            "claude-haiku-4-5".to_string(),
+        ];
+        assert_eq!(newest_sonnet(&models), None);
     }
 
     #[test]

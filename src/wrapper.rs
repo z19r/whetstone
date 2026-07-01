@@ -24,8 +24,8 @@ pub fn wrap_claude(args: &[String]) -> ! {
 
     let skip_rtk_setup = should_skip_headroom_rtk_setup();
     let resolved = resolved_settings();
-    let model = resolved.api_model.as_deref().unwrap_or(DEFAULT_MODEL);
-    let cmd_args = build_claude_args(args, skip_rtk_setup, proxy_ready, model);
+    let model = resolve_model(resolved.api_model.clone());
+    let cmd_args = build_claude_args(args, skip_rtk_setup, proxy_ready, &model);
 
     exec("headroom", &cmd_args);
 }
@@ -156,10 +156,21 @@ fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
     help_text.contains(flag)
 }
 
-// Default model — whetstone pins claude-opus-4-6 until it is fully deprecated.
-// If the user (or a wrapping CLI layer) already passes `--model`, we leave it
-// alone.
+// Pinned fallback model — used only when the user hasn't selected one AND we
+// can't reach the models API to detect a newer Sonnet (offline / no
+// ANTHROPIC_API_KEY). If the user (or a wrapping CLI layer) already passes
+// `--model`, we leave it alone.
 const DEFAULT_MODEL: &str = "claude-opus-4-6";
+
+// Resolve the model to launch with, in priority order:
+//   1. an explicit selection stored in whetstone settings (`api_model`)
+//   2. the newest available Sonnet, per the 12h-cached models API
+//   3. the pinned `DEFAULT_MODEL` fallback
+fn resolve_model(explicit: Option<String>) -> String {
+    explicit
+        .or_else(crate::settings::preferred_default_model)
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string())
+}
 
 fn build_claude_args(
     args: &[String],
@@ -360,6 +371,14 @@ mod tests {
 
     fn strings(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn resolve_model_prefers_explicit_selection() {
+        assert_eq!(
+            resolve_model(Some("claude-sonnet-5".to_string())),
+            "claude-sonnet-5"
+        );
     }
 
     fn create_fake_rtk_binary() -> (PathBuf, PathBuf) {

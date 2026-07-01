@@ -497,6 +497,17 @@ pub fn run(full: bool) -> Result<()> {
     }
     ui::component_line("headroom", &headroom_status);
 
+    // A headroom upgrade can shift its binary path, leaving the registered MCP
+    // command stale and making `headroom_retrieve` warn every session start.
+    // Re-sync the registration (only if the user already had it installed).
+    if matches!(&headroom_status, ui::ComponentStatus::Updated(_, _)) {
+        match headroom::resync_mcp_if_registered() {
+            Ok(true) => ui::ok("re-synced headroom MCP registration"),
+            Ok(false) => {}
+            Err(e) => ui::warn(&format!("headroom MCP re-sync skipped: {e:#}")),
+        }
+    }
+
     let claude_code_status = match dependency_decision(
         claude_code_current.as_deref(),
         claude_code_remote.as_deref(),
