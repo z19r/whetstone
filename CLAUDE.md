@@ -63,6 +63,8 @@ whetstone db init|add-session|add-insight|search|get-sessions|...
 
 `--headroom-extras` accepts: `all` (default = `proxy,code,mcp`), `none`, or comma-separated like `proxy,code`.
 
+`--memory` is a global flag (e.g. `whetstone --memory`, `whetstone --memory claude`). It enables Headroom persistent cross-session memory by passing `--memory` to the proxy whetstone spawns. If a proxy is already running *without* memory, whetstone prompts: restart it with memory (replaces the global proxy), start a memory proxy for this session only, or cancel. It can also be set persistently per-project or globally via `whetstone settings` (Headroom Memory).
+
 ## Architecture
 
 ```

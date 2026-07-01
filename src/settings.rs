@@ -218,10 +218,15 @@ impl Scope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SettingId {
     HeadroomTelemetry,
+    HeadroomMemory,
     ApiModel,
 }
 
-const SETTINGS: &[SettingId] = &[SettingId::HeadroomTelemetry, SettingId::ApiModel];
+const SETTINGS: &[SettingId] = &[
+    SettingId::HeadroomTelemetry,
+    SettingId::HeadroomMemory,
+    SettingId::ApiModel,
+];
 
 struct SettingsState {
     global: GlobalSettings,
@@ -239,6 +244,12 @@ impl SettingsState {
                 Some(true) => Scope::Project,
                 Some(false) => Scope::Off,
                 None if self.global.headroom_telemetry => Scope::Global,
+                None => Scope::Off,
+            },
+            SettingId::HeadroomMemory => match self.project.headroom_memory {
+                Some(true) => Scope::Project,
+                Some(false) => Scope::Off,
+                None if self.global.headroom_memory => Scope::Global,
                 None => Scope::Off,
             },
             SettingId::ApiModel => {
@@ -267,6 +278,19 @@ impl SettingsState {
                 }
                 Scope::Project => {
                     self.project.headroom_telemetry = Some(true);
+                }
+            },
+            SettingId::HeadroomMemory => match next {
+                Scope::Off => {
+                    self.global.headroom_memory = false;
+                    self.project.headroom_memory = None;
+                }
+                Scope::Global => {
+                    self.global.headroom_memory = true;
+                    self.project.headroom_memory = None;
+                }
+                Scope::Project => {
+                    self.project.headroom_memory = Some(true);
                 }
             },
             SettingId::ApiModel => match next {
@@ -548,6 +572,10 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
                 "Headroom Telemetry",
                 "Send anonymous usage data to Headroom",
             ),
+            SettingId::HeadroomMemory => (
+                "Headroom Memory",
+                "Enable Headroom persistent cross-session memory (proxy --memory)",
+            ),
             SettingId::ApiModel => ("API Model", "Model used for Claude Code sessions"),
         };
 
@@ -725,6 +753,35 @@ mod tests {
     }
 
     #[test]
+    fn memory_cycle_through_all_scopes() {
+        let mut s = default_state();
+        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Off);
+
+        s.cycle_scope(SettingId::HeadroomMemory);
+        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Global);
+        assert!(s.global.headroom_memory);
+
+        s.cycle_scope(SettingId::HeadroomMemory);
+        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Project);
+        assert_eq!(s.project.headroom_memory, Some(true));
+
+        s.cycle_scope(SettingId::HeadroomMemory);
+        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Off);
+        assert!(!s.global.headroom_memory);
+        assert!(s.project.headroom_memory.is_none());
+    }
+
+    #[test]
+    fn memory_scope_from_project_override() {
+        let mut s = default_state();
+        s.project.headroom_memory = Some(false);
+        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Off);
+
+        s.project.headroom_memory = Some(true);
+        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Project);
+    }
+
+    #[test]
     fn model_scope_detection() {
         let mut s = default_state();
         assert_eq!(s.scope(SettingId::ApiModel), Scope::Off);
@@ -757,7 +814,7 @@ mod tests {
     #[test]
     fn model_value_cycling() {
         let mut s = default_state();
-        s.selected = 1;
+        s.selected = 2;
         s.global.api_model = Some(FALLBACK_MODELS[0].to_string());
 
         s.cycle_model_value();
@@ -770,7 +827,7 @@ mod tests {
     #[test]
     fn model_value_cycling_wraps() {
         let mut s = default_state();
-        s.selected = 1;
+        s.selected = 2;
         s.global.api_model = Some(FALLBACK_MODELS[FALLBACK_MODELS.len() - 1].to_string());
 
         s.cycle_model_value();
@@ -780,7 +837,7 @@ mod tests {
     #[test]
     fn model_value_cycle_noop_when_off() {
         let mut s = default_state();
-        s.selected = 1;
+        s.selected = 2;
         s.cycle_model_value();
         assert!(s.global.api_model.is_none());
         assert!(s.project.api_model.is_none());

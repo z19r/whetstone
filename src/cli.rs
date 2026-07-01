@@ -7,6 +7,12 @@ use clap::{Parser, Subcommand};
     about = "Headroom + RTK + Memory for Claude Code"
 )]
 pub struct Cli {
+    /// Enable Headroom persistent cross-session memory for this run.
+    /// Passes `--memory` to the proxy whetstone manages. If a proxy is
+    /// already running without memory, whetstone prompts before replacing it.
+    #[arg(long, global = true)]
+    pub memory: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }

@@ -100,12 +100,14 @@ fn main() {
 
     show_upgrade_banner(&cli.command);
 
+    let memory = cli.memory;
+
     match cli.command {
         None => {
             if maybe_offer_setup() {
                 return;
             }
-            wrapper::wrap_claude(&[]);
+            wrapper::wrap_claude(&[], memory);
         }
         Some(cmd) => match cmd {
             Command::Setup {
@@ -125,13 +127,13 @@ fn main() {
                 if maybe_offer_setup() {
                     return;
                 }
-                wrapper::wrap_claude(&args);
+                wrapper::wrap_claude(&args, memory);
             }
             Command::Proxy { args } => {
                 if maybe_offer_setup() {
                     return;
                 }
-                wrapper::wrap_proxy(&args);
+                wrapper::wrap_proxy(&args, memory);
             }
             Command::Rtk { args } => {
                 if maybe_offer_setup() {
