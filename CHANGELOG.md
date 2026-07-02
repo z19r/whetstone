@@ -4,6 +4,16 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-07-02
+
+### Added
+
+- add --memory flag and Headroom Memory setting (#67)
+
+### Fixed
+
+- re-sync headroom MCP on update; prefer newest Sonnet as default model (#68)
+
 ## [3.6.2] - 2026-06-28
 
 ### Added

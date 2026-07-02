@@ -2,6 +2,24 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.7.0",
+    "date": "2026-07-02",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add --memory flag and Headroom Memory setting (#67)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "re-sync headroom MCP on update; prefer newest Sonnet as default model (#68)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.6.2",
     "date": "2026-06-28",
     "sections": [
@@ -127,18 +145,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "conditional --savings-profile and installMethod mismatch fix"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.3.0",
-    "date": "2026-06-11",
-    "sections": [
-      {
-        "name": "changed",
-        "bullets": [
-          "version bump (no user-facing changes)"
         ]
       }
     ]
