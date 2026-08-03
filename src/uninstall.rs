@@ -5,10 +5,35 @@ use std::process::Command;
 
 use crate::ui;
 
-pub fn run() -> Result<()> {
-    ui::info("whetstone uninstall");
+/// Deprecated entry point for the old top-level `uninstall` command.
+/// Guides the user to the scoped replacements without removing anything.
+pub fn run_deprecated_notice() {
+    ui::warn("`whetstone uninstall` is deprecated and does nothing on its own.");
+    ui::info("Use one of the scoped commands instead:");
+    ui::info("  whetstone project uninstall   # remove files from this project");
+    ui::info("  whetstone global uninstall    # remove binaries, RTK, Headroom");
+}
+
+/// Remove whetstone files from the current project directory only.
+pub fn run_project() -> Result<()> {
+    ui::info("whetstone project uninstall");
     let project_dir = std::env::current_dir()?;
     eprintln!("project dir: {}", project_dir.display());
+
+    if ui::confirm("Remove whetstone files from this project directory?", false) {
+        remove_project_files(&project_dir);
+    } else {
+        ui::warn("skipped project file removal");
+        return Ok(());
+    }
+
+    ui::ok("whetstone project uninstall finished");
+    Ok(())
+}
+
+/// Remove globally-installed whetstone components: binaries, RTK, Headroom.
+pub fn run_global() -> Result<()> {
+    ui::info("whetstone global uninstall");
 
     remove_bins();
 
@@ -24,15 +49,9 @@ pub fn run() -> Result<()> {
         ui::warn("skipped Headroom removal");
     }
 
-    if ui::confirm("Remove whetstone files from this project directory?", false) {
-        remove_project_files(&project_dir);
-    } else {
-        ui::warn("skipped project file removal");
-    }
-
     ui::warn("review shell rc files and remove ANTHROPIC_BASE_URL if unwanted");
     ui::info("restore ~/.claude/settings.json from .bak.* backups if needed");
-    ui::ok("whetstone uninstall finished");
+    ui::ok("whetstone global uninstall finished");
     Ok(())
 }
 
@@ -83,8 +102,8 @@ fn remove_headroom() {
 
 fn remove_project_files(project_dir: &Path) {
     let claude = project_dir.join(".claude");
-    if !claude.join("skills").is_dir() {
-        ui::info(&format!("no .claude/skills in {}", project_dir.display()));
+    if !claude.is_dir() {
+        ui::info(&format!("no .claude in {}", project_dir.display()));
         return;
     }
 

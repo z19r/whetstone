@@ -70,6 +70,8 @@ pub struct ProjectSettings {
     pub headroom_memory: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anthropic_api_url: Option<String>,
 }
 
 const GLOBAL_DIR: &str = ".whetstone";
@@ -83,6 +85,8 @@ pub struct GlobalSettings {
     pub headroom_memory: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anthropic_api_url: Option<String>,
 }
 
 impl GlobalSettings {
@@ -117,6 +121,7 @@ pub struct ResolvedSettings {
     pub headroom_telemetry: bool,
     pub headroom_memory: bool,
     pub api_model: Option<String>,
+    pub anthropic_api_url: Option<String>,
 }
 
 impl ResolvedSettings {
@@ -130,6 +135,10 @@ impl ResolvedSettings {
                 .api_model
                 .clone()
                 .or_else(|| global.api_model.clone()),
+            anthropic_api_url: project
+                .anthropic_api_url
+                .clone()
+                .or_else(|| global.anthropic_api_url.clone()),
         }
     }
 }
@@ -222,6 +231,43 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn resolve_prefers_project_anthropic_api_url() {
+        let global = GlobalSettings {
+            anthropic_api_url: Some("https://global.example".into()),
+            ..Default::default()
+        };
+        let project = ProjectSettings {
+            anthropic_api_url: Some("https://project.example".into()),
+            ..Default::default()
+        };
+        let resolved = ResolvedSettings::resolve(&global, &project);
+        assert_eq!(
+            resolved.anthropic_api_url.as_deref(),
+            Some("https://project.example")
+        );
+    }
+
+    #[test]
+    fn resolve_falls_back_to_global_anthropic_api_url() {
+        let global = GlobalSettings {
+            anthropic_api_url: Some("https://global.example".into()),
+            ..Default::default()
+        };
+        let resolved = ResolvedSettings::resolve(&global, &ProjectSettings::default());
+        assert_eq!(
+            resolved.anthropic_api_url.as_deref(),
+            Some("https://global.example")
+        );
+    }
+
+    #[test]
+    fn resolve_anthropic_api_url_none_when_unset() {
+        let resolved =
+            ResolvedSettings::resolve(&GlobalSettings::default(), &ProjectSettings::default());
+        assert!(resolved.anthropic_api_url.is_none());
+    }
 
     #[test]
     fn provider_round_trip() {

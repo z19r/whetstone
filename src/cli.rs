@@ -31,8 +31,20 @@ pub enum Command {
         headroom_extras: String,
     },
 
-    /// Remove whetstone components
+    /// Deprecated: use `project uninstall` or `global uninstall`
     Uninstall,
+
+    /// Project-scoped operations
+    Project {
+        #[command(subcommand)]
+        action: ProjectCommand,
+    },
+
+    /// Global operations
+    Global {
+        #[command(subcommand)]
+        action: GlobalCommand,
+    },
 
     /// Start Claude Code via headroom wrap (default when no subcommand given)
     Claude {
@@ -126,6 +138,19 @@ pub enum Command {
         #[command(subcommand)]
         action: DbCommand,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ProjectCommand {
+    /// Remove whetstone files from this project directory
+    Uninstall,
+}
+
+#[derive(Subcommand)]
+pub enum GlobalCommand {
+    /// Remove globally-installed whetstone components
+    /// (binaries, RTK, Headroom)
+    Uninstall,
 }
 
 #[derive(Subcommand, Clone)]

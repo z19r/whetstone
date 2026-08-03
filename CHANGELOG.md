@@ -4,6 +4,14 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Anthropic API URL setting in `whetstone settings` — a custom upstream Anthropic API URL for the Headroom proxy, exported as `ANTHROPIC_TARGET_API_URL` before launch (project- or global-scoped; an externally-set env var takes precedence)
+
+### Changed
+
+- Split `whetstone uninstall` into `whetstone project uninstall` (removes per-project files) and `whetstone global uninstall` (removes the whetstone binary, RTK, and Headroom). The top-level `uninstall` command is deprecated: it now removes nothing and prints guidance toward the two scoped commands.
+
 ## [3.7.0] - 2026-07-02
 
 ### Added
