@@ -19,10 +19,41 @@ fn set_proxy_env() {
     }
 }
 
+// The env var headroom reads for a custom upstream Anthropic API URL (its
+// `proxy --anthropic-api-url` flag mirrors this). Setting it here propagates to
+// both the detached `headroom proxy` child and the exec'd `headroom wrap`.
+const ANTHROPIC_TARGET_API_URL: &str = "ANTHROPIC_TARGET_API_URL";
+
+/// Export the configured upstream Anthropic API URL so a whetstone-spawned
+/// headroom proxy targets it. An externally-set env var wins over the stored
+/// setting, and blank/whitespace settings are ignored.
+fn apply_anthropic_api_url(setting: Option<&str>) {
+    if let Some(url) = resolve_anthropic_api_url(setting, env::var(ANTHROPIC_TARGET_API_URL).ok()) {
+        env::set_var(ANTHROPIC_TARGET_API_URL, url);
+    }
+}
+
+/// Pure resolution for [`apply_anthropic_api_url`]: an existing non-empty env
+/// override takes precedence; otherwise a non-blank setting is used. `None`
+/// means "leave the environment untouched".
+fn resolve_anthropic_api_url(
+    setting: Option<&str>,
+    existing_env: Option<String>,
+) -> Option<String> {
+    if existing_env.is_some_and(|v| !v.trim().is_empty()) {
+        return None;
+    }
+    setting
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     set_proxy_env();
 
     let resolved = resolved_settings();
+    apply_anthropic_api_url(resolved.anthropic_api_url.as_deref());
     let want_memory = memory_flag || resolved.headroom_memory;
     let decision = resolve_proxy(want_memory);
 
@@ -304,7 +335,7 @@ fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
 // can't reach the models API to detect a newer Sonnet (offline / no
 // ANTHROPIC_API_KEY). If the user (or a wrapping CLI layer) already passes
 // `--model`, we leave it alone.
-const DEFAULT_MODEL: &str = "claude-opus-4-6";
+pub(crate) const DEFAULT_MODEL: &str = "claude-opus-4-6";
 
 // Resolve the model to launch with, in priority order:
 //   1. an explicit selection stored in whetstone settings (`api_model`)
@@ -527,6 +558,39 @@ mod tests {
 
     fn strings(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn resolve_api_url_uses_setting_when_env_unset() {
+        assert_eq!(
+            resolve_anthropic_api_url(Some("https://proxy.example"), None),
+            Some("https://proxy.example".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_api_url_env_override_wins() {
+        assert_eq!(
+            resolve_anthropic_api_url(
+                Some("https://setting.example"),
+                Some("https://env.example".to_string())
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn resolve_api_url_ignores_blank_setting() {
+        assert_eq!(resolve_anthropic_api_url(Some("   "), None), None);
+        assert_eq!(resolve_anthropic_api_url(None, None), None);
+    }
+
+    #[test]
+    fn resolve_api_url_ignores_blank_env_override() {
+        assert_eq!(
+            resolve_anthropic_api_url(Some("https://setting.example"), Some("  ".to_string())),
+            Some("https://setting.example".to_string())
+        );
     }
 
     #[test]

@@ -13,13 +13,16 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
+use anyhow::Result;
+
+use crate::config::{ResolvedSettings, WhetstoneManifest};
 use crate::settings::family_order;
 
 /// `family_order` value assigned to models we don't recognize; never matches.
 const UNKNOWN_FAMILY: u8 = 4;
 
 /// What the caller does with the model list after the prompt resolves.
-#[allow(dead_code)] // consumed by later tasks (maybe_prompt / wrap_claude)
+#[derive(Debug, PartialEq, Eq)]
 pub enum ModelDecision {
     /// Pin as project default and launch with it.
     UsePinned(String),
@@ -27,6 +30,22 @@ pub enum ModelDecision {
     UseSession(String),
     /// Leave resolution to the existing default path.
     NoChange,
+}
+
+/// The action a user picks in the modal, orthogonal to which model is
+/// highlighted (that id is supplied separately to [`apply_action`]).
+// Variants are constructed by the TUI modal (Task 6); allow until then.
+#[derive(Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum ModalAction {
+    /// Pin the highlighted model as the project default.
+    Pin,
+    /// Use the highlighted model for this session only.
+    Session,
+    /// Never offer the highlighted model again.
+    Dismiss,
+    /// Do nothing; ask again next launch.
+    NotNow,
 }
 
 /// Two ids belong to the same recognized model family.
@@ -54,9 +73,6 @@ fn newest_in_family(available: &[String], model: &str) -> Option<String> {
 /// recognized family present in `available` but absent from `seen`. `effective`
 /// and `dismissed` ids are removed and the result is deduped in stable order.
 /// On first run (`seen` empty) the brand-new-family signal is suppressed.
-// Wired into `maybe_prompt` in a later task; its callees are reachable through
-// it, so this single allow keeps the whole pure core clippy-clean until then.
-#[allow(dead_code)]
 fn model_offers(
     effective: &str,
     available: &[String],
@@ -139,7 +155,6 @@ fn write_seen_in(base: &Path, project_dir: &Path, models: &[String]) {
 }
 
 /// Seen baseline for `project_dir` from the real cache; `[]` if unavailable.
-#[allow(dead_code)] // wired into `maybe_prompt` in a later task
 fn read_seen(project_dir: &Path) -> Vec<String> {
     match seen_cache_base() {
         Some(base) => read_seen_in(&base, project_dir),
@@ -148,19 +163,170 @@ fn read_seen(project_dir: &Path) -> Vec<String> {
 }
 
 /// Persist the seen baseline for `project_dir` to the real cache (best-effort).
-#[allow(dead_code)] // wired into `maybe_prompt` in a later task
 fn write_seen(project_dir: &Path, models: &[String]) {
     if let Some(base) = seen_cache_base() {
         write_seen_in(&base, project_dir, models);
     }
 }
 
+/// The model a launch would use today: the project's pin, else the newest
+/// available Sonnet. `None` only when neither is determinable.
+fn effective_model(resolved: &ResolvedSettings) -> Option<String> {
+    resolved
+        .api_model
+        .clone()
+        .or_else(crate::settings::preferred_default_model)
+}
+
+/// Persist (or not) the user's modal choice and map it to a [`ModelDecision`].
+/// `selected` is the highlighted model id the action applies to.
+fn apply_action(
+    action: ModalAction,
+    selected: &str,
+    manifest_path: &Path,
+) -> Result<ModelDecision> {
+    match action {
+        ModalAction::Pin => {
+            let Some(mut manifest) = WhetstoneManifest::load(manifest_path)? else {
+                return Ok(ModelDecision::NoChange);
+            };
+            manifest.settings.api_model = Some(selected.to_string());
+            manifest.touch_and_save(manifest_path)?;
+            Ok(ModelDecision::UsePinned(selected.to_string()))
+        }
+        ModalAction::Session => Ok(ModelDecision::UseSession(selected.to_string())),
+        ModalAction::Dismiss => {
+            let Some(mut manifest) = WhetstoneManifest::load(manifest_path)? else {
+                return Ok(ModelDecision::NoChange);
+            };
+            if !manifest.dismissed_models.iter().any(|d| d == selected) {
+                manifest.dismissed_models.push(selected.to_string());
+                manifest.touch_and_save(manifest_path)?;
+            }
+            Ok(ModelDecision::NoChange)
+        }
+        ModalAction::NotNow => Ok(ModelDecision::NoChange),
+    }
+}
+
+/// Launch-time entry point. Returns [`ModelDecision::NoChange`] on any guard
+/// (non-interactive, no cwd, no v3 manifest, offline) so every existing launch
+/// path is unaffected. Otherwise computes offers, seeds the seen baseline, and
+/// — when there is something to offer — drives the modal and applies the choice.
+// Wired into `wrap_claude` in Task 7; keeps the reachable core clippy-clean.
+#[allow(dead_code)]
+pub fn maybe_prompt(resolved: &ResolvedSettings) -> ModelDecision {
+    if !crate::ui::is_interactive() {
+        return ModelDecision::NoChange;
+    }
+    let Ok(cwd) = std::env::current_dir() else {
+        return ModelDecision::NoChange;
+    };
+    let manifest_path = WhetstoneManifest::path_for(&cwd);
+    let Ok(Some(manifest)) = WhetstoneManifest::load(&manifest_path) else {
+        return ModelDecision::NoChange;
+    };
+    let Some(available) = crate::settings::live_available_models() else {
+        return ModelDecision::NoChange;
+    };
+
+    let effective =
+        effective_model(resolved).unwrap_or_else(|| crate::wrapper::DEFAULT_MODEL.to_string());
+    let seen = read_seen(&cwd);
+    let offers = model_offers(&effective, &available, &seen, &manifest.dismissed_models);
+
+    // Record the current list as the new baseline whenever it changed (this is
+    // also the first-run seeding that suppresses brand-new-family until later).
+    if seen != available {
+        write_seen(&cwd, &available);
+    }
+
+    if offers.is_empty() {
+        return ModelDecision::NoChange;
+    }
+
+    let (action, selected) = prompt_modal(&offers);
+    apply_action(action, &selected, &manifest_path).unwrap_or(ModelDecision::NoChange)
+}
+
+/// Full-screen modal implemented in a later task; returns the chosen action
+/// and the highlighted model id.
+fn prompt_modal(_offered: &[String]) -> (ModalAction, String) {
+    todo!("TUI modal implemented in Task 6")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{ToolVersions, WhetstoneManifest};
+    use crate::memory::MemoryProvider;
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    fn seed_manifest(path: &Path) {
+        WhetstoneManifest::new(MemoryProvider::Icm, ToolVersions::default())
+            .save(path)
+            .unwrap();
+    }
+
+    #[test]
+    fn apply_pin_writes_api_model_and_returns_use_pinned() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        seed_manifest(f.path());
+        let decision = apply_action(ModalAction::Pin, "claude-opus-4-8", f.path()).unwrap();
+        assert_eq!(decision, ModelDecision::UsePinned("claude-opus-4-8".into()));
+        let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
+        assert_eq!(
+            loaded.settings.api_model.as_deref(),
+            Some("claude-opus-4-8")
+        );
+    }
+
+    #[test]
+    fn apply_dismiss_appends_to_dismissed_models_and_returns_no_change() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        seed_manifest(f.path());
+        let decision = apply_action(ModalAction::Dismiss, "claude-fable-5", f.path()).unwrap();
+        assert_eq!(decision, ModelDecision::NoChange);
+        let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
+        assert_eq!(loaded.dismissed_models, s(&["claude-fable-5"]));
+    }
+
+    #[test]
+    fn apply_session_persists_nothing_returns_use_session() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        seed_manifest(f.path());
+        let decision = apply_action(ModalAction::Session, "claude-sonnet-5", f.path()).unwrap();
+        assert_eq!(
+            decision,
+            ModelDecision::UseSession("claude-sonnet-5".into())
+        );
+        let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
+        assert!(loaded.settings.api_model.is_none());
+        assert!(loaded.dismissed_models.is_empty());
+    }
+
+    #[test]
+    fn apply_not_now_persists_nothing_returns_no_change() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        seed_manifest(f.path());
+        let decision = apply_action(ModalAction::NotNow, "claude-sonnet-5", f.path()).unwrap();
+        assert_eq!(decision, ModelDecision::NoChange);
+        let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
+        assert!(loaded.settings.api_model.is_none());
+        assert!(loaded.dismissed_models.is_empty());
+    }
+
+    #[test]
+    fn dismiss_does_not_duplicate_existing_ids() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        seed_manifest(f.path());
+        apply_action(ModalAction::Dismiss, "claude-fable-5", f.path()).unwrap();
+        apply_action(ModalAction::Dismiss, "claude-fable-5", f.path()).unwrap();
+        let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
+        assert_eq!(loaded.dismissed_models, s(&["claude-fable-5"]));
     }
 
     #[test]
