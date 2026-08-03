@@ -9,6 +9,7 @@ mod headroom;
 mod integrations;
 mod memory;
 mod migrate;
+mod model_update;
 mod preflight;
 mod release;
 mod rtk;
