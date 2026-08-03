@@ -4,7 +4,8 @@
 |---------|-------------|
 | `whetstone` | Start Claude Code through Headroom (waits for proxy, then `headroom wrap claude`) |
 | `whetstone setup [--full] [--headroom-extras EXTRAS]` | Install/configure all components (auto-detects v2 and hands off to `migrate`) |
-| `whetstone uninstall` | Interactive removal of components |
+| `whetstone project uninstall` | Interactive removal of whetstone files from the current project |
+| `whetstone global uninstall` | Interactive removal of global components (binaries, RTK, Headroom) |
 | `whetstone claude [args...]` | Run Claude Code through Headroom |
 | `whetstone code [args...]` | Alias for `claude` |
 | `whetstone proxy [args...]` | Run `headroom proxy` |

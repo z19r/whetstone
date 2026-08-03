@@ -45,7 +45,8 @@ Single binary distribution. Users run `whetstone setup` from inside a git projec
 ```
 whetstone                              # Default: headroom wrap claude (auto-selects newest available Sonnet; falls back to claude-opus-4-6)
 whetstone setup [--full] [--headroom-extras EXTRAS]
-whetstone uninstall
+whetstone project uninstall            # Remove whetstone files from this project
+whetstone global uninstall             # Remove global binaries, RTK, Headroom
 whetstone claude [args...]
 whetstone code [args...]               # Alias for claude
 whetstone proxy [args...]
@@ -69,6 +70,8 @@ whetstone db init|add-session|add-insight|search|get-sessions|...
 `--memory` is a global flag (e.g. `whetstone --memory`, `whetstone --memory claude`). It enables Headroom persistent cross-session memory by passing `--memory` to the proxy whetstone spawns. If a proxy is already running *without* memory, whetstone prompts: restart it with memory (replaces the global proxy), start a memory proxy for this session only, or cancel. It can also be set persistently per-project or globally via `whetstone settings` (Headroom Memory).
 
 `whetstone settings` also exposes **Anthropic API URL** — a custom upstream Anthropic API URL for the Headroom proxy. When set (per-project or globally), whetstone exports it as `ANTHROPIC_TARGET_API_URL` before launching Headroom, so the whetstone-spawned proxy targets that upstream (mirrors Headroom's `proxy --anthropic-api-url` flag). An externally-set `ANTHROPIC_TARGET_API_URL` env var takes precedence over the stored setting.
+
+On launch, whetstone (`src/model_update.rs`) checks the 12h-cached Anthropic models list for a model newer than the one this project runs — or a brand-new model family — and shows a full-screen modal offering to pin it as the project default (`api_model`), use it for one session, or dismiss it permanently (recorded in the manifest's top-level `dismissed_models`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` was passed explicitly.
 
 ## Architecture
 

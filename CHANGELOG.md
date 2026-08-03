@@ -9,6 +9,10 @@ All notable changes to whetstone will be documented in this file.
 - Launch-time model-update prompt: when Anthropic ships a model newer than the one this project runs — or a brand-new model family — `whetstone` shows a full-screen modal offering to pin it as the project default, use it for one session only, or dismiss it. Dismissals are remembered per-project (`dismissed_models` in `.claude/whetstone.json`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` is passed explicitly.
 - Anthropic API URL setting in `whetstone settings` — a custom upstream Anthropic API URL for the Headroom proxy, exported as `ANTHROPIC_TARGET_API_URL` before launch (project- or global-scoped; an externally-set env var takes precedence)
 
+### Changed
+
+- Split `whetstone uninstall` into `whetstone project uninstall` (removes per-project files) and `whetstone global uninstall` (removes the whetstone binary, RTK, and Headroom). The top-level `uninstall` command is deprecated: it now removes nothing and prints guidance toward the two scoped commands.
+
 ## [3.7.0] - 2026-07-02
 
 ### Added

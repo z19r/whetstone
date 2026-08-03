@@ -119,11 +119,21 @@ fn main() {
                     ui::fail(&format!("{e:#}"));
                 }
             }
-            Command::Uninstall => {
-                if let Err(e) = uninstall::run() {
-                    ui::fail(&format!("{e:#}"));
+            Command::Uninstall => uninstall::run_deprecated_notice(),
+            Command::Project { action } => match action {
+                cli::ProjectCommand::Uninstall => {
+                    if let Err(e) = uninstall::run_project() {
+                        ui::fail(&format!("{e:#}"));
+                    }
                 }
-            }
+            },
+            Command::Global { action } => match action {
+                cli::GlobalCommand::Uninstall => {
+                    if let Err(e) = uninstall::run_global() {
+                        ui::fail(&format!("{e:#}"));
+                    }
+                }
+            },
             Command::Claude { args } | Command::Code { args } => {
                 if maybe_offer_setup() {
                     return;
