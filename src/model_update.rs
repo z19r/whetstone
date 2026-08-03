@@ -12,8 +12,15 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::Result;
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::{DefaultTerminal, Frame};
 
 use crate::config::{ResolvedSettings, WhetstoneManifest};
 use crate::settings::family_order;
@@ -34,9 +41,7 @@ pub enum ModelDecision {
 
 /// The action a user picks in the modal, orthogonal to which model is
 /// highlighted (that id is supplied separately to [`apply_action`]).
-// Variants are constructed by the TUI modal (Task 6); allow until then.
 #[derive(Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ModalAction {
     /// Pin the highlighted model as the project default.
     Pin,
@@ -249,10 +254,135 @@ pub fn maybe_prompt(resolved: &ResolvedSettings) -> ModelDecision {
     apply_action(action, &selected, &manifest_path).unwrap_or(ModelDecision::NoChange)
 }
 
-/// Full-screen modal implemented in a later task; returns the chosen action
-/// and the highlighted model id.
-fn prompt_modal(_offered: &[String]) -> (ModalAction, String) {
-    todo!("TUI modal implemented in Task 6")
+/// Full-screen modal offering the newer/new model(s). Returns the chosen
+/// action and the highlighted model id. Falls back to `NotNow` on any terminal
+/// error so a launch never hangs on TUI failure.
+fn prompt_modal(offered: &[String]) -> (ModalAction, String) {
+    let fallback = || {
+        (
+            ModalAction::NotNow,
+            offered.first().cloned().unwrap_or_default(),
+        )
+    };
+    let mut terminal = ratatui::init();
+    let result = modal_loop(&mut terminal, offered);
+    ratatui::restore();
+    result.unwrap_or_else(|_| fallback())
+}
+
+/// Render/input loop for the modal. `Enter`/`p` pin, `s` session, `d` dismiss,
+/// `Esc`/`q` not now; `↑↓`/`j`/`k` move the highlight when >1 model is offered.
+fn modal_loop(terminal: &mut DefaultTerminal, offered: &[String]) -> Result<(ModalAction, String)> {
+    let mut selected = 0usize;
+    loop {
+        terminal.draw(|frame| draw_modal(frame, offered, selected))?;
+
+        if !event::poll(Duration::from_millis(250))? {
+            continue;
+        }
+        let Event::Key(key) = event::read()? else {
+            continue;
+        };
+        if key.kind != KeyEventKind::Press {
+            continue;
+        }
+        let current = offered.get(selected).cloned().unwrap_or_default();
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                selected = selected.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') if selected + 1 < offered.len() => {
+                selected += 1;
+            }
+            KeyCode::Char('p') | KeyCode::Enter => {
+                return Ok((ModalAction::Pin, current));
+            }
+            KeyCode::Char('s') => {
+                return Ok((ModalAction::Session, current));
+            }
+            KeyCode::Char('d') => {
+                return Ok((ModalAction::Dismiss, current));
+            }
+            KeyCode::Char('q') | KeyCode::Esc => {
+                return Ok((ModalAction::NotNow, current));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn draw_modal(frame: &mut Frame, offered: &[String], selected: usize) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5),
+            Constraint::Min(3),
+            Constraint::Length(3),
+        ])
+        .split(frame.area());
+
+    draw_modal_header(frame, chunks[0]);
+    draw_modal_list(frame, chunks[1], offered, selected);
+    draw_modal_footer(frame, chunks[2]);
+}
+
+fn draw_modal_header(frame: &mut Frame, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled(
+            " New model available ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let body = Paragraph::new(vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            " Anthropic published a model newer than this project uses.",
+            Style::default().add_modifier(Modifier::DIM),
+        )),
+        Line::from(Span::styled(
+            " Pin it as the project default, use it once, or dismiss it.",
+            Style::default().add_modifier(Modifier::DIM),
+        )),
+    ])
+    .block(block);
+    frame.render_widget(body, area);
+}
+
+fn draw_modal_list(frame: &mut Frame, area: Rect, offered: &[String], selected: usize) {
+    let lines: Vec<Line<'_>> = offered
+        .iter()
+        .enumerate()
+        .map(|(i, model)| {
+            let marker = if i == selected { " ▶ " } else { "   " };
+            let style = if i == selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            Line::from(Span::styled(format!("{marker}{model}"), style))
+        })
+        .collect();
+
+    let list =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Offered "));
+    frame.render_widget(list, area);
+}
+
+fn draw_modal_footer(frame: &mut Frame, area: Rect) {
+    let footer = Paragraph::new(Line::from(Span::styled(
+        " ↑/↓ select   p pin as default   s this session   \
+         d dismiss   Esc not now",
+        Style::default().fg(Color::DarkGray),
+    )))
+    .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(footer, area);
 }
 
 #[cfg(test)]
