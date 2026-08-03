@@ -103,7 +103,7 @@ fn strip_date_suffix(id: &str) -> Option<&str> {
     None
 }
 
-fn family_order(id: &str) -> u8 {
+pub(crate) fn family_order(id: &str) -> u8 {
     if id.contains("-opus-") {
         0
     } else if id.contains("-sonnet-") {
@@ -161,7 +161,7 @@ fn fetch_models_from_api() -> Option<Vec<String>> {
 /// is reachable. Distinct from [`load_available_models`], which substitutes the
 /// static `FALLBACK_MODELS` — callers that need to know whether availability
 /// was *actually* determined (vs. guessed) use this instead.
-fn live_available_models() -> Option<Vec<String>> {
+pub(crate) fn live_available_models() -> Option<Vec<String>> {
     if let Some(cached) = read_models_cache() {
         return Some(cached);
     }
@@ -182,7 +182,7 @@ fn load_available_models() -> Vec<String> {
 /// Newest Sonnet in `models`, by lexical id (matching the descending sort the
 /// picker uses: `claude-sonnet-5` > `claude-sonnet-4-6`). `None` when the list
 /// has no Sonnet. Independent of input ordering so it's safe to unit-test.
-fn newest_sonnet(models: &[String]) -> Option<String> {
+pub(crate) fn newest_sonnet(models: &[String]) -> Option<String> {
     models
         .iter()
         .filter(|id| id.contains("-sonnet-"))
@@ -220,12 +220,14 @@ enum SettingId {
     HeadroomTelemetry,
     HeadroomMemory,
     ApiModel,
+    AnthropicApiUrl,
 }
 
 const SETTINGS: &[SettingId] = &[
     SettingId::HeadroomTelemetry,
     SettingId::HeadroomMemory,
     SettingId::ApiModel,
+    SettingId::AnthropicApiUrl,
 ];
 
 struct SettingsState {
@@ -235,6 +237,9 @@ struct SettingsState {
     original_project: ProjectSettings,
     selected: usize,
     models: Vec<String>,
+    /// `Some(buffer)` while the user is typing a free-text value (the Anthropic
+    /// API URL); `None` in normal navigation mode.
+    editing: Option<String>,
 }
 
 impl SettingsState {
@@ -256,6 +261,15 @@ impl SettingsState {
                 if self.project.api_model.is_some() {
                     Scope::Project
                 } else if self.global.api_model.is_some() {
+                    Scope::Global
+                } else {
+                    Scope::Off
+                }
+            }
+            SettingId::AnthropicApiUrl => {
+                if self.project.anthropic_api_url.is_some() {
+                    Scope::Project
+                } else if self.global.anthropic_api_url.is_some() {
                     Scope::Global
                 } else {
                     Scope::Off
@@ -313,6 +327,22 @@ impl SettingsState {
                     self.project.api_model = Some(base);
                 }
             },
+            SettingId::AnthropicApiUrl => match next {
+                Scope::Off => {
+                    self.global.anthropic_api_url = None;
+                    self.project.anthropic_api_url = None;
+                }
+                Scope::Global => {
+                    if self.global.anthropic_api_url.is_none() {
+                        self.global.anthropic_api_url = Some(String::new());
+                    }
+                    self.project.anthropic_api_url = None;
+                }
+                Scope::Project => {
+                    let base = self.global.anthropic_api_url.clone().unwrap_or_default();
+                    self.project.anthropic_api_url = Some(base);
+                }
+            },
         }
     }
 
@@ -337,14 +367,55 @@ impl SettingsState {
         *target = Some(self.models[idx].clone());
     }
 
-    fn current_model_display(&self, id: SettingId) -> Option<&str> {
-        if id != SettingId::ApiModel {
-            return None;
+    /// The stored value shown next to a value-bearing setting (model id or API
+    /// URL), or `None` for toggle settings and `Scope::Off`.
+    fn current_value_display(&self, id: SettingId) -> Option<&str> {
+        match id {
+            SettingId::ApiModel => match self.scope(id) {
+                Scope::Off => None,
+                Scope::Global => self.global.api_model.as_deref(),
+                Scope::Project => self.project.api_model.as_deref(),
+            },
+            SettingId::AnthropicApiUrl => match self.scope(id) {
+                Scope::Off => None,
+                Scope::Global => self.global.anthropic_api_url.as_deref(),
+                Scope::Project => self.project.anthropic_api_url.as_deref(),
+            },
+            _ => None,
         }
-        match self.scope(id) {
-            Scope::Off => None,
-            Scope::Global => self.global.api_model.as_deref(),
-            Scope::Project => self.project.api_model.as_deref(),
+    }
+
+    /// Enter text-editing mode for the currently selected URL setting, seeding
+    /// the buffer with the active value. No-op unless the selection is the
+    /// Anthropic API URL and its scope is active.
+    fn begin_edit(&mut self) {
+        let id = SETTINGS[self.selected];
+        if id != SettingId::AnthropicApiUrl || self.scope(id) == Scope::Off {
+            return;
+        }
+        let current = self
+            .current_value_display(id)
+            .unwrap_or_default()
+            .to_string();
+        self.editing = Some(current);
+    }
+
+    /// Commit the in-progress edit buffer into the active scope, then leave edit
+    /// mode. A blank buffer clears the value (which drops the scope to `Off`).
+    fn commit_edit(&mut self) {
+        let Some(buffer) = self.editing.take() else {
+            return;
+        };
+        let trimmed = buffer.trim();
+        let value = (!trimmed.is_empty()).then(|| trimmed.to_string());
+        match self.scope(SettingId::AnthropicApiUrl) {
+            Scope::Global | Scope::Off => {
+                self.global.anthropic_api_url = value;
+                self.project.anthropic_api_url = None;
+            }
+            Scope::Project => {
+                self.project.anthropic_api_url = value;
+            }
         }
     }
 
@@ -375,7 +446,8 @@ pub fn run() -> Result<()> {
     ratatui::restore();
 
     match result {
-        Ok(Some(saved)) => {
+        Ok(Some(mut saved)) => {
+            normalize_saved(&mut saved);
             let global_changed = saved.global != global;
             let project_changed = saved.project != project;
 
@@ -426,6 +498,18 @@ struct SavedState {
     project: ProjectSettings,
 }
 
+/// Drop blank free-text values (a scope was toggled on but never filled in) to
+/// `None` so an empty API URL never persists to disk.
+fn normalize_saved(saved: &mut SavedState) {
+    let blank = |v: &Option<String>| v.as_deref().map(str::trim).is_some_and(str::is_empty);
+    if blank(&saved.global.anthropic_api_url) {
+        saved.global.anthropic_api_url = None;
+    }
+    if blank(&saved.project.anthropic_api_url) {
+        saved.project.anthropic_api_url = None;
+    }
+}
+
 fn run_loop(
     terminal: &mut DefaultTerminal,
     global: GlobalSettings,
@@ -439,6 +523,7 @@ fn run_loop(
         project,
         selected: 0,
         models,
+        editing: None,
     };
 
     loop {
@@ -447,6 +532,10 @@ fn run_loop(
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                if state.editing.is_some() {
+                    handle_edit_key(&mut state, key.code);
                     continue;
                 }
                 match key.code {
@@ -462,9 +551,11 @@ fn run_loop(
                     KeyCode::Char(' ') => {
                         state.cycle_scope(SETTINGS[state.selected]);
                     }
-                    KeyCode::Tab | KeyCode::Enter => {
-                        state.cycle_model_value();
-                    }
+                    KeyCode::Tab | KeyCode::Enter => match SETTINGS[state.selected] {
+                        SettingId::ApiModel => state.cycle_model_value(),
+                        SettingId::AnthropicApiUrl => state.begin_edit(),
+                        _ => {}
+                    },
                     KeyCode::Up | KeyCode::Char('k') => {
                         state.selected = state.selected.saturating_sub(1);
                     }
@@ -481,6 +572,28 @@ fn run_loop(
                 }
             }
         }
+    }
+}
+
+/// Route a keypress while the URL text buffer is open. Enter commits, Esc
+/// cancels, and printable characters / Backspace edit the buffer in place.
+fn handle_edit_key(state: &mut SettingsState, code: KeyCode) {
+    match code {
+        KeyCode::Enter => state.commit_edit(),
+        KeyCode::Esc => {
+            state.editing = None;
+        }
+        KeyCode::Backspace => {
+            if let Some(buffer) = state.editing.as_mut() {
+                buffer.pop();
+            }
+        }
+        KeyCode::Char(c) => {
+            if let Some(buffer) = state.editing.as_mut() {
+                buffer.push(c);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -577,9 +690,14 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
                 "Enable Headroom persistent cross-session memory (proxy --memory)",
             ),
             SettingId::ApiModel => ("API Model", "Model used for Claude Code sessions"),
+            SettingId::AnthropicApiUrl => (
+                "Anthropic API URL",
+                "Custom upstream Anthropic API URL for the Headroom proxy",
+            ),
         };
 
         let scope = state.scope(id);
+        let is_editing = is_selected && id == SettingId::AnthropicApiUrl && state.editing.is_some();
 
         let mut row = vec![Span::styled(
             cursor,
@@ -591,9 +709,22 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
         row.push(Span::raw("  "));
         row.push(Span::styled(label.to_string(), label_style));
 
-        if let Some(model) = state.current_model_display(id) {
+        if is_editing {
+            let buffer = state.editing.as_deref().unwrap_or_default();
             row.push(Span::styled(
-                format!("  {model}"),
+                format!("  {buffer}"),
+                Style::default().fg(Color::Yellow),
+            ));
+            row.push(Span::styled(
+                "█",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::DIM),
+            ));
+        } else if let Some(value) = state.current_value_display(id) {
+            let shown = if value.is_empty() { "(unset)" } else { value };
+            row.push(Span::styled(
+                format!("  {shown}"),
                 Style::default().fg(Color::Yellow),
             ));
         }
@@ -602,6 +733,12 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
 
         let desc_line = if id == SettingId::ApiModel && scope != Scope::Off {
             format!("{desc}  (tab to cycle model)")
+        } else if id == SettingId::AnthropicApiUrl && scope != Scope::Off {
+            if is_editing {
+                format!("{desc}  (enter to save, esc to cancel)")
+            } else {
+                format!("{desc}  (enter to edit)")
+            }
         } else {
             desc.to_string()
         };
@@ -679,7 +816,145 @@ mod tests {
             original_project: ProjectSettings::default(),
             selected: 0,
             models: test_models(),
+            editing: None,
         }
+    }
+
+    fn url_index() -> usize {
+        SETTINGS
+            .iter()
+            .position(|&s| s == SettingId::AnthropicApiUrl)
+            .unwrap()
+    }
+
+    #[test]
+    fn api_url_scope_detection() {
+        let mut s = default_state();
+        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Off);
+
+        s.global.anthropic_api_url = Some("https://global.example".into());
+        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Global);
+
+        s.project.anthropic_api_url = Some("https://project.example".into());
+        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Project);
+    }
+
+    #[test]
+    fn api_url_cycle_through_scopes() {
+        let mut s = default_state();
+
+        s.cycle_scope(SettingId::AnthropicApiUrl);
+        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Global);
+        assert_eq!(s.global.anthropic_api_url.as_deref(), Some(""));
+
+        s.cycle_scope(SettingId::AnthropicApiUrl);
+        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Project);
+        assert_eq!(s.project.anthropic_api_url.as_deref(), Some(""));
+
+        s.cycle_scope(SettingId::AnthropicApiUrl);
+        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Off);
+        assert!(s.global.anthropic_api_url.is_none());
+        assert!(s.project.anthropic_api_url.is_none());
+    }
+
+    #[test]
+    fn begin_edit_noop_when_scope_off() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.begin_edit();
+        assert!(s.editing.is_none());
+    }
+
+    #[test]
+    fn begin_edit_seeds_buffer_with_current_value() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.global.anthropic_api_url = Some("https://seed.example".into());
+        s.begin_edit();
+        assert_eq!(s.editing.as_deref(), Some("https://seed.example"));
+    }
+
+    #[test]
+    fn commit_edit_writes_global_value() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.global.anthropic_api_url = Some(String::new());
+        s.editing = Some("https://typed.example".into());
+        s.commit_edit();
+        assert!(s.editing.is_none());
+        assert_eq!(
+            s.global.anthropic_api_url.as_deref(),
+            Some("https://typed.example")
+        );
+    }
+
+    #[test]
+    fn commit_edit_writes_project_value() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.project.anthropic_api_url = Some(String::new());
+        s.editing = Some("  https://project.example  ".into());
+        s.commit_edit();
+        assert_eq!(
+            s.project.anthropic_api_url.as_deref(),
+            Some("https://project.example")
+        );
+    }
+
+    #[test]
+    fn commit_edit_blank_clears_value() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.global.anthropic_api_url = Some("https://old.example".into());
+        s.editing = Some("   ".into());
+        s.commit_edit();
+        assert!(s.global.anthropic_api_url.is_none());
+        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Off);
+    }
+
+    #[test]
+    fn edit_key_typing_and_backspace() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.editing = Some(String::new());
+        handle_edit_key(&mut s, KeyCode::Char('h'));
+        handle_edit_key(&mut s, KeyCode::Char('i'));
+        handle_edit_key(&mut s, KeyCode::Backspace);
+        assert_eq!(s.editing.as_deref(), Some("h"));
+    }
+
+    #[test]
+    fn normalize_saved_drops_blank_urls() {
+        let mut saved = SavedState {
+            global: GlobalSettings {
+                anthropic_api_url: Some(String::new()),
+                ..Default::default()
+            },
+            project: ProjectSettings {
+                anthropic_api_url: Some("https://keep.example".into()),
+                ..Default::default()
+            },
+        };
+        normalize_saved(&mut saved);
+        assert!(saved.global.anthropic_api_url.is_none());
+        assert_eq!(
+            saved.project.anthropic_api_url.as_deref(),
+            Some("https://keep.example")
+        );
+    }
+
+    #[test]
+    fn edit_key_esc_cancels_without_writing() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.global.anthropic_api_url = Some("https://keep.example".into());
+        s.editing = Some("https://discard.example".into());
+        handle_edit_key(&mut s, KeyCode::Esc);
+        assert!(s.editing.is_none());
+        assert_eq!(
+            s.global.anthropic_api_url.as_deref(),
+            Some("https://keep.example")
+        );
     }
 
     #[test]
