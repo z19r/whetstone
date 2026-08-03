@@ -8,7 +8,10 @@
 //! The decision logic here is pure and exhaustively unit-tested; the effectful
 //! shell (guards, state I/O, TUI) lives alongside it but is kept thin.
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 
 use crate::settings::family_order;
 
@@ -94,6 +97,64 @@ fn model_offers(
         .collect()
 }
 
+/// Stable hex hash of a project directory, used to name its seen-cache file.
+/// Canonicalizes when possible so `.`/symlinks map to one file; falls back to
+/// the raw path (e.g. for a not-yet-existing dir in tests).
+fn hash_project_dir(project_dir: &Path) -> String {
+    let canon = std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
+    let mut hasher = DefaultHasher::new();
+    canon.to_string_lossy().hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+/// Path to a project's seen-cache file under an arbitrary cache base.
+fn seen_cache_path_in(base: &Path, project_dir: &Path) -> PathBuf {
+    base.join("model-seen")
+        .join(format!("{}.json", hash_project_dir(project_dir)))
+}
+
+/// Real cache base: `~/.cache/whetstone`.
+fn seen_cache_base() -> Option<PathBuf> {
+    Some(dirs::home_dir()?.join(".cache").join("whetstone"))
+}
+
+/// Read the seen baseline under an arbitrary base. Missing or garbage ⇒ `[]`.
+fn read_seen_in(base: &Path, project_dir: &Path) -> Vec<String> {
+    let path = seen_cache_path_in(base, project_dir);
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    serde_json::from_str(&content).unwrap_or_default()
+}
+
+/// Best-effort write of the seen baseline under an arbitrary base.
+fn write_seen_in(base: &Path, project_dir: &Path, models: &[String]) {
+    let path = seen_cache_path_in(base, project_dir);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string(models) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// Seen baseline for `project_dir` from the real cache; `[]` if unavailable.
+#[allow(dead_code)] // wired into `maybe_prompt` in a later task
+fn read_seen(project_dir: &Path) -> Vec<String> {
+    match seen_cache_base() {
+        Some(base) => read_seen_in(&base, project_dir),
+        None => Vec::new(),
+    }
+}
+
+/// Persist the seen baseline for `project_dir` to the real cache (best-effort).
+#[allow(dead_code)] // wired into `maybe_prompt` in a later task
+fn write_seen(project_dir: &Path, models: &[String]) {
+    if let Some(base) = seen_cache_base() {
+        write_seen_in(&base, project_dir, models);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +238,40 @@ mod tests {
             &s(&["claude-sonnet-6"]),
         );
         assert!(offers.is_empty());
+    }
+
+    #[test]
+    fn read_seen_missing_returns_empty() {
+        let base = tempfile::tempdir().unwrap();
+        let proj = Path::new("/some/project");
+        assert!(read_seen_in(base.path(), proj).is_empty());
+    }
+
+    #[test]
+    fn write_then_read_round_trips() {
+        let base = tempfile::tempdir().unwrap();
+        let proj = Path::new("/some/project");
+        let models = s(&["claude-opus-4-8", "claude-sonnet-5"]);
+        write_seen_in(base.path(), proj, &models);
+        assert_eq!(read_seen_in(base.path(), proj), models);
+    }
+
+    #[test]
+    fn seen_path_stable_for_same_dir() {
+        let base = tempfile::tempdir().unwrap();
+        let proj = Path::new("/some/project");
+        assert_eq!(
+            seen_cache_path_in(base.path(), proj),
+            seen_cache_path_in(base.path(), proj)
+        );
+    }
+
+    #[test]
+    fn seen_path_differs_across_dirs() {
+        let base = tempfile::tempdir().unwrap();
+        let a = seen_cache_path_in(base.path(), Path::new("/proj/a"));
+        let b = seen_cache_path_in(base.path(), Path::new("/proj/b"));
+        assert_ne!(a, b);
     }
 
     #[test]
