@@ -58,7 +58,16 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     let decision = resolve_proxy(want_memory);
 
     let skip_rtk_setup = should_skip_headroom_rtk_setup();
-    let model = resolve_model(resolved.api_model.clone());
+    // An explicit `--model` suppresses the launch-time update prompt entirely;
+    // otherwise offer any newer/new-family model and honor the user's choice.
+    let user_set = user_set_model(args);
+    let fallback = resolve_model(resolved.api_model.clone());
+    let model_decision = if user_set {
+        crate::model_update::ModelDecision::NoChange
+    } else {
+        crate::model_update::maybe_prompt(&resolved)
+    };
+    let model = choose_model(user_set, model_decision, &fallback);
     let cmd_args = build_claude_args(
         args,
         skip_rtk_setup,
@@ -335,7 +344,7 @@ fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
 // can't reach the models API to detect a newer Sonnet (offline / no
 // ANTHROPIC_API_KEY). If the user (or a wrapping CLI layer) already passes
 // `--model`, we leave it alone.
-const DEFAULT_MODEL: &str = "claude-opus-4-6";
+pub(crate) const DEFAULT_MODEL: &str = "claude-opus-4-6";
 
 // Resolve the model to launch with, in priority order:
 //   1. an explicit selection stored in whetstone settings (`api_model`)
@@ -345,6 +354,24 @@ fn resolve_model(explicit: Option<String>) -> String {
     explicit
         .or_else(crate::settings::preferred_default_model)
         .unwrap_or_else(|| DEFAULT_MODEL.to_string())
+}
+
+// Fold the launch-time model-update decision into a concrete model id. An
+// explicit `--model` on the command line always wins, so `user_set` short-
+// circuits to the resolved fallback and the prompt's decision is ignored.
+fn choose_model(
+    user_set: bool,
+    decision: crate::model_update::ModelDecision,
+    fallback: &str,
+) -> String {
+    use crate::model_update::ModelDecision;
+    if user_set {
+        return fallback.to_string();
+    }
+    match decision {
+        ModelDecision::UsePinned(m) | ModelDecision::UseSession(m) => m,
+        ModelDecision::NoChange => fallback.to_string(),
+    }
 }
 
 fn build_claude_args(
@@ -372,16 +399,19 @@ fn build_claude_args(
         cmd_args.push("--memory".into());
     }
 
-    let user_set_model = args
-        .iter()
-        .any(|a| a == "--model" || a.starts_with("--model="));
-    if !user_set_model {
+    if !user_set_model(args) {
         cmd_args.push("--model".into());
         cmd_args.push(model.into());
     }
 
     cmd_args.extend_from_slice(args);
     cmd_args
+}
+
+// Whether the user passed an explicit `--model` on the command line.
+fn user_set_model(args: &[String]) -> bool {
+    args.iter()
+        .any(|a| a == "--model" || a.starts_with("--model="))
 }
 
 fn should_skip_headroom_rtk_setup() -> bool {
@@ -599,6 +629,30 @@ mod tests {
             resolve_model(Some("claude-sonnet-5".to_string())),
             "claude-sonnet-5"
         );
+    }
+
+    #[test]
+    fn choose_model_uses_pinned_when_offered() {
+        let decision = crate::model_update::ModelDecision::UsePinned("claude-opus-5".into());
+        assert_eq!(choose_model(false, decision, "fallback"), "claude-opus-5");
+    }
+
+    #[test]
+    fn choose_model_uses_session_when_offered() {
+        let decision = crate::model_update::ModelDecision::UseSession("claude-opus-5".into());
+        assert_eq!(choose_model(false, decision, "fallback"), "claude-opus-5");
+    }
+
+    #[test]
+    fn choose_model_falls_back_on_no_change() {
+        let decision = crate::model_update::ModelDecision::NoChange;
+        assert_eq!(choose_model(false, decision, "fallback"), "fallback");
+    }
+
+    #[test]
+    fn choose_model_ignores_decision_when_user_set() {
+        let decision = crate::model_update::ModelDecision::UsePinned("claude-opus-5".into());
+        assert_eq!(choose_model(true, decision, "fallback"), "fallback");
     }
 
     fn create_fake_rtk_binary() -> (PathBuf, PathBuf) {

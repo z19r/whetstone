@@ -155,6 +155,10 @@ pub struct WhetstoneManifest {
     pub settings: ProjectSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub migration_id: Option<String>,
+    /// Model ids the user chose to permanently dismiss from the launch-time
+    /// update prompt. Bookkeeping, not a settings-TUI knob — hence top-level.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dismissed_models: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -171,6 +175,7 @@ impl WhetstoneManifest {
             tool_versions,
             settings: ProjectSettings::default(),
             migration_id: None,
+            dismissed_models: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -327,6 +332,37 @@ mod tests {
     fn path_for_uses_dot_claude() {
         let p = WhetstoneManifest::path_for(Path::new("/tmp/proj"));
         assert!(p.ends_with(".claude/whetstone.json"));
+    }
+
+    #[test]
+    fn manifest_round_trips_dismissed_models() {
+        let mut m = WhetstoneManifest::new(MemoryProvider::Icm, ToolVersions::default());
+        m.dismissed_models.push("claude-opus-4-8".into());
+        m.dismissed_models.push("claude-fable-5".into());
+        let f = NamedTempFile::new().unwrap();
+        m.save(f.path()).unwrap();
+        let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
+        assert_eq!(
+            loaded.dismissed_models,
+            vec!["claude-opus-4-8".to_string(), "claude-fable-5".to_string()]
+        );
+    }
+
+    #[test]
+    fn legacy_manifest_without_dismissed_models_parses() {
+        let m = WhetstoneManifest::new(MemoryProvider::Skip, ToolVersions::default());
+        let mut value = serde_json::to_value(&m).unwrap();
+        value.as_object_mut().unwrap().remove("dismissed_models");
+        let raw = serde_json::to_string(&value).unwrap();
+        let parsed: WhetstoneManifest = serde_json::from_str(&raw).unwrap();
+        assert!(parsed.dismissed_models.is_empty());
+    }
+
+    #[test]
+    fn empty_dismissed_models_omitted_from_json() {
+        let m = WhetstoneManifest::new(MemoryProvider::Skip, ToolVersions::default());
+        let raw = serde_json::to_string(&m).unwrap();
+        assert!(!raw.contains("dismissed_models"));
     }
 
     #[test]

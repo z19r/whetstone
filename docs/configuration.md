@@ -56,3 +56,8 @@ Values persist to:
 
 - **Global** — `~/.whetstone/settings.json`
 - **Project** — the `settings` block of `.claude/whetstone.json`
+
+The launch-time model-update prompt (see the CLI Reference) also writes the
+project **API Model** when you pin a newer model. Models you permanently dismiss
+from that prompt are recorded in the top-level `dismissed_models` array of
+`.claude/whetstone.json` so they are not offered again for that project.

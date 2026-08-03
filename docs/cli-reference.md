@@ -26,6 +26,20 @@ The global `--memory` flag (e.g. `whetstone --memory` or `whetstone --memory cla
 enables Headroom persistent cross-session memory for that run. Persist it per-project
 or globally via `whetstone settings` (Headroom Memory).
 
+## Model Update Prompt
+
+On launch (`whetstone` / `whetstone claude`), whetstone checks the 12h-cached
+Anthropic models list. If a model newer than the one this project runs — or a
+brand-new model family — is available, it shows a full-screen modal offering to:
+
+- **Pin** it as the project default (writes `api_model` to `.claude/whetstone.json`)
+- **Use for this session** only (no persistence)
+- **Dismiss** it permanently for this project (recorded in `dismissed_models`)
+- **Not now** (offered again next launch)
+
+The prompt is skipped when the terminal is non-interactive, whetstone is offline,
+the directory is not a v3 project, or `--model` was passed explicitly.
+
 ## Headroom Extras
 
 `--headroom-extras` controls which Headroom optional packages are installed:

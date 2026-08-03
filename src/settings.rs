@@ -103,7 +103,7 @@ fn strip_date_suffix(id: &str) -> Option<&str> {
     None
 }
 
-fn family_order(id: &str) -> u8 {
+pub(crate) fn family_order(id: &str) -> u8 {
     if id.contains("-opus-") {
         0
     } else if id.contains("-sonnet-") {
@@ -161,7 +161,7 @@ fn fetch_models_from_api() -> Option<Vec<String>> {
 /// is reachable. Distinct from [`load_available_models`], which substitutes the
 /// static `FALLBACK_MODELS` — callers that need to know whether availability
 /// was *actually* determined (vs. guessed) use this instead.
-fn live_available_models() -> Option<Vec<String>> {
+pub(crate) fn live_available_models() -> Option<Vec<String>> {
     if let Some(cached) = read_models_cache() {
         return Some(cached);
     }
@@ -182,7 +182,7 @@ fn load_available_models() -> Vec<String> {
 /// Newest Sonnet in `models`, by lexical id (matching the descending sort the
 /// picker uses: `claude-sonnet-5` > `claude-sonnet-4-6`). `None` when the list
 /// has no Sonnet. Independent of input ordering so it's safe to unit-test.
-fn newest_sonnet(models: &[String]) -> Option<String> {
+pub(crate) fn newest_sonnet(models: &[String]) -> Option<String> {
     models
         .iter()
         .filter(|id| id.contains("-sonnet-"))
