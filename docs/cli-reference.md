@@ -4,13 +4,15 @@
 |---------|-------------|
 | `whetstone` | Start Claude Code through Headroom (waits for proxy, then `headroom wrap claude`) |
 | `whetstone setup [--full] [--headroom-extras EXTRAS]` | Install/configure all components (auto-detects v2 and hands off to `migrate`) |
-| `whetstone uninstall` | Interactive removal of components |
+| `whetstone project uninstall` | Interactive removal of whetstone files from the current project |
+| `whetstone global uninstall` | Interactive removal of global components (binaries, RTK, Headroom) |
 | `whetstone claude [args...]` | Run Claude Code through Headroom |
 | `whetstone code [args...]` | Alias for `claude` |
 | `whetstone proxy [args...]` | Run `headroom proxy` |
 | `whetstone rtk [args...]` | Run RTK |
 | `whetstone doctor` | Inspect installed tool versions, `~/.claude/settings.json` hooks, and the per-project manifest |
 | `whetstone dashboard` | TUI dashboard for installed tool versions vs. pinned floors |
+| `whetstone settings` | Interactively edit whetstone settings, layered global/project (Headroom telemetry, Headroom memory, default API model, Anthropic API URL) |
 | `whetstone migrate [--dry-run] [-y] [--rollback ID]` | Migrate a v2 install to v3 (or roll back) — see [Migration Guide](migration.md) |
 | `whetstone version` | Print version |
 | `whetstone stats` | Token-savings summary from RTK + Headroom stats endpoints |
@@ -18,6 +20,11 @@
 | `whetstone release patch\|minor\|major\|set X.Y.Z` | Verify, bump version, and open a release PR |
 | `whetstone release-publish ...` | **Deprecated** — use `whetstone release` |
 | `whetstone db <subcommand>` | Session database operations (init / add-session / add-insight / search / get-sessions / get-insights / stats) |
+| `whetstone changelog-sync [--input F] [--output F] [--limit N]` | Regenerate `site/src/changelog.js` from `CHANGELOG.md` (maintainer tooling) |
+
+The global `--memory` flag (e.g. `whetstone --memory` or `whetstone --memory claude`)
+enables Headroom persistent cross-session memory for that run. Persist it per-project
+or globally via `whetstone settings` (Headroom Memory).
 
 ## Headroom Extras
 

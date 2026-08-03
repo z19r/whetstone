@@ -91,10 +91,13 @@ cp ~/.claude/settings.json.bak.NEWEST ~/.claude/settings.json
 ## Uninstall
 
 ```bash
-whetstone uninstall
+whetstone project uninstall    # Remove whetstone files from the current project
+whetstone global uninstall     # Remove the whetstone binary, RTK, and Headroom
 ```
 
-Interactive prompts let you choose which components to remove (whetstone binary, RTK, Headroom, project files).
+Interactive prompts let you choose which components to remove. `project uninstall`
+handles per-project files; `global uninstall` handles the whetstone binary, RTK,
+and Headroom.
 
 ### Manual removal
 
@@ -128,7 +131,8 @@ cp ~/.claude/settings.json.bak.TIMESTAMP ~/.claude/settings.json
 
 **Full cleanup:**
 ```bash
-whetstone uninstall
+whetstone project uninstall
+whetstone global uninstall
 rm -f ~/.local/bin/whetstone
 rm -rf ~/.whetstone
 ```

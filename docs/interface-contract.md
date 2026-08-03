@@ -57,7 +57,7 @@ the pinned 0.23.0. If we later pin a version that lacks `wrap`, the fallback
 is: `headroom proxy` in background + `exec ANTHROPIC_BASE_URL=… claude …`.
 
 Inverse exists: `headroom unwrap` undoes durable wrapping. Useful for the
-v3 `whetstone uninstall` path.
+v3 `whetstone global uninstall` path.
 
 ## 0.2 — Init verbs and ICM import verb
 
