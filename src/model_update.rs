@@ -218,8 +218,6 @@ fn apply_action(
 /// (non-interactive, no cwd, no v3 manifest, offline) so every existing launch
 /// path is unaffected. Otherwise computes offers, seeds the seen baseline, and
 /// — when there is something to offer — drives the modal and applies the choice.
-// Wired into `wrap_claude` in Task 7; keeps the reachable core clippy-clean.
-#[allow(dead_code)]
 pub fn maybe_prompt(resolved: &ResolvedSettings) -> ModelDecision {
     if !crate::ui::is_interactive() {
         return ModelDecision::NoChange;
