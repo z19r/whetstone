@@ -11,6 +11,7 @@
 | `whetstone rtk [args...]` | Run RTK |
 | `whetstone doctor` | Inspect installed tool versions, `~/.claude/settings.json` hooks, and the per-project manifest |
 | `whetstone dashboard` | TUI dashboard for installed tool versions vs. pinned floors |
+| `whetstone settings` | Interactively edit whetstone settings, layered global/project (Headroom telemetry, Headroom memory, default API model, Anthropic API URL) |
 | `whetstone migrate [--dry-run] [-y] [--rollback ID]` | Migrate a v2 install to v3 (or roll back) — see [Migration Guide](migration.md) |
 | `whetstone version` | Print version |
 | `whetstone stats` | Token-savings summary from RTK + Headroom stats endpoints |
@@ -18,6 +19,25 @@
 | `whetstone release patch\|minor\|major\|set X.Y.Z` | Verify, bump version, and open a release PR |
 | `whetstone release-publish ...` | **Deprecated** — use `whetstone release` |
 | `whetstone db <subcommand>` | Session database operations (init / add-session / add-insight / search / get-sessions / get-insights / stats) |
+| `whetstone changelog-sync [--input F] [--output F] [--limit N]` | Regenerate `site/src/changelog.js` from `CHANGELOG.md` (maintainer tooling) |
+
+The global `--memory` flag (e.g. `whetstone --memory` or `whetstone --memory claude`)
+enables Headroom persistent cross-session memory for that run. Persist it per-project
+or globally via `whetstone settings` (Headroom Memory).
+
+## Model Update Prompt
+
+On launch (`whetstone` / `whetstone claude`), whetstone checks the 12h-cached
+Anthropic models list. If a model newer than the one this project runs — or a
+brand-new model family — is available, it shows a full-screen modal offering to:
+
+- **Pin** it as the project default (writes `api_model` to `.claude/whetstone.json`)
+- **Use for this session** only (no persistence)
+- **Dismiss** it permanently for this project (recorded in `dismissed_models`)
+- **Not now** (offered again next launch)
+
+The prompt is skipped when the terminal is non-interactive, whetstone is offline,
+the directory is not a v3 project, or `--model` was passed explicitly.
 
 ## Headroom Extras
 

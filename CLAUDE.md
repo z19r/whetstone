@@ -8,15 +8,12 @@ Whetstone is a Rust CLI that installs and configures three token optimization to
 
 - **Headroom** — HTTP proxy between Claude Code and the Anthropic API (50-90% context compression)
 - **RTK** — Hook that rewrites CLI commands to compress output before entering context (60-90% savings)
-- **Memory** — Persistent memory via ICM (embedded SQLite) or AutoMem (graph memory), with bundled skills and session hooks
+- **Memory** — Persistent project memory via ICM (embedded SQLite). ICM owns its own skills, hooks, and CLI, installed by `icm init --mode standard`.
 
-Single binary distribution. Users run `whetstone setup` from inside a git project. Global tools (Headroom, RTK) install once; skills, rules, and memory provider are configured per-project.
+Single binary distribution. Users run `whetstone setup` from inside a git project. Global tools (Headroom, RTK) install once; the memory provider and version-pinned manifest are configured per-project.
 
-**Bundled assets** in this repo:
-- `assets/skills/` — 20 skill directories (copied to project's `.claude/skills/`)
-- `assets/hooks/` — 5 hook `.sh` scripts (copied to `~/.claude/hooks/`)
-- `assets/rules/` — 8 rule `.md` files (copied to project's `.claude/rules/`)
-- `assets/commands/` — 2 command `.md` files (copied to project's `.claude/commands/`)
+**Bundled assets** in this repo (v3 ships only slash commands and the DB schema — skills, rules, and hook scripts are no longer vendored):
+- `assets/commands/` — slash command `.md` files (copied to project's `.claude/commands/`)
 - `assets/db/schema.sql` — SQLite schema for session database
 
 ## Commands
@@ -54,9 +51,15 @@ whetstone code [args...]               # Alias for claude
 whetstone proxy [args...]
 whetstone rtk [args...]
 whetstone version
+whetstone dashboard                    # TUI: installed tool versions vs pinned floors
+whetstone settings                     # Interactive layered settings (global/project)
+whetstone doctor                       # Inspect ~/.claude/settings.json + manifest, report drift
+whetstone migrate [--dry-run] [-y] [--rollback ID]   # v2 → v3 migration (reversible)
+whetstone stats                        # Token savings across RTK + Headroom
 whetstone update [--full]
 whetstone release patch|minor|major|set X.Y.Z
 whetstone release-publish patch|minor|major|set X.Y.Z # Deprecated
+whetstone changelog-sync [--input F] [--output F] [--limit N]  # regen site/src/changelog.js
 whetstone db init|add-session|add-insight|search|get-sessions|...
 ```
 <!-- AUTO-GENERATED: end -->
@@ -65,37 +68,32 @@ whetstone db init|add-session|add-insight|search|get-sessions|...
 
 `--memory` is a global flag (e.g. `whetstone --memory`, `whetstone --memory claude`). It enables Headroom persistent cross-session memory by passing `--memory` to the proxy whetstone spawns. If a proxy is already running *without* memory, whetstone prompts: restart it with memory (replaces the global proxy), start a memory proxy for this session only, or cancel. It can also be set persistently per-project or globally via `whetstone settings` (Headroom Memory).
 
+`whetstone settings` also exposes **Anthropic API URL** — a custom upstream Anthropic API URL for the Headroom proxy. When set (per-project or globally), whetstone exports it as `ANTHROPIC_TARGET_API_URL` before launching Headroom, so the whetstone-spawned proxy targets that upstream (mirrors Headroom's `proxy --anthropic-api-url` flag). An externally-set `ANTHROPIC_TARGET_API_URL` env var takes precedence over the stored setting.
+
 ## Architecture
 
 ```
 User → Claude Code
          ├── Bash calls → [RTK Hook] → rtk <cmd> → compressed output
          ├── Context    → [Headroom Proxy :8787] → Anthropic API
-         └── Memory     → [ICM or AutoMem] → persistent context
+         └── Memory     → [ICM, embedded SQLite] → persistent context
 ```
 
-**Setup flow** (`whetstone setup`, orchestrated by `src/setup.rs`):
-1. Preflight: verify Python 3.10+, git, curl, uv; confirm inside git repo
+**Setup flow** (`whetstone setup`, orchestrated by `src/setup.rs`). Setup first self-updates and offers v2→v3 migration; if the terminal is interactive it runs `src/wizard.rs`, otherwise the headless sequence below:
+1. Resolve assets; preflight-check dependencies (python, git, curl, uv)
 2. Install Headroom via `uv tool install "headroom-ai[EXTRAS]"` (extras configurable)
 3. Install RTK from GitHub (detects name collision with Rust Type Kit)
-4. Configure RTK hook globally + set `ANTHROPIC_BASE_URL` in shell profile
+4. Shell profile: set `ANTHROPIC_BASE_URL` + ensure `~/.local/bin` on PATH
 5. Self-install binary to `~/.local/bin/whetstone`
-6. Prompt for memory provider (ICM, AutoMem, or Skip)
-7. Copy skills, rules, commands, MEMSTACK.md; create config.local.json
-8. Install and configure chosen memory provider
-9. Copy hook scripts to `~/.claude/hooks/`; merge into `~/.claude/settings.json` (backed up with timestamp)
-10. Generate `STACK-SETUP.md`
+6. Prompt for memory provider (ICM or Skip)
+7. If a provider was chosen, `complete_setup`: copy slash commands, install the provider binary, run tool integrations (`src/integrations.rs`), run `doctor`, write the `.claude/whetstone.json` manifest, generate `STACK-SETUP.md`
 
-**Hook system** — registered in `~/.claude/settings.json`:
+**Hook system** — v3 no longer hand-writes `~/.claude/settings.json`. Whetstone delegates to each tool's own installer (`src/integrations.rs`), which writes its own hook entries; `whetstone doctor` reports drift.
 
-| Event | What Fires | Source |
-|-------|-----------|--------|
-| PreToolUse (Bash) | RTK rewrites command | RTK |
-| PreToolUse (Write/Edit/Bash) | TTS notification | whetstone |
-| PreToolUse (Bash, git push) | Build check + secrets scan | whetstone |
-| PostToolUse (git commit) | Debug artifact scan | whetstone |
-| SessionStart | Headroom auto-start + indexing | whetstone |
-| Stop | Session reporting | whetstone |
+| What Fires | Installed by |
+|-----------|--------------|
+| PreToolUse (Bash) — RTK rewrites the command | `rtk init --auto-patch` |
+| ICM slash commands, CLAUDE.md block, session hooks | `icm init --mode standard` |
 
 ## Source Layout
 
@@ -104,15 +102,23 @@ User → Claude Code
 src/
 ├── main.rs          # Entry: parse CLI, dispatch subcommands
 ├── cli.rs           # clap derive structs for all subcommands
-├── setup.rs         # whetstone setup orchestrator (8 steps)
+├── setup.rs         # whetstone setup orchestrator (headless path)
+├── wizard.rs        # Interactive setup wizard
 ├── uninstall.rs     # Interactive component removal
-├── wrapper.rs       # claude/proxy/rtk exec wrappers
-├── update.rs        # 12h-cached remote version check
+├── wrapper.rs       # claude/proxy/rtk exec wrappers; proxy + model resolution
+├── claude_code.rs   # Claude Code launch/detection helpers
+├── integrations.rs  # Delegates to `rtk init` / `icm init` (tool-managed hooks)
+├── migrate.rs       # v2 → v3 migration + reversible rollback
+├── doctor.rs        # Inspect settings.json + manifest, report drift
+├── dashboard.rs     # TUI: installed tool versions vs pinned floors
+├── settings.rs      # Interactive layered global/project settings TUI
+├── stats.rs         # Token-savings summary (RTK + Headroom)
+├── update.rs        # 12h-cached remote version check + self-update
 ├── release.rs       # Release preflight, version bump, and PR creation
+├── changelog.rs     # CHANGELOG.md parsing / site changelog sync
 ├── db.rs            # SQLite ops for session/memory database
-├── memory.rs        # MemoryProvider enum (ICM, AutoMem, Skip)
-├── hooks.rs         # Hook script copy + settings.json merge
-├── config.rs        # Typed structs for config.local.json
+├── memory.rs        # MemoryProvider enum (ICM, Skip)
+├── config.rs        # ProjectSettings/GlobalSettings + .claude/whetstone.json manifest
 ├── shell.rs         # Shell profile detection, env var injection
 ├── preflight.rs     # Dependency checks (python, git, curl, uv)
 ├── headroom.rs      # Headroom install/upgrade (extras configurable)
@@ -127,9 +133,9 @@ src/
 - **Single Rust binary**: replaces ~1200 lines Bash + ~460 lines Python
 - **Idempotent**: setup skips already-installed components; safe to rerun
 - **Absolute paths in hooks**: avoids PATH/shell-state issues
-- **Global tools, per-project config**: RTK/Headroom installed globally; memory provider and config are per-project
-- **Backup before modify**: `settings.json` backed up with timestamp before any merge
-- **No jq dependency**: serde_json replaces jq for settings.json manipulation
+- **Global tools, per-project config**: RTK/Headroom installed globally; memory provider and version-pinned manifest are per-project
+- **Tool-managed hooks**: v3 delegates `~/.claude/settings.json` hook entries to `rtk init` / `icm init`; whetstone never hand-merges them (`doctor` reports drift, `migrate` archives before touching state)
+- **Layered settings**: `GlobalSettings` (`~/.whetstone/settings.json`) and per-project `ProjectSettings` (in `.claude/whetstone.json`) resolve with project-over-global precedence
 - **rusqlite bundled**: statically links SQLite, no system dependency
 - **Asset resolution**: `WHETSTONE_ASSETS` env → `<binary_dir>/../assets/` → `~/.whetstone/assets/`
 
@@ -147,14 +153,13 @@ src/
 
 ### Repository Layout — Bundled Assets
 *~4,000 tokens/session saved*
-- `assets/skills/` contains ONLY skill files (flat, no subdirectories from external repos)
-- `assets/hooks/`, `assets/rules/`, `assets/commands/` contain runtime files
-- These directories are **static/vendored** — do NOT clone or pull external repos into them at install time; files are shipped with whetstone and should only change on a new whetstone release
+- v3 vendors **only** `assets/commands/` (slash commands) and `assets/db/schema.sql`. Skills, rules, and hook scripts are no longer bundled — ICM owns those via `icm init --mode standard`
+- These directories are **static/vendored** — do NOT clone or pull external repos into them at install time; files are shipped with whetstone and change only on a new whetstone release
 
 ### Install Constraints
 *~3,000 tokens/session saved*
-- `src/setup.rs` copies skills flat into `.claude/skills/` via `copy_dir_recursive` (no nested repo structure)
-- Never use `git clone` or `git submodule` for skills during install; copy bundled files only
+- `src/setup.rs` copies slash commands into `.claude/commands/` via `copy_dir_recursive`; provider assets come from the provider's own `init`
+- Never use `git clone` or `git submodule` during install; copy bundled files only
 - Verify with `cargo clippy` and `cargo test` after any edits
 
 ### Available Commands
