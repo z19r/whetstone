@@ -26,10 +26,11 @@ The global `--memory` flag (e.g. `whetstone --memory` or `whetstone --memory cla
 enables Headroom persistent cross-session memory for that run. Persist it per-project
 or globally via `whetstone settings` (Headroom Memory).
 
-`whetstone settings` exposes the `headroom_env` map — override any Headroom
-launch knob (savings profile, target ratio, memory behavior, etc.) in
-`.claude/whetstone.json` (project) or `~/.whetstone/settings.json` (global),
-with precedence: external `HEADROOM_*` env vars > project > global > defaults;
+Add a `headroom_env` map to `.claude/whetstone.json` (project) or
+`~/.whetstone/settings.json` (global) to override any Headroom launch knob
+(savings profile, target ratio, memory behavior, etc.). These maps are
+hand-edited JSON — the `whetstone settings` TUI does not yet expose them.
+Precedence: external `HEADROOM_*` env vars > project > global > defaults;
 `HEADROOM_PORT` is reserved.
 
 ## Model Update Prompt
