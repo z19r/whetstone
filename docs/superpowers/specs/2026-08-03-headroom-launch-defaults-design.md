@@ -58,24 +58,43 @@ sees the user's value unchanged), mirroring the existing
 Exposed in `whetstone settings`, each scoped Off / Global / Project, with
 project-over-global precedence (existing `ResolvedSettings` machinery).
 
+All env-var names below were confirmed against `headroom proxy --help`.
+
 | Setting | Env var | whetstone default | Notes |
 |---|---|---|---|
 | Savings profile | `HEADROOM_SAVINGS_PROFILE` | `agent-90` | Already wired; folds into this model. |
 | Target keep-ratio | `HEADROOM_TARGET_RATIO` | **unset** | Adaptive; the profile drives it. Do not pin a literal. |
-| Code-aware | `HEADROOM_CODE_AWARE_ENABLED` | **on** | Valid because default extras include `code`. |
-| Log message content | `HEADROOM_LOG_MESSAGES` | **off** | Opinionated flip — Headroom ships it on; whetstone writes source + secrets to disk otherwise. |
+| Code-aware | `HEADROOM_CODE_AWARE_ENABLED` | **on** (`1`) | Opinionated default — right for a coding tool. Valid because default extras include `code`; see caveat below. |
+| Log message content | `HEADROOM_LOG_MESSAGES` | **off (unset)** | NOT a flip — Headroom's `--log-messages` is an enable flag that already defaults off. First-class opt-in; default = leave the var unset. |
 | Budget (USD) | `HEADROOM_BUDGET` | unset | |
-| Budget period | (Headroom period var) | `hourly` | Only meaningful when a budget is set. |
-| Requests/min | (Headroom rpm var) | unset | Single local user needs no self-throttle. |
-| Tokens/min | (Headroom tpm var) | unset | |
-| Upstream backend | `HEADROOM_BACKEND` (or equiv) | `anthropic` | |
-| any-llm provider | (Headroom var) | passthrough | Only bites non-anthropic backends. |
-| Cloud region | (Headroom var) | passthrough | Only bites non-anthropic backends. |
-| Anthropic API URL | `ANTHROPIC_TARGET_API_URL` | **existing setting** | Reconcile — do NOT create a second knob for Headroom's "Anthropic base URL". |
+| Budget period | `HEADROOM_BUDGET_PERIOD` | unset | Only meaningful when a budget is set; leave to Headroom's default rather than pinning `hourly`. |
+| Requests/min | `HEADROOM_RPM` | unset | Single local user needs no self-throttle. |
+| Tokens/min | `HEADROOM_TPM` | unset | |
+| Upstream backend | `HEADROOM_BACKEND` | unset (`anthropic`) | Headroom already defaults to anthropic; leave unset. |
+| any-llm provider | `HEADROOM_ANYLLM_PROVIDER` | unset | Only bites non-anthropic backends. |
+| Cloud region | `HEADROOM_REGION` | unset | Only bites non-anthropic backends. |
+| Anthropic API URL | `ANTHROPIC_TARGET_API_URL` | **existing setting** | Confirmed: Headroom's `--anthropic-api-url` reads exactly this var. Reuse whetstone's existing `anthropic_api_url` — do NOT create a second knob. |
 
-> Exact Headroom env-var names for budget period, rpm/tpm, backend,
-> any-llm provider, and region must be confirmed against Headroom's env
-> reference during planning before they are hardcoded.
+### Opinionated defaults whetstone actively sets
+
+The audit found only **two** knobs where whetstone imposes a value that
+differs from "leave Headroom alone":
+
+1. `HEADROOM_SAVINGS_PROFILE=agent-90` — already required at launch.
+2. `HEADROOM_CODE_AWARE_ENABLED=1` — AST-aware compression, right for a
+   coding tool.
+
+Everything else stays unset (Headroom's own default / adaptive) unless the
+user sets it. In particular, **log message content is NOT flipped** — it is
+already off by default in Headroom.
+
+**Code-aware caveat:** `HEADROOM_CODE_AWARE_ENABLED=1` requires the
+`headroom-ai[code]` extra. whetstone's default extras include `code`, but a
+user who installed with `--headroom-extras none` won't have it. Planning
+must decide whether to gate this default on the presence of the extra or
+accept Headroom warning/ignoring it. Simplest: set it unconditionally and
+let Headroom no-op when the extra is absent (confirm Headroom degrades
+gracefully rather than erroring).
 
 ## Provider-gated default: Headroom memory tools
 
@@ -83,11 +102,14 @@ whetstone's memory story is ICM. Headroom also ships its own memory tools
 (`memory_save` / `memory_search`) and context injection, gated behind the
 `--memory` flag. To avoid double-tooling when ICM is the provider:
 
-- Manifest provider == `Icm` → default **Disable memory tools** and
-  **Disable memory context injection** to **on** (ICM owns memory).
-- Manifest provider == `Skip` / none → leave Headroom's own defaults
-  (memory active when `--memory` is passed).
+- Manifest provider == `Icm` → set `HEADROOM_NO_MEMORY_TOOLS=1` and
+  `HEADROOM_NO_MEMORY_CONTEXT=1` (ICM owns memory).
+- Manifest provider == `Skip` / none → leave both unset (Headroom's own
+  defaults; memory active when `--memory` is passed).
 - Both remain overrideable per-project/global and via `HEADROOM_*` env.
+
+This is the one *provider-conditional* opinionated default, distinct from
+the two unconditional ones above.
 
 ## Raw passthrough escape
 
@@ -127,11 +149,22 @@ CCR maturation, timeouts, memory paths/top-K, extensions, OpenAI base URL
 - Settings TUI: existing layered-settings tests extended for the new
   first-class fields.
 
-## Open confirmations for planning
+## Confirmed against `headroom proxy --help`
 
-1. Exact Headroom env-var names for the non-obvious first-class knobs
-   (budget period, rpm/tpm, backend, any-llm provider, region).
-2. Confirm Headroom's "Anthropic base URL" endpoint maps to the same
-   upstream override as `ANTHROPIC_TARGET_API_URL` (so we truly avoid a
-   duplicate knob).
-3. Confirm the env-var names for Headroom's memory disables.
+All open questions from brainstorming are now resolved:
+
+1. Env-var names for every first-class knob confirmed:
+   `HEADROOM_TARGET_RATIO`, `HEADROOM_CODE_AWARE_ENABLED`,
+   `HEADROOM_LOG_MESSAGES`, `HEADROOM_BUDGET`, `HEADROOM_BUDGET_PERIOD`,
+   `HEADROOM_RPM`, `HEADROOM_TPM`, `HEADROOM_BACKEND`,
+   `HEADROOM_ANYLLM_PROVIDER`, `HEADROOM_REGION`.
+2. Headroom's `--anthropic-api-url` reads `ANTHROPIC_TARGET_API_URL` —
+   same var whetstone already exports. No duplicate knob.
+3. Memory disables: `HEADROOM_NO_MEMORY_TOOLS`,
+   `HEADROOM_NO_MEMORY_CONTEXT`.
+4. `--log-messages` is an enable flag (default off) — corrected the spec's
+   original "flip it off" premise.
+
+Remaining decision deferred to the plan: whether to gate
+`HEADROOM_CODE_AWARE_ENABLED=1` on the `[code]` extra being installed (see
+code-aware caveat).
