@@ -10,6 +10,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -72,6 +73,8 @@ pub struct ProjectSettings {
     pub api_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anthropic_api_url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headroom_env: BTreeMap<String, String>,
 }
 
 const GLOBAL_DIR: &str = ".whetstone";
@@ -87,6 +90,8 @@ pub struct GlobalSettings {
     pub api_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anthropic_api_url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headroom_env: BTreeMap<String, String>,
 }
 
 impl GlobalSettings {
@@ -122,10 +127,14 @@ pub struct ResolvedSettings {
     pub headroom_memory: bool,
     pub api_model: Option<String>,
     pub anthropic_api_url: Option<String>,
+    pub headroom_env: BTreeMap<String, String>,
 }
 
 impl ResolvedSettings {
     pub fn resolve(global: &GlobalSettings, project: &ProjectSettings) -> Self {
+        let mut headroom_env = global.headroom_env.clone();
+        headroom_env.extend(project.headroom_env.clone());
+
         Self {
             headroom_telemetry: project
                 .headroom_telemetry
@@ -139,6 +148,7 @@ impl ResolvedSettings {
                 .anthropic_api_url
                 .clone()
                 .or_else(|| global.anthropic_api_url.clone()),
+            headroom_env,
         }
     }
 }
@@ -374,5 +384,45 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(10));
         m.touch_and_save(f.path()).unwrap();
         assert!(m.updated_at > original);
+    }
+
+    #[test]
+    fn resolve_merges_headroom_env_project_over_global() {
+        let mut global = GlobalSettings::default();
+        global
+            .headroom_env
+            .insert("HEADROOM_RPM".into(), "60".into());
+        global
+            .headroom_env
+            .insert("HEADROOM_TPM".into(), "1000".into());
+        let mut project = ProjectSettings::default();
+        project
+            .headroom_env
+            .insert("HEADROOM_RPM".into(), "120".into());
+
+        let resolved = ResolvedSettings::resolve(&global, &project);
+
+        // project wins on the shared key, global-only key survives
+        assert_eq!(
+            resolved
+                .headroom_env
+                .get("HEADROOM_RPM")
+                .map(String::as_str),
+            Some("120")
+        );
+        assert_eq!(
+            resolved
+                .headroom_env
+                .get("HEADROOM_TPM")
+                .map(String::as_str),
+            Some("1000")
+        );
+    }
+
+    #[test]
+    fn empty_headroom_env_omitted_from_project_json() {
+        let s = ProjectSettings::default();
+        let raw = serde_json::to_string(&s).unwrap();
+        assert!(!raw.contains("headroom_env"));
     }
 }
