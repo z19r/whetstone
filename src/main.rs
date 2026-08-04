@@ -6,6 +6,7 @@ mod dashboard;
 mod db;
 mod doctor;
 mod headroom;
+mod headroom_env;
 mod integrations;
 mod memory;
 mod migrate;
