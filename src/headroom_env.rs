@@ -14,7 +14,8 @@ const RESERVED_DENY: &[&str] = &["HEADROOM_PORT"];
 /// Governed by dedicated code paths already; dropped silently to avoid
 /// setting the same var twice with conflicting values.
 #[allow(dead_code)]
-const RESERVED_OWNED: &[&str] = &["HEADROOM_SAVINGS_PROFILE", "HEADROOM_TELEMETRY"];
+const RESERVED_OWNED: &[&str] =
+    &["HEADROOM_SAVINGS_PROFILE", "HEADROOM_TELEMETRY"];
 
 /// The env whetstone will set when launching headroom.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -85,7 +86,8 @@ mod tests {
 
     #[test]
     fn applies_code_aware_default() {
-        let plan = build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, no_env);
+        let plan =
+            build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, no_env);
         assert!(plan
             .apply
             .contains(&("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into())));
@@ -93,7 +95,8 @@ mod tests {
 
     #[test]
     fn icm_provider_suppresses_headroom_memory() {
-        let plan = build_headroom_env(&BTreeMap::new(), ProviderTag::Icm, no_env);
+        let plan =
+            build_headroom_env(&BTreeMap::new(), ProviderTag::Icm, no_env);
         assert!(plan
             .apply
             .contains(&("HEADROOM_NO_MEMORY_TOOLS".into(), "1".into())));
@@ -104,7 +107,8 @@ mod tests {
 
     #[test]
     fn skip_provider_leaves_memory_alone() {
-        let plan = build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, no_env);
+        let plan =
+            build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, no_env);
         assert!(!plan
             .apply
             .iter()
@@ -113,9 +117,10 @@ mod tests {
 
     #[test]
     fn external_env_wins_over_default() {
-        let plan = build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, |k| {
-            k == "HEADROOM_CODE_AWARE_ENABLED"
-        });
+        let plan =
+            build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, |k| {
+                k == "HEADROOM_CODE_AWARE_ENABLED"
+            });
         assert!(!plan
             .apply
             .iter()
@@ -143,7 +148,9 @@ mod tests {
     fn external_env_wins_over_user_map() {
         let mut map = BTreeMap::new();
         map.insert("HEADROOM_RPM".into(), "120".into());
-        let plan = build_headroom_env(&map, ProviderTag::Skip, |k| k == "HEADROOM_RPM");
+        let plan = build_headroom_env(&map, ProviderTag::Skip, |k| {
+            k == "HEADROOM_RPM"
+        });
         assert!(!plan.apply.iter().any(|(k, _)| k == "HEADROOM_RPM"));
     }
 
@@ -162,10 +169,9 @@ mod tests {
         map.insert("HEADROOM_SAVINGS_PROFILE".into(), "agent-50".into());
         map.insert("HEADROOM_TELEMETRY".into(), "on".into());
         let plan = build_headroom_env(&map, ProviderTag::Skip, no_env);
-        assert!(!plan
-            .apply
-            .iter()
-            .any(|(k, _)| k == "HEADROOM_SAVINGS_PROFILE" || k == "HEADROOM_TELEMETRY"));
+        assert!(!plan.apply.iter().any(|(k, _)| {
+            k == "HEADROOM_SAVINGS_PROFILE" || k == "HEADROOM_TELEMETRY"
+        }));
         assert!(plan.ignored.is_empty());
     }
 
