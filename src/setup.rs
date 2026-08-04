@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{ToolVersions, WhetstoneManifest};
 use crate::memory::MemoryProvider;
-use crate::{config, doctor, headroom, integrations, migrate, preflight, rtk, shell, ui, update};
+use crate::{
+    config, doctor, headroom, integrations, migrate, preflight, rtk, shell, ui,
+    update,
+};
 
 pub(crate) const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
 
@@ -27,7 +30,8 @@ pub fn resolve_assets_dir() -> Result<PathBuf> {
         }
     }
 
-    let home = dirs::home_dir().context("could not determine home directory")?;
+    let home =
+        dirs::home_dir().context("could not determine home directory")?;
     let fallback = home.join(".whetstone").join("assets");
     if fallback.is_dir() {
         return Ok(fallback);
@@ -59,7 +63,9 @@ fn maybe_self_update(full: bool, headroom_extras: &str) {
         Err(_) => return,
     };
 
-    if let Ok(ui::ComponentStatus::Updated(from, to)) = update::self_update(&remote) {
+    if let Ok(ui::ComponentStatus::Updated(from, to)) =
+        update::self_update(&remote)
+    {
         ui::ok(&format!(
             "updated whetstone {from} → {to}, restarting setup…"
         ));
@@ -93,7 +99,11 @@ fn re_exec_setup(full: bool, headroom_extras: &str) -> ! {
     }
 }
 
-fn run_sequential(full: bool, headroom_extras: &str, migrated: bool) -> Result<()> {
+fn run_sequential(
+    full: bool,
+    headroom_extras: &str,
+    migrated: bool,
+) -> Result<()> {
     ui::info("whetstone setup");
 
     let assets = resolve_assets_dir()?;
@@ -135,7 +145,11 @@ fn run_sequential(full: bool, headroom_extras: &str, migrated: bool) -> Result<(
 /// Shared finishing sequence used by both the headless `setup::run` path and
 /// the interactive `wizard::run` path. Assumes binaries (headroom, rtk,
 /// whetstone) are already installed.
-pub(crate) fn complete_setup(provider: MemoryProvider, assets: &Path, full: bool) -> Result<()> {
+pub(crate) fn complete_setup(
+    provider: MemoryProvider,
+    assets: &Path,
+    full: bool,
+) -> Result<()> {
     install_general_assets(assets, full)?;
     install_provider_binary(provider)?;
     integrations::run_all(provider)?;
@@ -234,7 +248,8 @@ pub(crate) fn install_provider_binary(provider: MemoryProvider) -> Result<()> {
 
 fn ensure_icm_installed() -> Result<()> {
     if which::which("icm").is_ok() {
-        let output = std::process::Command::new("icm").arg("--version").output();
+        let output =
+            std::process::Command::new("icm").arg("--version").output();
         if let Ok(o) = output {
             if o.status.success() {
                 let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -376,10 +391,11 @@ Per-project: `whetstone uninstall`
 }
 
 pub(crate) fn self_install() -> Result<()> {
-    let current_exe =
-        std::env::current_exe().context("could not determine current executable path")?;
+    let current_exe = std::env::current_exe()
+        .context("could not determine current executable path")?;
 
-    let home = dirs::home_dir().context("could not determine home directory")?;
+    let home =
+        dirs::home_dir().context("could not determine home directory")?;
     let bin_dir = home.join(".local").join("bin");
     fs::create_dir_all(&bin_dir)?;
 
@@ -391,7 +407,8 @@ pub(crate) fn self_install() -> Result<()> {
     }
 
     if dest.exists() || dest.symlink_metadata().is_ok() {
-        fs::remove_file(&dest).with_context(|| format!("removing old {}", dest.display()))?;
+        fs::remove_file(&dest)
+            .with_context(|| format!("removing old {}", dest.display()))?;
     }
 
     install_link_or_copy(&current_exe, &dest)?;
@@ -400,16 +417,24 @@ pub(crate) fn self_install() -> Result<()> {
 }
 
 #[cfg(unix)]
-fn install_link_or_copy(src: &std::path::Path, dest: &std::path::Path) -> Result<()> {
-    std::os::unix::fs::symlink(src, dest)
-        .with_context(|| format!("symlinking {} → {}", dest.display(), src.display()))?;
+fn install_link_or_copy(
+    src: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<()> {
+    std::os::unix::fs::symlink(src, dest).with_context(|| {
+        format!("symlinking {} → {}", dest.display(), src.display())
+    })?;
     ui::ok(&format!("symlinked to {}", dest.display()));
     Ok(())
 }
 
 #[cfg(not(unix))]
-fn install_link_or_copy(src: &std::path::Path, dest: &std::path::Path) -> Result<()> {
-    fs::copy(src, dest).with_context(|| format!("copying binary to {}", dest.display()))?;
+fn install_link_or_copy(
+    src: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<()> {
+    fs::copy(src, dest)
+        .with_context(|| format!("copying binary to {}", dest.display()))?;
     ui::ok(&format!("installed to {}", dest.display()));
     Ok(())
 }

@@ -96,7 +96,9 @@ fn is_current_gen(id: &str) -> bool {
 fn strip_date_suffix(id: &str) -> Option<&str> {
     if id.len() > 9 {
         let (base, suffix) = id.split_at(id.len() - 9);
-        if suffix.starts_with('-') && suffix[1..].bytes().all(|b| b.is_ascii_digit()) {
+        if suffix.starts_with('-')
+            && suffix[1..].bytes().all(|b| b.is_ascii_digit())
+        {
             return Some(base);
         }
     }
@@ -175,8 +177,9 @@ pub(crate) fn live_available_models() -> Option<Vec<String>> {
 }
 
 fn load_available_models() -> Vec<String> {
-    live_available_models()
-        .unwrap_or_else(|| FALLBACK_MODELS.iter().map(|s| s.to_string()).collect())
+    live_available_models().unwrap_or_else(|| {
+        FALLBACK_MODELS.iter().map(|s| s.to_string()).collect()
+    })
 }
 
 /// Newest Sonnet in `models`, by lexical id (matching the descending sort the
@@ -245,12 +248,14 @@ struct SettingsState {
 impl SettingsState {
     fn scope(&self, id: SettingId) -> Scope {
         match id {
-            SettingId::HeadroomTelemetry => match self.project.headroom_telemetry {
-                Some(true) => Scope::Project,
-                Some(false) => Scope::Off,
-                None if self.global.headroom_telemetry => Scope::Global,
-                None => Scope::Off,
-            },
+            SettingId::HeadroomTelemetry => {
+                match self.project.headroom_telemetry {
+                    Some(true) => Scope::Project,
+                    Some(false) => Scope::Off,
+                    None if self.global.headroom_telemetry => Scope::Global,
+                    None => Scope::Off,
+                }
+            }
             SettingId::HeadroomMemory => match self.project.headroom_memory {
                 Some(true) => Scope::Project,
                 Some(false) => Scope::Off,
@@ -339,7 +344,11 @@ impl SettingsState {
                     self.project.anthropic_api_url = None;
                 }
                 Scope::Project => {
-                    let base = self.global.anthropic_api_url.clone().unwrap_or_default();
+                    let base = self
+                        .global
+                        .anthropic_api_url
+                        .clone()
+                        .unwrap_or_default();
                     self.project.anthropic_api_url = Some(base);
                 }
             },
@@ -420,7 +429,8 @@ impl SettingsState {
     }
 
     fn dirty(&self) -> bool {
-        self.global != self.original_global || self.project != self.original_project
+        self.global != self.original_global
+            || self.project != self.original_project
     }
 }
 
@@ -428,10 +438,11 @@ pub fn run() -> Result<()> {
     let cwd = std::env::current_dir()?;
     let manifest_path = WhetstoneManifest::path_for(&cwd);
 
-    let (manifest, had_manifest) = match WhetstoneManifest::load(&manifest_path)? {
-        Some(m) => (Some(m), true),
-        None => (None, false),
-    };
+    let (manifest, had_manifest) =
+        match WhetstoneManifest::load(&manifest_path)? {
+            Some(m) => (Some(m), true),
+            None => (None, false),
+        };
 
     let global = GlobalSettings::load()?;
     let project = manifest
@@ -442,7 +453,8 @@ pub fn run() -> Result<()> {
     let models = load_available_models();
 
     let mut terminal = ratatui::init();
-    let result = run_loop(&mut terminal, global.clone(), project.clone(), models);
+    let result =
+        run_loop(&mut terminal, global.clone(), project.clone(), models);
     ratatui::restore();
 
     match result {
@@ -455,7 +467,12 @@ pub fn run() -> Result<()> {
                 saved.global.save()?;
             }
             if project_changed {
-                save_project_settings(&manifest_path, manifest, had_manifest, saved.project)?;
+                save_project_settings(
+                    &manifest_path,
+                    manifest,
+                    had_manifest,
+                    saved.project,
+                )?;
             }
 
             if global_changed || project_changed {
@@ -482,7 +499,10 @@ fn save_project_settings(
     let mut manifest = if had_manifest {
         existing.unwrap()
     } else {
-        WhetstoneManifest::new(MemoryProvider::Skip, crate::config::ToolVersions::default())
+        WhetstoneManifest::new(
+            MemoryProvider::Skip,
+            crate::config::ToolVersions::default(),
+        )
     };
     manifest.settings = project;
     manifest.updated_at = chrono::Utc::now();
@@ -501,7 +521,9 @@ struct SavedState {
 /// Drop blank free-text values (a scope was toggled on but never filled in) to
 /// `None` so an empty API URL never persists to disk.
 fn normalize_saved(saved: &mut SavedState) {
-    let blank = |v: &Option<String>| v.as_deref().map(str::trim).is_some_and(str::is_empty);
+    let blank = |v: &Option<String>| {
+        v.as_deref().map(str::trim).is_some_and(str::is_empty)
+    };
     if blank(&saved.global.anthropic_api_url) {
         saved.global.anthropic_api_url = None;
     }
@@ -551,15 +573,19 @@ fn run_loop(
                     KeyCode::Char(' ') => {
                         state.cycle_scope(SETTINGS[state.selected]);
                     }
-                    KeyCode::Tab | KeyCode::Enter => match SETTINGS[state.selected] {
-                        SettingId::ApiModel => state.cycle_model_value(),
-                        SettingId::AnthropicApiUrl => state.begin_edit(),
-                        _ => {}
-                    },
+                    KeyCode::Tab | KeyCode::Enter => {
+                        match SETTINGS[state.selected] {
+                            SettingId::ApiModel => state.cycle_model_value(),
+                            SettingId::AnthropicApiUrl => state.begin_edit(),
+                            _ => {}
+                        }
+                    }
                     KeyCode::Up | KeyCode::Char('k') => {
                         state.selected = state.selected.saturating_sub(1);
                     }
-                    KeyCode::Down | KeyCode::Char('j') if state.selected + 1 < SETTINGS.len() => {
+                    KeyCode::Down | KeyCode::Char('j')
+                        if state.selected + 1 < SETTINGS.len() =>
+                    {
                         state.selected += 1;
                     }
                     KeyCode::Char('s') => {
@@ -697,7 +723,9 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
         };
 
         let scope = state.scope(id);
-        let is_editing = is_selected && id == SettingId::AnthropicApiUrl && state.editing.is_some();
+        let is_editing = is_selected
+            && id == SettingId::AnthropicApiUrl
+            && state.editing.is_some();
 
         let mut row = vec![Span::styled(
             cursor,
@@ -745,7 +773,10 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
 
         lines.push(Line::from(vec![
             Span::raw("                  "),
-            Span::styled(desc_line, Style::default().add_modifier(Modifier::DIM)),
+            Span::styled(
+                desc_line,
+                Style::default().add_modifier(Modifier::DIM),
+            ),
         ]));
 
         lines.push(Line::from(""));
@@ -1103,7 +1134,8 @@ mod tests {
     fn model_value_cycling_wraps() {
         let mut s = default_state();
         s.selected = 2;
-        s.global.api_model = Some(FALLBACK_MODELS[FALLBACK_MODELS.len() - 1].to_string());
+        s.global.api_model =
+            Some(FALLBACK_MODELS[FALLBACK_MODELS.len() - 1].to_string());
 
         s.cycle_model_value();
         assert_eq!(s.global.api_model.as_deref(), Some(FALLBACK_MODELS[0]));
@@ -1184,8 +1216,16 @@ mod tests {
 
     #[test]
     fn family_order_sorts_correctly() {
-        assert!(family_order("claude-opus-4-8") < family_order("claude-sonnet-4-6"));
-        assert!(family_order("claude-sonnet-4-6") < family_order("claude-haiku-4-5-20251001"));
-        assert!(family_order("claude-haiku-4-5-20251001") < family_order("claude-fable-5"));
+        assert!(
+            family_order("claude-opus-4-8") < family_order("claude-sonnet-4-6")
+        );
+        assert!(
+            family_order("claude-sonnet-4-6")
+                < family_order("claude-haiku-4-5-20251001")
+        );
+        assert!(
+            family_order("claude-haiku-4-5-20251001")
+                < family_order("claude-fable-5")
+        );
     }
 }

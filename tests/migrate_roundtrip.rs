@@ -25,7 +25,11 @@ fn assets_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")
 }
 
-fn run_migrate(project: &Path, home: &Path, args: &[&str]) -> std::process::Output {
+fn run_migrate(
+    project: &Path,
+    home: &Path,
+    args: &[&str],
+) -> std::process::Output {
     let mut cmd = Command::new(whetstone_bin());
     cmd.arg("migrate").args(args);
     cmd.current_dir(project);
@@ -40,8 +44,10 @@ fn seed_v2_fixture(project: &Path, home: &Path) {
     // Project-side: memstack DB + MEMSTACK.md + a managed skill dir.
     let memstack_dir = project.join(".claude/memstack/db");
     std::fs::create_dir_all(&memstack_dir).unwrap();
-    std::fs::write(memstack_dir.join("memstack.db"), b"sqlite-shaped-bytes").unwrap();
-    std::fs::write(project.join(".claude/MEMSTACK.md"), b"# memstack v2").unwrap();
+    std::fs::write(memstack_dir.join("memstack.db"), b"sqlite-shaped-bytes")
+        .unwrap();
+    std::fs::write(project.join(".claude/MEMSTACK.md"), b"# memstack v2")
+        .unwrap();
     let skills_diary = project.join(".claude/skills/diary");
     std::fs::create_dir_all(&skills_diary).unwrap();
     std::fs::write(skills_diary.join("SKILL.md"), b"# diary").unwrap();
@@ -116,7 +122,9 @@ fn dry_run_over_v2_fixture_reports_markers_and_writes_nothing() {
         !project.path().join(".claude/whetstone.json").exists(),
         ".claude/whetstone.json should not exist after dry-run"
     );
-    let after = std::fs::read_to_string(home.path().join(".claude/settings.json")).unwrap();
+    let after =
+        std::fs::read_to_string(home.path().join(".claude/settings.json"))
+            .unwrap();
     assert!(
         after.contains("mcp-automem"),
         "settings.json was mutated during dry-run"
@@ -142,7 +150,8 @@ fn migrate_on_clean_project_is_a_no_op() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        combined.contains("no v2 markers") || combined.contains("nothing to do"),
+        combined.contains("no v2 markers")
+            || combined.contains("nothing to do"),
         "expected no-op message, got:\n{combined}"
     );
     assert!(

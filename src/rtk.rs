@@ -15,7 +15,8 @@ use crate::version;
 const MIN_VERSION: &str = "0.42.0";
 const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh";
-const GITHUB_LATEST_URL: &str = "https://api.github.com/repos/rtk-ai/rtk/releases/latest";
+const GITHUB_LATEST_URL: &str =
+    "https://api.github.com/repos/rtk-ai/rtk/releases/latest";
 
 #[derive(Deserialize)]
 struct GithubRelease {

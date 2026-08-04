@@ -21,7 +21,8 @@ pub enum IcmMode {
     /// `standard` — cli + skill + hook (no MCP). The default.
     Standard,
     /// `all` — everything including MCP server. Opt-in only.
-    #[allow(dead_code)] // wired by setup once `--mode all` is exposed in cli.
+    #[allow(dead_code)]
+    // wired by setup once `--mode all` is exposed in cli.
     All,
 }
 
@@ -103,7 +104,8 @@ pub fn run_all(provider: MemoryProvider) -> Result<IntegrationReport> {
 }
 
 fn require_binary(name: &str) -> Result<()> {
-    which::which(name).with_context(|| format!("`{name}` not found on PATH"))?;
+    which::which(name)
+        .with_context(|| format!("`{name}` not found on PATH"))?;
     Ok(())
 }
 
@@ -180,7 +182,8 @@ mod tests {
     fn require_binary_errors_for_missing_command() {
         // Pick a name no sane system has installed. The error message must
         // include the binary name so the user can act on it.
-        let err = require_binary("definitely-not-a-real-binary-xyz123").unwrap_err();
+        let err =
+            require_binary("definitely-not-a-real-binary-xyz123").unwrap_err();
         let msg = format!("{err:?}");
         assert!(
             msg.contains("definitely-not-a-real-binary-xyz123"),

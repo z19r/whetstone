@@ -23,19 +23,33 @@ struct ComponentInfo {
 impl ComponentInfo {
     fn status_line(&self) -> Line<'_> {
         match (&self.installed, &self.latest) {
-            (Some(cur), Some(lat)) if version::is_older(cur, lat) => Line::from(vec![
-                Span::styled("  ● ", Style::default().fg(Color::Yellow)),
-                Span::styled(self.name, Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(format!("  {cur} → {lat}")),
-            ]),
+            (Some(cur), Some(lat)) if version::is_older(cur, lat) => {
+                Line::from(vec![
+                    Span::styled("  ● ", Style::default().fg(Color::Yellow)),
+                    Span::styled(
+                        self.name,
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(format!("  {cur} → {lat}")),
+                ])
+            }
             (Some(cur), _) => Line::from(vec![
                 Span::styled("  ● ", Style::default().fg(Color::Green)),
-                Span::styled(self.name, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    self.name,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(format!("  {cur}")),
             ]),
             (None, _) => Line::from(vec![
-                Span::styled("  ○ ", Style::default().add_modifier(Modifier::DIM)),
-                Span::styled(self.name, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "  ○ ",
+                    Style::default().add_modifier(Modifier::DIM),
+                ),
+                Span::styled(
+                    self.name,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     "  not installed",
                     Style::default().add_modifier(Modifier::DIM),
@@ -57,7 +71,8 @@ impl DashboardState {
         let mut state = Self {
             components: Vec::new(),
             tab: 0,
-            last_refresh: Instant::now() - Duration::from_secs(REFRESH_SECS + 1),
+            last_refresh: Instant::now()
+                - Duration::from_secs(REFRESH_SECS + 1),
             status_msg: "Loading...".into(),
         };
         state.refresh();

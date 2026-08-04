@@ -6,6 +6,7 @@ mod dashboard;
 mod db;
 mod doctor;
 mod headroom;
+mod headroom_env;
 mod integrations;
 mod memory;
 mod migrate;
@@ -154,7 +155,8 @@ fn main() {
             }
             Command::Version => {
                 let outdated = update::check_cached_upgrade();
-                let is_outdated = |name: &str| outdated.iter().any(|c| c.name == name);
+                let is_outdated =
+                    |name: &str| outdated.iter().any(|c| c.name == name);
 
                 let entries = vec![
                     ui::VersionEntry {
@@ -236,7 +238,9 @@ fn main() {
             } => {
                 let result = match rollback {
                     Some(id) => migrate::rollback(&id),
-                    None => migrate::run(migrate::MigrateOptions { dry_run, yes }),
+                    None => {
+                        migrate::run(migrate::MigrateOptions { dry_run, yes })
+                    }
                 };
                 if let Err(e) = result {
                     ui::fail(&format!("{e:#}"));
@@ -282,7 +286,10 @@ mod tests {
 
     #[test]
     fn already_configured_skips_prompt() {
-        assert_eq!(check_needs_setup(true, true), SetupCheck::AlreadyConfigured,);
+        assert_eq!(
+            check_needs_setup(true, true),
+            SetupCheck::AlreadyConfigured,
+        );
     }
 
     #[test]

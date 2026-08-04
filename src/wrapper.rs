@@ -28,7 +28,10 @@ const ANTHROPIC_TARGET_API_URL: &str = "ANTHROPIC_TARGET_API_URL";
 /// headroom proxy targets it. An externally-set env var wins over the stored
 /// setting, and blank/whitespace settings are ignored.
 fn apply_anthropic_api_url(setting: Option<&str>) {
-    if let Some(url) = resolve_anthropic_api_url(setting, env::var(ANTHROPIC_TARGET_API_URL).ok()) {
+    if let Some(url) = resolve_anthropic_api_url(
+        setting,
+        env::var(ANTHROPIC_TARGET_API_URL).ok(),
+    ) {
         env::set_var(ANTHROPIC_TARGET_API_URL, url);
     }
 }
@@ -54,6 +57,13 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
 
     let resolved = resolved_settings();
     apply_anthropic_api_url(resolved.anthropic_api_url.as_deref());
+
+    let hr_plan = headroom_env_plan();
+    warn_ignored_headroom_env(&hr_plan.ignored);
+    for (key, value) in &hr_plan.apply {
+        env::set_var(key, value);
+    }
+
     let want_memory = memory_flag || resolved.headroom_memory;
     let decision = resolve_proxy(want_memory);
 
@@ -119,7 +129,10 @@ fn start_detached_decision(want_memory: bool) -> ProxyDecision {
 }
 
 /// The running proxy lacks memory but this session wants it. Ask what to do.
-fn resolve_memory_conflict(want_memory: bool, pid: Option<u32>) -> ProxyDecision {
+fn resolve_memory_conflict(
+    want_memory: bool,
+    pid: Option<u32>,
+) -> ProxyDecision {
     // Non-interactive: never kill a proxy other sessions may be sharing.
     if !crate::ui::is_interactive() {
         eprintln!(
@@ -137,7 +150,8 @@ fn resolve_memory_conflict(want_memory: bool, pid: Option<u32>) -> ProxyDecision
         "Start a memory proxy for this session only",
         "Cancel and abort launch",
     ];
-    let prompt = "A Headroom proxy is already running without --memory. What now?";
+    let prompt =
+        "A Headroom proxy is already running without --memory. What now?";
     match crate::ui::select(prompt, &choices, 0) {
         0 => {
             kill_proxy(pid);
@@ -178,7 +192,9 @@ fn kill_proxy(pid: Option<u32>) {
         }
         std::thread::sleep(PROXY_POLL_INTERVAL);
     }
-    eprintln!("[WARN] whetstone: proxy at {DEFAULT_PROXY} did not shut down in time");
+    eprintln!(
+        "[WARN] whetstone: proxy at {DEFAULT_PROXY} did not shut down in time"
+    );
 }
 
 fn resolved_settings() -> crate::config::ResolvedSettings {
@@ -190,6 +206,47 @@ fn resolved_settings() -> crate::config::ResolvedSettings {
         .map(|m| m.settings)
         .unwrap_or_default();
     crate::config::ResolvedSettings::resolve(&global, &project)
+}
+
+/// The memory provider recorded in this project's manifest, or `Skip` when
+/// there is no manifest — used to gate Headroom's built-in memory tools.
+fn resolved_provider() -> crate::config::ProviderTag {
+    let cwd = env::current_dir().ok();
+    cwd.map(|d| crate::config::WhetstoneManifest::path_for(&d))
+        .and_then(|p| crate::config::WhetstoneManifest::load(&p).ok().flatten())
+        .map(|m| m.provider)
+        .unwrap_or(crate::config::ProviderTag::Skip)
+}
+
+/// Testable core: build the launch-env plan from resolved settings +
+/// provider + an env-presence probe.
+fn headroom_env_plan_for(
+    resolved: &crate::config::ResolvedSettings,
+    provider: crate::config::ProviderTag,
+    env_has: impl Fn(&str) -> bool,
+) -> crate::headroom_env::HeadroomEnvPlan {
+    crate::headroom_env::build_headroom_env(
+        &resolved.headroom_env,
+        provider,
+        env_has,
+    )
+}
+
+/// Production wrapper: reads live settings + real process env.
+fn headroom_env_plan() -> crate::headroom_env::HeadroomEnvPlan {
+    let resolved = resolved_settings();
+    let provider = resolved_provider();
+    headroom_env_plan_for(&resolved, provider, |k| env::var_os(k).is_some())
+}
+
+/// Warn once per reserved key the user tried to set via `headroom_env`.
+fn warn_ignored_headroom_env(ignored: &[String]) {
+    for key in ignored {
+        eprintln!(
+            "[WARN] whetstone: ignoring {key} in headroom_env \
+             (whetstone owns the proxy port)"
+        );
+    }
 }
 
 /// Phase 6.3: claude's first API call must hit a live proxy. The SessionStart
@@ -217,7 +274,9 @@ fn start_proxy_detached_ready(memory: bool) -> bool {
     } else {
         "(could not spawn `headroom proxy` — is headroom installed?)"
     };
-    eprintln!("[WARN] whetstone: proxy at {DEFAULT_PROXY} is not responding {tail}");
+    eprintln!(
+        "[WARN] whetstone: proxy at {DEFAULT_PROXY} is not responding {tail}"
+    );
     false
 }
 
@@ -278,10 +337,26 @@ fn spawn_proxy_detached(memory: bool) -> std::io::Result<()> {
     if telemetry_disabled {
         cmd.env("HEADROOM_TELEMETRY", "off");
     }
+
+    // NOTE: keys that `wrap_claude` already exported via `env::set_var`
+    // (or that the user exported externally) are seen as present here and so
+    // are omitted from `apply` — they reach the child through normal env
+    // inheritance instead. This is what preserves the external-env-wins
+    // precedence. Do NOT add `.env_clear()` to this Command: it would drop
+    // those inherited overrides while leaving the exec sink intact.
+    let hr_plan = headroom_env_plan();
+    for (key, value) in &hr_plan.apply {
+        cmd.env(key, value);
+    }
+
     cmd.spawn().map(|_| ())
 }
 
-fn build_proxy_args(savings_profile: bool, no_telemetry: bool, memory: bool) -> Vec<&'static str> {
+fn build_proxy_args(
+    savings_profile: bool,
+    no_telemetry: bool,
+    memory: bool,
+) -> Vec<&'static str> {
     let mut args = vec!["proxy", "--port", "8787"];
     if savings_profile {
         args.push("--savings-profile");
@@ -458,7 +533,10 @@ fn settings_has_headroom_rtk_hook(settings: &Value) -> bool {
     settings_has_headroom_rtk_hook_for(settings, env::var_os("PATH").as_deref())
 }
 
-fn settings_has_headroom_rtk_hook_for(settings: &Value, path_var: Option<&OsStr>) -> bool {
+fn settings_has_headroom_rtk_hook_for(
+    settings: &Value,
+    path_var: Option<&OsStr>,
+) -> bool {
     settings
         .get("hooks")
         .and_then(|hooks| hooks.get("PreToolUse"))
@@ -470,7 +548,10 @@ fn settings_has_headroom_rtk_hook_for(settings: &Value, path_var: Option<&OsStr>
         })
 }
 
-fn entry_has_headroom_rtk_hook(entry: &Value, path_var: Option<&OsStr>) -> bool {
+fn entry_has_headroom_rtk_hook(
+    entry: &Value,
+    path_var: Option<&OsStr>,
+) -> bool {
     matcher_allows_bash(entry)
         && entry
             .get("hooks")
@@ -489,12 +570,17 @@ fn matcher_allows_bash(entry: &Value) -> bool {
         .is_some_and(|matcher| matcher.contains("Bash"))
 }
 
-fn command_is_headroom_rtk_hook(hook: &Value, path_var: Option<&OsStr>) -> bool {
+fn command_is_headroom_rtk_hook(
+    hook: &Value,
+    path_var: Option<&OsStr>,
+) -> bool {
     hook.get("type").and_then(Value::as_str) == Some("command")
         && hook
             .get("command")
             .and_then(Value::as_str)
-            .is_some_and(|command| rtk_hook_command_is_usable(command, path_var))
+            .is_some_and(|command| {
+                rtk_hook_command_is_usable(command, path_var)
+            })
 }
 
 fn rtk_hook_command_is_usable(command: &str, path_var: Option<&OsStr>) -> bool {
@@ -546,6 +632,16 @@ fn path_is_executable(path: &Path) -> bool {
 
 pub fn wrap_proxy(args: &[String], memory: bool) -> ! {
     set_proxy_env();
+
+    // A standalone `whetstone proxy` launches Headroom directly, so it gets
+    // the same opinionated defaults + `headroom_env` overrides as the bare
+    // `whetstone` / `whetstone claude` paths. exec inherits process env.
+    let hr_plan = headroom_env_plan();
+    warn_ignored_headroom_env(&hr_plan.ignored);
+    for (key, value) in &hr_plan.apply {
+        env::set_var(key, value);
+    }
+
     let mut proxy_args = vec!["proxy".to_string()];
     if memory && !args.iter().any(|a| a == "--memory") {
         proxy_args.push("--memory".into());
@@ -569,13 +665,14 @@ fn exec(program: &str, args: &[String]) -> ! {
 
 #[cfg(not(unix))]
 fn exec(program: &str, args: &[String]) -> ! {
-    let status = Command::new(program)
-        .args(args)
-        .status()
-        .unwrap_or_else(|e| {
-            eprintln!("[FAIL] failed to run {program}: {e}");
-            std::process::exit(127);
-        });
+    let status =
+        Command::new(program)
+            .args(args)
+            .status()
+            .unwrap_or_else(|e| {
+                eprintln!("[FAIL] failed to run {program}: {e}");
+                std::process::exit(127);
+            });
     std::process::exit(status.code().unwrap_or(1));
 }
 
@@ -588,6 +685,25 @@ mod tests {
 
     fn strings(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn plan_from_settings_applies_code_aware() {
+        let resolved = crate::config::ResolvedSettings {
+            headroom_telemetry: false,
+            headroom_memory: false,
+            api_model: None,
+            anthropic_api_url: None,
+            headroom_env: std::collections::BTreeMap::new(),
+        };
+        let plan = headroom_env_plan_for(
+            &resolved,
+            crate::config::ProviderTag::Skip,
+            |_| false,
+        );
+        assert!(plan
+            .apply
+            .contains(&("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into())));
     }
 
     #[test]
@@ -618,7 +734,10 @@ mod tests {
     #[test]
     fn resolve_api_url_ignores_blank_env_override() {
         assert_eq!(
-            resolve_anthropic_api_url(Some("https://setting.example"), Some("  ".to_string())),
+            resolve_anthropic_api_url(
+                Some("https://setting.example"),
+                Some("  ".to_string())
+            ),
             Some("https://setting.example".to_string())
         );
     }
@@ -633,13 +752,17 @@ mod tests {
 
     #[test]
     fn choose_model_uses_pinned_when_offered() {
-        let decision = crate::model_update::ModelDecision::UsePinned("claude-opus-5".into());
+        let decision = crate::model_update::ModelDecision::UsePinned(
+            "claude-opus-5".into(),
+        );
         assert_eq!(choose_model(false, decision, "fallback"), "claude-opus-5");
     }
 
     #[test]
     fn choose_model_uses_session_when_offered() {
-        let decision = crate::model_update::ModelDecision::UseSession("claude-opus-5".into());
+        let decision = crate::model_update::ModelDecision::UseSession(
+            "claude-opus-5".into(),
+        );
         assert_eq!(choose_model(false, decision, "fallback"), "claude-opus-5");
     }
 
@@ -651,7 +774,9 @@ mod tests {
 
     #[test]
     fn choose_model_ignores_decision_when_user_set() {
-        let decision = crate::model_update::ModelDecision::UsePinned("claude-opus-5".into());
+        let decision = crate::model_update::ModelDecision::UsePinned(
+            "claude-opus-5".into(),
+        );
         assert_eq!(choose_model(true, decision, "fallback"), "fallback");
     }
 
@@ -717,7 +842,13 @@ exit 0
 
         assert_eq!(
             args,
-            strings(&["wrap", "claude", "--no-serena", "--model", "claude-sonnet"])
+            strings(&[
+                "wrap",
+                "claude",
+                "--no-serena",
+                "--model",
+                "claude-sonnet"
+            ])
         );
         assert_eq!(args.iter().filter(|a| a.as_str() == "--model").count(), 1);
     }
@@ -734,7 +865,12 @@ exit 0
 
         assert_eq!(
             args,
-            strings(&["wrap", "claude", "--no-serena", "--model=claude-sonnet"])
+            strings(&[
+                "wrap",
+                "claude",
+                "--no-serena",
+                "--model=claude-sonnet"
+            ])
         );
     }
 
@@ -764,7 +900,8 @@ exit 0
 
     #[test]
     fn build_claude_args_uses_configured_model() {
-        let args = build_claude_args(&[], false, false, false, "claude-sonnet-4-6");
+        let args =
+            build_claude_args(&[], false, false, false, "claude-sonnet-4-6");
 
         assert_eq!(
             args,

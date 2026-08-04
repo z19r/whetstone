@@ -111,18 +111,33 @@ fn draw_welcome(frame: &mut Frame) {
         Line::from("  This wizard will install and configure:"),
         Line::from(""),
         Line::from(vec![
-            Span::styled("    1. ", Style::default().add_modifier(Modifier::DIM)),
-            Span::styled("Headroom", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "    1. ",
+                Style::default().add_modifier(Modifier::DIM),
+            ),
+            Span::styled(
+                "Headroom",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" — context compression proxy"),
         ]),
         Line::from(vec![
-            Span::styled("    2. ", Style::default().add_modifier(Modifier::DIM)),
+            Span::styled(
+                "    2. ",
+                Style::default().add_modifier(Modifier::DIM),
+            ),
             Span::styled("RTK", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" — CLI output compression"),
         ]),
         Line::from(vec![
-            Span::styled("    3. ", Style::default().add_modifier(Modifier::DIM)),
-            Span::styled("Memory", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "    3. ",
+                Style::default().add_modifier(Modifier::DIM),
+            ),
+            Span::styled(
+                "Memory",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" — persistent session context"),
         ]),
         Line::from(""),
@@ -148,7 +163,10 @@ fn completion_screen(provider: MemoryProvider) -> Result<()> {
     result
 }
 
-fn completion_loop(terminal: &mut DefaultTerminal, provider: MemoryProvider) -> Result<()> {
+fn completion_loop(
+    terminal: &mut DefaultTerminal,
+    provider: MemoryProvider,
+) -> Result<()> {
     loop {
         terminal.draw(|frame| draw_completion(frame, provider))?;
 
@@ -166,7 +184,8 @@ fn completion_loop(terminal: &mut DefaultTerminal, provider: MemoryProvider) -> 
 fn draw_completion(frame: &mut Frame, provider: MemoryProvider) {
     let area = centered_rect(52, 16, frame.area());
 
-    let headroom_ver = headroom::installed_version().unwrap_or_else(|| "—".into());
+    let headroom_ver =
+        headroom::installed_version().unwrap_or_else(|| "—".into());
     let rtk_ver = rtk::installed_version().unwrap_or_else(|| "—".into());
 
     let mut lines = vec![

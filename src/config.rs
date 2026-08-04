@@ -10,6 +10,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -72,6 +73,8 @@ pub struct ProjectSettings {
     pub api_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anthropic_api_url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headroom_env: BTreeMap<String, String>,
 }
 
 const GLOBAL_DIR: &str = ".whetstone";
@@ -87,11 +90,14 @@ pub struct GlobalSettings {
     pub api_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anthropic_api_url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headroom_env: BTreeMap<String, String>,
 }
 
 impl GlobalSettings {
     pub fn path() -> Option<PathBuf> {
-        dirs::home_dir().map(|h| h.join(GLOBAL_DIR).join(GLOBAL_SETTINGS_FILENAME))
+        dirs::home_dir()
+            .map(|h| h.join(GLOBAL_DIR).join(GLOBAL_SETTINGS_FILENAME))
     }
 
     pub fn load() -> Result<Self> {
@@ -101,18 +107,23 @@ impl GlobalSettings {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let raw =
-            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-        serde_json::from_str(&raw).with_context(|| format!("parsing {}", path.display()))
+        let raw = fs::read_to_string(&path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        serde_json::from_str(&raw)
+            .with_context(|| format!("parsing {}", path.display()))
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::path().context("could not determine home directory")?;
+        let path =
+            Self::path().context("could not determine home directory")?;
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
         }
-        let pretty = serde_json::to_string_pretty(self).context("serializing global settings")?;
-        fs::write(&path, pretty).with_context(|| format!("writing {}", path.display()))
+        let pretty = serde_json::to_string_pretty(self)
+            .context("serializing global settings")?;
+        fs::write(&path, pretty)
+            .with_context(|| format!("writing {}", path.display()))
     }
 }
 
@@ -122,15 +133,21 @@ pub struct ResolvedSettings {
     pub headroom_memory: bool,
     pub api_model: Option<String>,
     pub anthropic_api_url: Option<String>,
+    pub headroom_env: BTreeMap<String, String>,
 }
 
 impl ResolvedSettings {
     pub fn resolve(global: &GlobalSettings, project: &ProjectSettings) -> Self {
+        let mut headroom_env = global.headroom_env.clone();
+        headroom_env.extend(project.headroom_env.clone());
+
         Self {
             headroom_telemetry: project
                 .headroom_telemetry
                 .unwrap_or(global.headroom_telemetry),
-            headroom_memory: project.headroom_memory.unwrap_or(global.headroom_memory),
+            headroom_memory: project
+                .headroom_memory
+                .unwrap_or(global.headroom_memory),
             api_model: project
                 .api_model
                 .clone()
@@ -139,6 +156,7 @@ impl ResolvedSettings {
                 .anthropic_api_url
                 .clone()
                 .or_else(|| global.anthropic_api_url.clone()),
+            headroom_env,
         }
     }
 }
@@ -192,20 +210,24 @@ impl WhetstoneManifest {
         if !path.exists() {
             return Ok(None);
         }
-        let raw =
-            fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let parsed: Self = serde_json::from_str(&raw)
-            .with_context(|| format!("parsing manifest at {}", path.display()))?;
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        let parsed: Self = serde_json::from_str(&raw).with_context(|| {
+            format!("parsing manifest at {}", path.display())
+        })?;
         Ok(Some(parsed))
     }
 
     /// Atomic write: serialize, ensure parent dir exists, write.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
         }
-        let pretty = serde_json::to_string_pretty(self).context("serializing whetstone.json")?;
-        fs::write(path, pretty).with_context(|| format!("writing {}", path.display()))?;
+        let pretty = serde_json::to_string_pretty(self)
+            .context("serializing whetstone.json")?;
+        fs::write(path, pretty)
+            .with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 
@@ -260,7 +282,8 @@ mod tests {
             anthropic_api_url: Some("https://global.example".into()),
             ..Default::default()
         };
-        let resolved = ResolvedSettings::resolve(&global, &ProjectSettings::default());
+        let resolved =
+            ResolvedSettings::resolve(&global, &ProjectSettings::default());
         assert_eq!(
             resolved.anthropic_api_url.as_deref(),
             Some("https://global.example")
@@ -269,8 +292,10 @@ mod tests {
 
     #[test]
     fn resolve_anthropic_api_url_none_when_unset() {
-        let resolved =
-            ResolvedSettings::resolve(&GlobalSettings::default(), &ProjectSettings::default());
+        let resolved = ResolvedSettings::resolve(
+            &GlobalSettings::default(),
+            &ProjectSettings::default(),
+        );
         assert!(resolved.anthropic_api_url.is_none());
     }
 
@@ -291,7 +316,10 @@ mod tests {
 
     #[test]
     fn new_manifest_has_current_schema_and_integration_version() {
-        let m = WhetstoneManifest::new(MemoryProvider::Icm, ToolVersions::default());
+        let m = WhetstoneManifest::new(
+            MemoryProvider::Icm,
+            ToolVersions::default(),
+        );
         assert_eq!(m.schema, SCHEMA_VERSION);
         assert_eq!(m.integration_version, INTEGRATION_VERSION);
         assert_eq!(m.provider, ProviderTag::Icm);
@@ -336,7 +364,10 @@ mod tests {
 
     #[test]
     fn manifest_round_trips_dismissed_models() {
-        let mut m = WhetstoneManifest::new(MemoryProvider::Icm, ToolVersions::default());
+        let mut m = WhetstoneManifest::new(
+            MemoryProvider::Icm,
+            ToolVersions::default(),
+        );
         m.dismissed_models.push("claude-opus-4-8".into());
         m.dismissed_models.push("claude-fable-5".into());
         let f = NamedTempFile::new().unwrap();
@@ -350,7 +381,10 @@ mod tests {
 
     #[test]
     fn legacy_manifest_without_dismissed_models_parses() {
-        let m = WhetstoneManifest::new(MemoryProvider::Skip, ToolVersions::default());
+        let m = WhetstoneManifest::new(
+            MemoryProvider::Skip,
+            ToolVersions::default(),
+        );
         let mut value = serde_json::to_value(&m).unwrap();
         value.as_object_mut().unwrap().remove("dismissed_models");
         let raw = serde_json::to_string(&value).unwrap();
@@ -360,19 +394,65 @@ mod tests {
 
     #[test]
     fn empty_dismissed_models_omitted_from_json() {
-        let m = WhetstoneManifest::new(MemoryProvider::Skip, ToolVersions::default());
+        let m = WhetstoneManifest::new(
+            MemoryProvider::Skip,
+            ToolVersions::default(),
+        );
         let raw = serde_json::to_string(&m).unwrap();
         assert!(!raw.contains("dismissed_models"));
     }
 
     #[test]
     fn touch_and_save_bumps_updated_at() {
-        let mut m = WhetstoneManifest::new(MemoryProvider::Skip, ToolVersions::default());
+        let mut m = WhetstoneManifest::new(
+            MemoryProvider::Skip,
+            ToolVersions::default(),
+        );
         let original = m.updated_at;
         let f = NamedTempFile::new().unwrap();
         // Sleep enough to guarantee a chrono-detectable bump on fast machines.
         std::thread::sleep(std::time::Duration::from_millis(10));
         m.touch_and_save(f.path()).unwrap();
         assert!(m.updated_at > original);
+    }
+
+    #[test]
+    fn resolve_merges_headroom_env_project_over_global() {
+        let mut global = GlobalSettings::default();
+        global
+            .headroom_env
+            .insert("HEADROOM_RPM".into(), "60".into());
+        global
+            .headroom_env
+            .insert("HEADROOM_TPM".into(), "1000".into());
+        let mut project = ProjectSettings::default();
+        project
+            .headroom_env
+            .insert("HEADROOM_RPM".into(), "120".into());
+
+        let resolved = ResolvedSettings::resolve(&global, &project);
+
+        // project wins on the shared key, global-only key survives
+        assert_eq!(
+            resolved
+                .headroom_env
+                .get("HEADROOM_RPM")
+                .map(String::as_str),
+            Some("120")
+        );
+        assert_eq!(
+            resolved
+                .headroom_env
+                .get("HEADROOM_TPM")
+                .map(String::as_str),
+            Some("1000")
+        );
+    }
+
+    #[test]
+    fn empty_headroom_env_omitted_from_project_json() {
+        let s = ProjectSettings::default();
+        let raw = serde_json::to_string(&s).unwrap();
+        assert!(!raw.contains("headroom_env"));
     }
 }
