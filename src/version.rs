@@ -11,7 +11,8 @@ pub fn read_from_file(path: &Path) -> Result<Version> {
     let raw = fs::read_to_string(path)
         .with_context(|| format!("reading VERSION from {}", path.display()))?;
     let trimmed = raw.trim();
-    Version::parse(trimmed).with_context(|| format!("parsing semver from '{trimmed}'"))
+    Version::parse(trimmed)
+        .with_context(|| format!("parsing semver from '{trimmed}'"))
 }
 
 pub fn write_to_file(path: &Path, version: &Version) -> Result<()> {
@@ -21,7 +22,9 @@ pub fn write_to_file(path: &Path, version: &Version) -> Result<()> {
 
 pub fn bump(current: &Version, kind: BumpKind) -> Version {
     match kind {
-        BumpKind::Patch => Version::new(current.major, current.minor, current.patch + 1),
+        BumpKind::Patch => {
+            Version::new(current.major, current.minor, current.patch + 1)
+        }
         BumpKind::Minor => Version::new(current.major, current.minor + 1, 0),
         BumpKind::Major => Version::new(current.major + 1, 0, 0),
     }
@@ -51,7 +54,9 @@ pub fn extract_semver(raw: &str) -> Option<String> {
         if chars[i].is_ascii_digit() {
             let start = i;
             let mut dots = 0;
-            while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+            while i < chars.len()
+                && (chars[i].is_ascii_digit() || chars[i] == '.')
+            {
                 if chars[i] == '.' {
                     dots += 1;
                 }

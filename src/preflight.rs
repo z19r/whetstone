@@ -58,8 +58,10 @@ fn check_python() -> Result<()> {
         Ok(o) if o.status.success() => {
             let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
             let parts: Vec<&str> = ver.split('.').collect();
-            let major: u32 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
-            let minor: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let major: u32 =
+                parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+            let minor: u32 =
+                parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
             if major < 3 || (major == 3 && minor < 10) {
                 bail!("Python 3.10+ required, found {ver}");
             }
@@ -75,7 +77,8 @@ fn check_git() -> Result<()> {
     match output {
         Ok(o) if o.status.success() => {
             let raw = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            let ver = version::extract_semver(&raw).unwrap_or_else(|| "unknown".into());
+            let ver = version::extract_semver(&raw)
+                .unwrap_or_else(|| "unknown".into());
             ui::ok(&format!("git {ver}"));
             Ok(())
         }

@@ -61,7 +61,9 @@ pub fn dispatch(cmd: DbCommand) -> Result<()> {
             project,
             limit,
         } => cmd_search(&query, project.as_deref(), limit),
-        DbCommand::GetSessions { project, limit } => cmd_get_sessions(&project, limit),
+        DbCommand::GetSessions { project, limit } => {
+            cmd_get_sessions(&project, limit)
+        }
         DbCommand::GetInsights { project } => cmd_get_insights(&project),
         DbCommand::GetContext { project } => cmd_get_context(&project),
         DbCommand::SetContext { json } => cmd_set_context(&json),
@@ -109,7 +111,8 @@ fn cmd_add_session(raw: &str) -> Result<()> {
             str_or_empty(&data, "raw_markdown"),
         ],
     )?;
-    let row_id: i64 = conn.query_row("SELECT last_insert_rowid()", [], |r| r.get(0))?;
+    let row_id: i64 =
+        conn.query_row("SELECT last_insert_rowid()", [], |r| r.get(0))?;
     println!("{}", json!({"ok": true, "id": row_id}));
     Ok(())
 }
@@ -130,7 +133,8 @@ fn cmd_add_insight(raw: &str) -> Result<()> {
             str_or_empty(&data, "tags"),
         ],
     )?;
-    let row_id: i64 = conn.query_row("SELECT last_insert_rowid()", [], |r| r.get(0))?;
+    let row_id: i64 =
+        conn.query_row("SELECT last_insert_rowid()", [], |r| r.get(0))?;
     println!("{}", json!({"ok": true, "id": row_id}));
     Ok(())
 }
@@ -295,7 +299,8 @@ fn cmd_get_insights(project: &str) -> Result<()> {
 
 fn cmd_get_context(project: &str) -> Result<()> {
     let conn = open(&db_path())?;
-    let mut stmt = conn.prepare("SELECT * FROM project_context WHERE project = ?1")?;
+    let mut stmt =
+        conn.prepare("SELECT * FROM project_context WHERE project = ?1")?;
     let row = stmt.query_row(params![project], |row| {
         Ok(json!({
             "id": row.get::<_, i64>(0)?,
@@ -552,10 +557,16 @@ fn cmd_stats() -> Result<()> {
     let path = db_path();
     let conn = open(&path)?;
 
-    let sessions: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))?;
-    let insights: i64 = conn.query_row("SELECT COUNT(*) FROM insights", [], |r| r.get(0))?;
-    let projects: i64 = conn.query_row("SELECT COUNT(*) FROM project_context", [], |r| r.get(0))?;
-    let plan_tasks: i64 = conn.query_row("SELECT COUNT(*) FROM plans", [], |r| r.get(0))?;
+    let sessions: i64 =
+        conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))?;
+    let insights: i64 =
+        conn.query_row("SELECT COUNT(*) FROM insights", [], |r| r.get(0))?;
+    let projects: i64 =
+        conn.query_row("SELECT COUNT(*) FROM project_context", [], |r| {
+            r.get(0)
+        })?;
+    let plan_tasks: i64 =
+        conn.query_row("SELECT COUNT(*) FROM plans", [], |r| r.get(0))?;
 
     let mut stmt = conn.prepare(
         "SELECT project, COUNT(*) as cnt FROM sessions GROUP BY project ORDER BY cnt DESC",

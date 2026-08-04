@@ -7,10 +7,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::{ToolVersions, WhetstoneManifest, INTEGRATION_VERSION};
 use crate::memory::MemoryProvider;
-use crate::{claude_code, doctor, headroom, integrations, migrate, rtk, setup, ui, version};
+use crate::{
+    claude_code, doctor, headroom, integrations, migrate, rtk, setup, ui,
+    version,
+};
 
-const REMOTE_VERSION_URL: &str = "https://raw.githubusercontent.com/z19r/whetstone/main/VERSION";
-const RELEASE_URL_BASE: &str = "https://github.com/z19r/whetstone/releases/download";
+const REMOTE_VERSION_URL: &str =
+    "https://raw.githubusercontent.com/z19r/whetstone/main/VERSION";
+const RELEASE_URL_BASE: &str =
+    "https://github.com/z19r/whetstone/releases/download";
 const CACHE_TTL_SECS: u64 = 12 * 60 * 60;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -46,7 +51,8 @@ pub struct OutdatedComponent {
 }
 
 fn cache_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("could not determine home directory")?;
+    let home =
+        dirs::home_dir().context("could not determine home directory")?;
     let dir = home.join(".cache").join("whetstone");
     fs::create_dir_all(&dir)?;
     Ok(dir.join("update-check"))
@@ -99,7 +105,8 @@ pub(crate) fn fetch_remote_version() -> Result<String> {
         .into_string()
         .context("reading remote VERSION body")?;
 
-    version::extract_semver(body.trim()).context("no valid semver in remote VERSION")
+    version::extract_semver(body.trim())
+        .context("no valid semver in remote VERSION")
 }
 
 pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
@@ -121,7 +128,9 @@ pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
         });
     }
 
-    if let (Some(current), Some(latest)) = (&cache.rtk_current, &cache.rtk_latest) {
+    if let (Some(current), Some(latest)) =
+        (&cache.rtk_current, &cache.rtk_latest)
+    {
         if version::is_older(current, latest) {
             outdated.push(OutdatedComponent {
                 name: "rtk",
@@ -131,7 +140,9 @@ pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
         }
     }
 
-    if let (Some(current), Some(latest)) = (&cache.headroom_current, &cache.headroom_latest) {
+    if let (Some(current), Some(latest)) =
+        (&cache.headroom_current, &cache.headroom_latest)
+    {
         if version::is_older(current, latest) {
             outdated.push(OutdatedComponent {
                 name: "headroom",
@@ -141,7 +152,9 @@ pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
         }
     }
 
-    if let (Some(current), Some(latest)) = (&cache.claude_code_current, &cache.claude_code_latest) {
+    if let (Some(current), Some(latest)) =
+        (&cache.claude_code_current, &cache.claude_code_latest)
+    {
         if version::is_older(current, latest) {
             outdated.push(OutdatedComponent {
                 name: "claude code",
@@ -174,7 +187,8 @@ pub(crate) fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
         return Ok(ui::ComponentStatus::UpToDate(current));
     }
 
-    let target = detect_target().context("unsupported platform for self-update")?;
+    let target =
+        detect_target().context("unsupported platform for self-update")?;
     let url = format!("{RELEASE_URL_BASE}/v{latest}/whetstone-{target}.tar.gz");
 
     let mut sp = ui::spinner(&format!("downloading whetstone {latest}"));
@@ -193,7 +207,8 @@ pub(crate) fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
     let decoder = flate2::read::GzDecoder::new(compressed.as_slice());
     let mut archive = tar::Archive::new(decoder);
 
-    let current_exe = std::env::current_exe().context("locating current binary")?;
+    let current_exe =
+        std::env::current_exe().context("locating current binary")?;
     let parent = current_exe
         .parent()
         .context("no parent dir for current binary")?;
@@ -217,7 +232,9 @@ pub(crate) fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Err(e) = fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)) {
+        if let Err(e) =
+            fs::set_permissions(&staging, fs::Permissions::from_mode(0o755))
+        {
             let _ = fs::remove_file(&staging);
             return Err(e).context("setting permissions on new binary");
         }
@@ -248,7 +265,11 @@ pub(crate) fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
 
 /// Warn when an upgrade was attempted but the version didn't change and the
 /// remote claims a newer release exists.
-fn warn_if_upgrade_stuck(name: &str, status: &ui::ComponentStatus, remote: Option<&str>) {
+fn warn_if_upgrade_stuck(
+    name: &str,
+    status: &ui::ComponentStatus,
+    remote: Option<&str>,
+) {
     if let ui::ComponentStatus::UpToDate(installed) = status {
         if let Some(latest) = remote {
             if version::is_older(installed, latest) {
@@ -278,7 +299,9 @@ fn dependency_decision(
 ) -> DependencyDecision {
     match (installed, remote_latest) {
         (None, _) => DependencyDecision::NotInstalled,
-        (Some(cur), Some(latest)) if !version::is_older(cur, latest) && !full => {
+        (Some(cur), Some(latest))
+            if !version::is_older(cur, latest) && !full =>
+        {
             DependencyDecision::UpToDate(cur.to_string())
         }
         (Some(_), _) => DependencyDecision::Refresh,
@@ -365,7 +388,9 @@ fn refresh_project_integration(full: bool) -> Result<Option<u32>> {
             ));
             return Ok(Some(v));
         }
-        ProjectRefreshDecision::Refresh { from, to, forced } => (from, to, forced),
+        ProjectRefreshDecision::Refresh { from, to, forced } => {
+            (from, to, forced)
+        }
     };
 
     if forced {
@@ -378,7 +403,8 @@ fn refresh_project_integration(full: bool) -> Result<Option<u32>> {
         ));
     }
 
-    let assets = setup::resolve_assets_dir().context("locating bundled whetstone assets")?;
+    let assets = setup::resolve_assets_dir()
+        .context("locating bundled whetstone assets")?;
 
     if full {
         setup::refresh_all_assets(&assets)
@@ -389,16 +415,20 @@ fn refresh_project_integration(full: bool) -> Result<Option<u32>> {
     }
 
     let provider: MemoryProvider = manifest.provider.clone().into();
-    integrations::run_all(provider).context("re-running tool inits (`rtk init` / `icm init`)")?;
+    integrations::run_all(provider)
+        .context("re-running tool inits (`rtk init` / `icm init`)")?;
 
     // Phase 4.2: best-effort. Failures are logged but don't fail update.
     match headroom::learn() {
-        Ok(true) => ui::ok("headroom learn refreshed CLAUDE.md learned patterns"),
+        Ok(true) => {
+            ui::ok("headroom learn refreshed CLAUDE.md learned patterns")
+        }
         Ok(false) => {} // headroom missing or no `learn` subcommand
         Err(e) => ui::warn(&format!("headroom learn skipped: {e:#}")),
     }
 
-    let _report = doctor::run().context("running `whetstone doctor` after refresh")?;
+    let _report =
+        doctor::run().context("running `whetstone doctor` after refresh")?;
 
     manifest.integration_version = INTEGRATION_VERSION;
     manifest.tool_versions = ToolVersions {
@@ -435,7 +465,9 @@ pub fn run(full: bool) -> Result<()> {
     }
 
     if full {
-        ui::info("full mode — forcing refresh of dependencies and project assets");
+        ui::info(
+            "full mode — forcing refresh of dependencies and project assets",
+        );
     }
 
     let mut sp = ui::spinner("checking for updates");
@@ -460,8 +492,11 @@ pub fn run(full: bool) -> Result<()> {
     }
     ui::component_line("whetstone", &whetstone_status);
 
-    let rtk_status = match dependency_decision(rtk_current.as_deref(), rtk_remote.as_deref(), full)
-    {
+    let rtk_status = match dependency_decision(
+        rtk_current.as_deref(),
+        rtk_remote.as_deref(),
+        full,
+    ) {
         DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
         DependencyDecision::Refresh => match rtk::update() {
             Ok(status) => {
@@ -485,7 +520,11 @@ pub fn run(full: bool) -> Result<()> {
         DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
         DependencyDecision::Refresh => match headroom::update() {
             Ok(status) => {
-                warn_if_upgrade_stuck("headroom", &status, headroom_remote.as_deref());
+                warn_if_upgrade_stuck(
+                    "headroom",
+                    &status,
+                    headroom_remote.as_deref(),
+                );
                 status
             }
             Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
@@ -562,7 +601,8 @@ pub fn run(full: bool) -> Result<()> {
         headroom_current: headroom::installed_version(),
         headroom_latest: headroom::installed_version().or(headroom_remote),
         claude_code_current: claude_code::installed_version(),
-        claude_code_latest: claude_code::installed_version().or(claude_code_remote),
+        claude_code_latest: claude_code::installed_version()
+            .or(claude_code_remote),
         integration_version_bundled: Some(INTEGRATION_VERSION),
         integration_version_project: project_integration_version,
         timestamp: now_epoch(),
@@ -577,13 +617,19 @@ pub fn run(full: bool) -> Result<()> {
             ));
         }
     } else {
-        let has_failures = matches!(&whetstone_status, ui::ComponentStatus::Failed(_))
-            || matches!(&rtk_status, ui::ComponentStatus::Failed(_))
-            || matches!(&headroom_status, ui::ComponentStatus::Failed(_))
-            || matches!(&claude_code_status, ui::ComponentStatus::Failed(_));
+        let has_failures =
+            matches!(&whetstone_status, ui::ComponentStatus::Failed(_))
+                || matches!(&rtk_status, ui::ComponentStatus::Failed(_))
+                || matches!(&headroom_status, ui::ComponentStatus::Failed(_))
+                || matches!(
+                    &claude_code_status,
+                    ui::ComponentStatus::Failed(_)
+                );
 
         if has_failures {
-            ui::summary_info("Some components failed to update — see errors above");
+            ui::summary_info(
+                "Some components failed to update — see errors above",
+            );
         } else {
             ui::summary_ok("Everything is up to date");
         }
@@ -707,7 +753,9 @@ mod tests {
                     "ahead-of-bundled refresh under --full must be marked forced"
                 );
             }
-            other => panic!("expected forced refresh on downgrade, got {other:?}"),
+            other => {
+                panic!("expected forced refresh on downgrade, got {other:?}")
+            }
         }
     }
 

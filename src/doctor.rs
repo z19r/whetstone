@@ -73,13 +73,16 @@ pub fn run() -> Result<DoctorReport> {
 }
 
 fn settings_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("could not determine home directory")?;
+    let home =
+        dirs::home_dir().context("could not determine home directory")?;
     Ok(home.join(".claude").join("settings.json"))
 }
 
 /// Pure logic exposed for tests: read settings.json, run every check, write
 /// back only if something was normalized.
-pub(crate) fn inspect_and_normalize(settings_path: &Path) -> Result<DoctorReport> {
+pub(crate) fn inspect_and_normalize(
+    settings_path: &Path,
+) -> Result<DoctorReport> {
     let mut report = DoctorReport::default();
 
     if !settings_path.exists() {
@@ -129,7 +132,9 @@ fn check_rtk_hook(settings: &mut Value, report: &mut DoctorReport) {
         None => {
             report.push(
                 "rtk PreToolUse hook",
-                Status::Warning("hooks.PreToolUse missing — did `rtk init` run?".into()),
+                Status::Warning(
+                    "hooks.PreToolUse missing — did `rtk init` run?".into(),
+                ),
             );
             return;
         }
@@ -145,7 +150,9 @@ fn check_rtk_hook(settings: &mut Value, report: &mut DoctorReport) {
     match rtk_indices.as_slice() {
         [] => report.push(
             "rtk PreToolUse hook",
-            Status::Warning("not found — `rtk init --auto-patch` may have failed".into()),
+            Status::Warning(
+                "not found — `rtk init --auto-patch` may have failed".into(),
+            ),
         ),
         &[idx] => {
             let last = pre.len() - 1;
@@ -156,7 +163,9 @@ fn check_rtk_hook(settings: &mut Value, report: &mut DoctorReport) {
                 pre.push(entry);
                 report.push(
                     "rtk PreToolUse hook",
-                    Status::Normalized(format!("moved from index {idx} to {last}")),
+                    Status::Normalized(format!(
+                        "moved from index {idx} to {last}"
+                    )),
                 );
             }
         }
@@ -174,7 +183,9 @@ fn check_rtk_hook(settings: &mut Value, report: &mut DoctorReport) {
             pre.push(entry);
             report.push(
                 "rtk PreToolUse hook",
-                Status::Normalized(format!("found {dup_count} duplicates, kept one at end")),
+                Status::Normalized(format!(
+                    "found {dup_count} duplicates, kept one at end"
+                )),
             );
         }
     }
@@ -287,10 +298,12 @@ fn backup_then_write(settings_path: &Path, settings: &Value) -> Result<()> {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let backup = settings_path.with_file_name(format!("settings.json.bak.{ts}"));
+    let backup =
+        settings_path.with_file_name(format!("settings.json.bak.{ts}"));
     fs::copy(settings_path, &backup)
         .with_context(|| format!("backing up {}", settings_path.display()))?;
-    let pretty = serde_json::to_string_pretty(settings).context("serializing settings.json")?;
+    let pretty = serde_json::to_string_pretty(settings)
+        .context("serializing settings.json")?;
     fs::write(settings_path, pretty)
         .with_context(|| format!("writing {}", settings_path.display()))?;
     Ok(())
@@ -368,7 +381,8 @@ mod tests {
         assert!(report
             .findings
             .iter()
-            .any(|x| x.label == "rtk PreToolUse hook" && matches!(x.status, Status::Ok)));
+            .any(|x| x.label == "rtk PreToolUse hook"
+                && matches!(x.status, Status::Ok)));
         assert!(!report.mutated);
     }
 
@@ -382,7 +396,8 @@ mod tests {
         let report = inspect_and_normalize(f.path()).unwrap();
         assert!(report.mutated);
         let rewritten: Value =
-            serde_json::from_str(&fs::read_to_string(f.path()).unwrap()).unwrap();
+            serde_json::from_str(&fs::read_to_string(f.path()).unwrap())
+                .unwrap();
         let pre = rewritten["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre.len(), 2);
         assert!(is_rtk_entry(&pre[1]));
@@ -415,7 +430,8 @@ mod tests {
         let report = inspect_and_normalize(f.path()).unwrap();
         assert!(report.mutated);
         let rewritten: Value =
-            serde_json::from_str(&fs::read_to_string(f.path()).unwrap()).unwrap();
+            serde_json::from_str(&fs::read_to_string(f.path()).unwrap())
+                .unwrap();
         let pre = rewritten["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre.len(), 2);
         assert!(is_rtk_entry(&pre[1]));
@@ -470,7 +486,8 @@ mod tests {
         }));
         inspect_and_normalize(f.path()).unwrap();
         let rewritten: Value =
-            serde_json::from_str(&fs::read_to_string(f.path()).unwrap()).unwrap();
+            serde_json::from_str(&fs::read_to_string(f.path()).unwrap())
+                .unwrap();
         assert_eq!(rewritten["model"], "claude-opus-4-7");
         assert!(rewritten["mcpServers"].is_object());
     }
@@ -530,7 +547,8 @@ mod tests {
         let report = inspect_and_normalize(f.path()).unwrap();
         assert!(report.mutated);
         let rewritten: Value =
-            serde_json::from_str(&fs::read_to_string(f.path()).unwrap()).unwrap();
+            serde_json::from_str(&fs::read_to_string(f.path()).unwrap())
+                .unwrap();
         let pre = rewritten["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre.len(), 3);
         assert!(is_rtk_entry(&pre[2]));
@@ -577,7 +595,11 @@ mod tests {
         );
     }
 
-    fn scan_for(dir: &Path, needle: &str, out: &mut std::collections::HashSet<String>) {
+    fn scan_for(
+        dir: &Path,
+        needle: &str,
+        out: &mut std::collections::HashSet<String>,
+    ) {
         let Ok(entries) = fs::read_dir(dir) else {
             return;
         };

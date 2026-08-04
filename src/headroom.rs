@@ -351,8 +351,9 @@ mod tests {
 
     #[test]
     fn detect_shadow_in_mise_python() {
-        let path =
-            PathBuf::from("/home/user/.local/share/mise/installs/python/3.14.3/bin/headroom");
+        let path = PathBuf::from(
+            "/home/user/.local/share/mise/installs/python/3.14.3/bin/headroom",
+        );
         let result = detect_shadowing_python(&path);
         // Can't assert Some because the python binary doesn't exist on disk,
         // but verify the function doesn't panic and recognizes the pattern
@@ -364,7 +365,8 @@ mod tests {
 
     #[test]
     fn detect_shadow_in_pyenv() {
-        let path = PathBuf::from("/home/user/.pyenv/versions/3.12.0/bin/headroom");
+        let path =
+            PathBuf::from("/home/user/.pyenv/versions/3.12.0/bin/headroom");
         let result = detect_shadowing_python(&path);
         assert!(result.is_none());
     }

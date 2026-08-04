@@ -193,7 +193,10 @@ impl Detection {
             self.managed_commands.len(),
             MANAGED_COMMANDS.len()
         ));
-        out.push_str(&format!("  - MEMSTACK.md present: {}\n", self.memstack_md));
+        out.push_str(&format!(
+            "  - MEMSTACK.md present: {}\n",
+            self.memstack_md
+        ));
         out.push_str(&format!(
             "  - legacy config.local.json: {}\n",
             self.config_local_json
@@ -239,8 +242,9 @@ pub fn detect_at(project_dir: &Path, home_dir: &Path) -> Result<Detection> {
         let raw = fs::read_to_string(&settings_path)
             .with_context(|| format!("reading {}", settings_path.display()))?;
         Some(
-            serde_json::from_str(&raw)
-                .with_context(|| format!("parsing {}", settings_path.display()))?,
+            serde_json::from_str(&raw).with_context(|| {
+                format!("parsing {}", settings_path.display())
+            })?,
         )
     } else {
         None
@@ -259,9 +263,12 @@ pub fn detect_at(project_dir: &Path, home_dir: &Path) -> Result<Detection> {
         .map(|v| !v.is_empty())
         .unwrap_or(false);
 
-    let managed_skills = present_subset(&claude_dir.join("skills"), MANAGED_SKILLS, true);
-    let managed_rules = present_subset(&claude_dir.join("rules"), MANAGED_RULES, false);
-    let managed_commands = present_subset(&claude_dir.join("commands"), MANAGED_COMMANDS, false);
+    let managed_skills =
+        present_subset(&claude_dir.join("skills"), MANAGED_SKILLS, true);
+    let managed_rules =
+        present_subset(&claude_dir.join("rules"), MANAGED_RULES, false);
+    let managed_commands =
+        present_subset(&claude_dir.join("commands"), MANAGED_COMMANDS, false);
 
     let memstack_md = claude_dir.join("MEMSTACK.md").exists();
     let config_local_json = claude_dir.join("config.local.json").exists();
@@ -272,10 +279,11 @@ pub fn detect_at(project_dir: &Path, home_dir: &Path) -> Result<Detection> {
         .filter(|p| p.exists())
         .collect();
 
-    let already_migrated = WhetstoneManifest::load(&WhetstoneManifest::path_for(project_dir))
-        .ok()
-        .flatten()
-        .and_then(|m| m.migration_id().map(String::from));
+    let already_migrated =
+        WhetstoneManifest::load(&WhetstoneManifest::path_for(project_dir))
+            .ok()
+            .flatten()
+            .and_then(|m| m.migration_id().map(String::from));
 
     Ok(Detection {
         project_dir: project_dir.to_path_buf(),
@@ -320,15 +328,19 @@ fn detect_automem(settings: &Value) -> (bool, Option<String>) {
     let is_automem = server
         .get("command")
         .and_then(|c| c.as_str())
-        .map(|cmd| cmd.contains("verygoodplugins/mcp-automem") || cmd.contains("mcp-automem"))
+        .map(|cmd| {
+            cmd.contains("verygoodplugins/mcp-automem")
+                || cmd.contains("mcp-automem")
+        })
         .unwrap_or(false)
         || server
             .get("args")
             .and_then(|a| a.as_array())
             .map(|args| {
-                args.iter()
-                    .filter_map(|x| x.as_str())
-                    .any(|s| s.contains("verygoodplugins/mcp-automem") || s.contains("mcp-automem"))
+                args.iter().filter_map(|x| x.as_str()).any(|s| {
+                    s.contains("verygoodplugins/mcp-automem")
+                        || s.contains("mcp-automem")
+                })
             })
             .unwrap_or(false);
 
@@ -341,7 +353,11 @@ fn detect_automem(settings: &Value) -> (bool, Option<String>) {
     (is_automem, endpoint)
 }
 
-fn present_subset(dir: &Path, allowed: &[&str], expect_subdir: bool) -> Vec<String> {
+fn present_subset(
+    dir: &Path,
+    allowed: &[&str],
+    expect_subdir: bool,
+) -> Vec<String> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -440,7 +456,8 @@ pub fn run(opts: MigrateOptions) -> Result<()> {
 
     let migration_id = Utc::now().format("%Y%m%d-%H%M%S").to_string();
     let archive = archive_dir(&det.project_dir, &migration_id);
-    fs::create_dir_all(&archive).with_context(|| format!("creating {}", archive.display()))?;
+    fs::create_dir_all(&archive)
+        .with_context(|| format!("creating {}", archive.display()))?;
     ui::ok(&format!("archive: {}", archive.display()));
 
     let mut rb = RollbackManifest {
@@ -471,9 +488,12 @@ pub fn run(opts: MigrateOptions) -> Result<()> {
     // Persist rollback manifest before re-init so a re-init failure is still recoverable.
     fs::write(
         rollback_manifest_path(&archive),
-        serde_json::to_string_pretty(&rb).context("serialising rollback manifest")?,
+        serde_json::to_string_pretty(&rb)
+            .context("serialising rollback manifest")?,
     )
-    .with_context(|| format!("writing {}", rollback_manifest_path(&archive).display()))?;
+    .with_context(|| {
+        format!("writing {}", rollback_manifest_path(&archive).display())
+    })?;
 
     reinit_v3(&det, &migration_id)?;
 
@@ -494,7 +514,9 @@ pub fn rollback(migration_id: &str) -> Result<()> {
         bail!("no archive at {}", archive.display());
     }
     let raw = fs::read_to_string(rollback_manifest_path(&archive))
-        .with_context(|| format!("reading {}", rollback_manifest_path(&archive).display()))?;
+        .with_context(|| {
+            format!("reading {}", rollback_manifest_path(&archive).display())
+        })?;
     let rb: RollbackManifest =
         serde_json::from_str(&raw).context("parsing rollback-manifest.json")?;
 
@@ -503,7 +525,8 @@ pub fn rollback(migration_id: &str) -> Result<()> {
     if let Some(backup) = &rb.settings_backup {
         let home = dirs::home_dir().context("locating home dir")?;
         let dest = home.join(".claude/settings.json");
-        fs::copy(backup, &dest).with_context(|| format!("restoring {}", dest.display()))?;
+        fs::copy(backup, &dest)
+            .with_context(|| format!("restoring {}", dest.display()))?;
         ui::ok(&format!("restored {}", dest.display()));
     }
 
@@ -512,7 +535,8 @@ pub fn rollback(migration_id: &str) -> Result<()> {
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).ok();
         }
-        fs::copy(backup, &dest).with_context(|| format!("restoring {}", dest.display()))?;
+        fs::copy(backup, &dest)
+            .with_context(|| format!("restoring {}", dest.display()))?;
         // Drop the .v2bak sibling so the v2 layout is once again canonical.
         let bak = dest.with_extension("db.v2bak");
         let _ = fs::remove_file(&bak);
@@ -526,8 +550,9 @@ pub fn rollback(migration_id: &str) -> Result<()> {
         if entry.archived.is_dir() {
             copy_dir_recursive(&entry.archived, &entry.original)?;
         } else {
-            fs::copy(&entry.archived, &entry.original)
-                .with_context(|| format!("restoring {}", entry.original.display()))?;
+            fs::copy(&entry.archived, &entry.original).with_context(|| {
+                format!("restoring {}", entry.original.display())
+            })?;
         }
     }
     if !rb.removed_files.is_empty() {
@@ -548,7 +573,9 @@ pub fn rollback(migration_id: &str) -> Result<()> {
     }
 
     ui::summary_ok(&format!("rolled back migration {migration_id}"));
-    ui::info("note: external AutoMem service (Railway/Docker) is not re-deployed");
+    ui::info(
+        "note: external AutoMem service (Railway/Docker) is not re-deployed",
+    );
     Ok(())
 }
 
@@ -585,26 +612,36 @@ pub fn detect_and_offer(non_interactive_default: bool) -> Result<bool> {
 // 3.2 — Backup + export archive.
 // ----------------------------------------------------------------------------
 
-fn backup_settings(det: &Detection, archive: &Path, rb: &mut RollbackManifest) -> Result<()> {
+fn backup_settings(
+    det: &Detection,
+    archive: &Path,
+    rb: &mut RollbackManifest,
+) -> Result<()> {
     if !det.settings_path.exists() {
         return Ok(());
     }
     let dest = archive.join("settings.json.backup");
-    fs::copy(&det.settings_path, &dest)
-        .with_context(|| format!("backing up {}", det.settings_path.display()))?;
+    fs::copy(&det.settings_path, &dest).with_context(|| {
+        format!("backing up {}", det.settings_path.display())
+    })?;
     rb.settings_backup = Some(dest.clone());
     ui::ok(&format!("backed up settings.json → {}", dest.display()));
     Ok(())
 }
 
-fn backup_memstack(det: &Detection, archive: &Path, rb: &mut RollbackManifest) -> Result<()> {
+fn backup_memstack(
+    det: &Detection,
+    archive: &Path,
+    rb: &mut RollbackManifest,
+) -> Result<()> {
     let Some(src) = &det.memstack_db else {
         return Ok(());
     };
     let renamed = src.with_extension("db.v2bak");
     if src.exists() && !renamed.exists() {
-        fs::rename(src, &renamed)
-            .with_context(|| format!("renaming {} → {}", src.display(), renamed.display()))?;
+        fs::rename(src, &renamed).with_context(|| {
+            format!("renaming {} → {}", src.display(), renamed.display())
+        })?;
         ui::ok(&format!(
             "renamed {} → {}",
             src.display(),
@@ -616,7 +653,8 @@ fn backup_memstack(det: &Detection, archive: &Path, rb: &mut RollbackManifest) -
         fs::copy(&renamed, &archived)
             .with_context(|| format!("archiving {}", renamed.display()))?;
     } else if src.exists() {
-        fs::copy(src, &archived).with_context(|| format!("archiving {}", src.display()))?;
+        fs::copy(src, &archived)
+            .with_context(|| format!("archiving {}", src.display()))?;
     }
     rb.memstack_backup = Some(archived);
     Ok(())
@@ -626,7 +664,8 @@ fn export_memstack(det: &Detection, archive: &Path) -> Result<()> {
     let Some(db) = pick_memstack_source(det) else {
         return Ok(());
     };
-    let conn = Connection::open(&db).with_context(|| format!("opening {}", db.display()))?;
+    let conn = Connection::open(&db)
+        .with_context(|| format!("opening {}", db.display()))?;
 
     let mut jsonl = String::new();
     let mut md = String::from("# MemStack export\n\n");
@@ -679,9 +718,9 @@ fn export_memstack(det: &Detection, archive: &Path) -> Result<()> {
     }
 
     md.push_str("## Insights\n\n");
-    if let Ok(mut stmt) =
-        conn.prepare("SELECT project, type, content FROM insights ORDER BY project, type")
-    {
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT project, type, content FROM insights ORDER BY project, type",
+    ) {
         let rows = stmt
             .query_map([], |r| {
                 Ok((
@@ -784,7 +823,8 @@ fn export_memstack(det: &Detection, archive: &Path) -> Result<()> {
 
     fs::write(archive.join("memstack-export.jsonl"), jsonl)
         .context("writing memstack-export.jsonl")?;
-    fs::write(archive.join("memstack-export.md"), md).context("writing memstack-export.md")?;
+    fs::write(archive.join("memstack-export.md"), md)
+        .context("writing memstack-export.md")?;
     ui::ok("exported memstack.db → JSONL + Markdown");
     Ok(())
 }
@@ -813,7 +853,8 @@ fn export_automem(det: &Detection, archive: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let url = format!("{}/recall?q=&limit=1000", endpoint.trim_end_matches('/'));
+    let url =
+        format!("{}/recall?q=&limit=1000", endpoint.trim_end_matches('/'));
     let resp = match ureq::get(&url)
         .set("Authorization", &format!("Bearer {api_key}"))
         .timeout(std::time::Duration::from_secs(10))
@@ -844,7 +885,11 @@ fn export_automem(det: &Detection, archive: &Path) -> Result<()> {
 // 3.3 — AutoMem teardown.
 // ----------------------------------------------------------------------------
 
-fn teardown_automem(det: &Detection, archive: &Path, rb: &mut RollbackManifest) -> Result<()> {
+fn teardown_automem(
+    det: &Detection,
+    archive: &Path,
+    rb: &mut RollbackManifest,
+) -> Result<()> {
     if !det.settings_path.exists() {
         return Ok(());
     }
@@ -873,7 +918,10 @@ fn teardown_automem(det: &Detection, archive: &Path, rb: &mut RollbackManifest) 
             settings.as_object_mut().unwrap().remove("mcpServers");
         }
 
-        fs::write(&det.settings_path, serde_json::to_string_pretty(&settings)?)?;
+        fs::write(
+            &det.settings_path,
+            serde_json::to_string_pretty(&settings)?,
+        )?;
 
         ui::ok("removed mcpServers.memory (AutoMem) from settings.json");
         ui::info(
@@ -888,7 +936,11 @@ fn teardown_automem(det: &Detection, archive: &Path, rb: &mut RollbackManifest) 
 // 3.4 — MemStack → ICM.
 // ----------------------------------------------------------------------------
 
-fn import_memstack_into_icm(det: &Detection, archive: &Path, migration_id: &str) -> Result<()> {
+fn import_memstack_into_icm(
+    det: &Detection,
+    archive: &Path,
+    migration_id: &str,
+) -> Result<()> {
     let Some(db) = pick_memstack_source(det) else {
         return Ok(());
     };
@@ -958,12 +1010,17 @@ impl IcmRecord {
     }
 }
 
-fn collect_icm_records(conn: &Connection, migration_id: &str) -> Result<Vec<IcmRecord>> {
+fn collect_icm_records(
+    conn: &Connection,
+    migration_id: &str,
+) -> Result<Vec<IcmRecord>> {
     let tag_source = "source=whetstone-migration".to_string();
     let tag_id = format!("migration-id={migration_id}");
     let mut out = Vec::new();
 
-    if let Ok(mut stmt) = conn.prepare("SELECT project, type, content FROM insights") {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT project, type, content FROM insights")
+    {
         let rows = stmt
             .query_map([], |r| {
                 Ok((
@@ -1118,34 +1175,45 @@ fn icm_store_one(r: &IcmRecord) -> Result<()> {
 // 3.5 — Cleanup managed v2 files.
 // ----------------------------------------------------------------------------
 
-fn cleanup_managed(det: &Detection, archive: &Path, rb: &mut RollbackManifest) -> Result<()> {
+fn cleanup_managed(
+    det: &Detection,
+    archive: &Path,
+    rb: &mut RollbackManifest,
+) -> Result<()> {
     let mut archive_seq: BTreeMap<&str, usize> = BTreeMap::new();
-    let mut next_archive_path = |kind: &'static str, original: &Path| -> PathBuf {
-        let n = archive_seq.entry(kind).or_insert(0);
-        *n += 1;
-        let name = original
-            .file_name()
-            .map(|x| x.to_string_lossy().into_owned())
-            .unwrap_or_else(|| format!("{kind}-{n}.bin"));
-        archive.join("files").join(kind).join(name)
-    };
+    let mut next_archive_path =
+        |kind: &'static str, original: &Path| -> PathBuf {
+            let n = archive_seq.entry(kind).or_insert(0);
+            *n += 1;
+            let name = original
+                .file_name()
+                .map(|x| x.to_string_lossy().into_owned())
+                .unwrap_or_else(|| format!("{kind}-{n}.bin"));
+            archive.join("files").join(kind).join(name)
+        };
 
     if det.settings_path.exists() && det.v2_hook_count > 0 {
         let raw = fs::read_to_string(&det.settings_path)?;
         let mut settings: Value = serde_json::from_str(&raw)?;
-        if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+        if let Some(hooks) =
+            settings.get_mut("hooks").and_then(|h| h.as_object_mut())
+        {
             for (event, entries) in hooks.iter_mut() {
                 if let Some(arr) = entries.as_array_mut() {
                     let before = arr.len();
                     arr.retain(|e| !entry_is_whetstone_managed(e));
                     let removed = before - arr.len();
                     if removed > 0 {
-                        rb.removed_hook_indices.push(format!("{event}:-{removed}"));
+                        rb.removed_hook_indices
+                            .push(format!("{event}:-{removed}"));
                     }
                 }
             }
         }
-        fs::write(&det.settings_path, serde_json::to_string_pretty(&settings)?)?;
+        fs::write(
+            &det.settings_path,
+            serde_json::to_string_pretty(&settings)?,
+        )?;
         ui::ok("removed v2 whetstone hook entries from settings.json");
     }
 
@@ -1219,9 +1287,13 @@ fn hook_script_references(settings_path: &Path) -> Vec<String> {
         for entries in hooks.values() {
             if let Some(arr) = entries.as_array() {
                 for entry in arr {
-                    if let Some(inner) = entry.get("hooks").and_then(|h| h.as_array()) {
+                    if let Some(inner) =
+                        entry.get("hooks").and_then(|h| h.as_array())
+                    {
                         for h in inner {
-                            if let Some(cmd) = h.get("command").and_then(|c| c.as_str()) {
+                            if let Some(cmd) =
+                                h.get("command").and_then(|c| c.as_str())
+                            {
                                 out.push(cmd.to_string());
                             }
                         }
@@ -1233,12 +1305,18 @@ fn hook_script_references(settings_path: &Path) -> Vec<String> {
     out
 }
 
-fn archive_and_remove(src: &Path, dest: &Path, rb: &mut RollbackManifest) -> Result<()> {
+fn archive_and_remove(
+    src: &Path,
+    dest: &Path,
+    rb: &mut RollbackManifest,
+) -> Result<()> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::copy(src, dest).with_context(|| format!("archiving {}", src.display()))?;
-    fs::remove_file(src).with_context(|| format!("removing {}", src.display()))?;
+    fs::copy(src, dest)
+        .with_context(|| format!("archiving {}", src.display()))?;
+    fs::remove_file(src)
+        .with_context(|| format!("removing {}", src.display()))?;
     rb.removed_files.push(RemovedFile {
         original: src.to_path_buf(),
         archived: dest.to_path_buf(),
@@ -1246,12 +1324,17 @@ fn archive_and_remove(src: &Path, dest: &Path, rb: &mut RollbackManifest) -> Res
     Ok(())
 }
 
-fn archive_dir_and_remove(src: &Path, dest: &Path, rb: &mut RollbackManifest) -> Result<()> {
+fn archive_dir_and_remove(
+    src: &Path,
+    dest: &Path,
+    rb: &mut RollbackManifest,
+) -> Result<()> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;
     }
     copy_dir_recursive(src, dest)?;
-    fs::remove_dir_all(src).with_context(|| format!("removing {}", src.display()))?;
+    fs::remove_dir_all(src)
+        .with_context(|| format!("removing {}", src.display()))?;
     rb.removed_files.push(RemovedFile {
         original: src.to_path_buf(),
         archived: dest.to_path_buf(),
@@ -1291,7 +1374,10 @@ fn reinit_v3(det: &Detection, migration_id: &str) -> Result<()> {
         .context("loading whetstone.json after re-init")?
     {
         Some(m) => m,
-        None => WhetstoneManifest::new(MemoryProvider::Icm, config::ToolVersions::default()),
+        None => WhetstoneManifest::new(
+            MemoryProvider::Icm,
+            config::ToolVersions::default(),
+        ),
     };
     manifest.set_migration_id(migration_id);
     manifest.touch_and_save(&manifest_p)?;
@@ -1329,7 +1415,9 @@ fn print_dry_run_plan(det: &Detection) {
     println!();
     println!("## MemStack → ICM");
     if det.memstack_db.is_some() {
-        println!("- attempt `icm import --format auto <archive>/icm-import.jsonl`");
+        println!(
+            "- attempt `icm import --format auto <archive>/icm-import.jsonl`"
+        );
         println!("- fall back to per-record `icm store` if bulk fails");
     } else {
         println!("- (no memstack.db)");
@@ -1484,7 +1572,10 @@ mod tests {
 
         let det = detect_at(project.path(), home.path()).unwrap();
         assert!(det.automem_present);
-        assert_eq!(det.automem_endpoint.as_deref(), Some("https://example.com"));
+        assert_eq!(
+            det.automem_endpoint.as_deref(),
+            Some("https://example.com")
+        );
     }
 
     #[test]
@@ -1509,7 +1600,11 @@ mod tests {
             .unwrap();
         conn.execute(
             "INSERT INTO insights (project, type, content) VALUES (?1, ?2, ?3)",
-            rusqlite::params!["whetstone", "decision", "ship v3 as orchestrator"],
+            rusqlite::params![
+                "whetstone",
+                "decision",
+                "ship v3 as orchestrator"
+            ],
         )
         .unwrap();
         conn.execute(
@@ -1582,7 +1677,8 @@ mod tests {
         });
         fs::create_dir_all(home.path().join(".claude")).unwrap();
         let sp = home.path().join(".claude/settings.json");
-        fs::write(&sp, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
+        fs::write(&sp, serde_json::to_string_pretty(&settings).unwrap())
+            .unwrap();
 
         let det = detect_at(project.path(), home.path()).unwrap();
         let archive = archive_dir(project.path(), "test");
@@ -1590,7 +1686,8 @@ mod tests {
         let mut rb = empty_rb("test");
         cleanup_managed(&det, &archive, &mut rb).unwrap();
 
-        let after: Value = serde_json::from_str(&fs::read_to_string(&sp).unwrap()).unwrap();
+        let after: Value =
+            serde_json::from_str(&fs::read_to_string(&sp).unwrap()).unwrap();
         let arr = after["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert!(rb
@@ -1620,10 +1717,12 @@ mod tests {
         fs::create_dir_all(&archive).unwrap();
         export_memstack(&det, &archive).unwrap();
 
-        let jsonl = fs::read_to_string(archive.join("memstack-export.jsonl")).unwrap();
+        let jsonl =
+            fs::read_to_string(archive.join("memstack-export.jsonl")).unwrap();
         assert!(jsonl.contains("\"kind\":\"session\""));
         assert!(jsonl.contains("phase 3"));
-        let md = fs::read_to_string(archive.join("memstack-export.md")).unwrap();
+        let md =
+            fs::read_to_string(archive.join("memstack-export.md")).unwrap();
         assert!(md.contains("Sessions"));
     }
 
@@ -1675,7 +1774,10 @@ mod tests {
         // Stamp a fake whetstone.json with migration_id.
         let mp = WhetstoneManifest::path_for(project.path());
         fs::create_dir_all(mp.parent().unwrap()).unwrap();
-        let mut m = WhetstoneManifest::new(MemoryProvider::Icm, config::ToolVersions::default());
+        let mut m = WhetstoneManifest::new(
+            MemoryProvider::Icm,
+            config::ToolVersions::default(),
+        );
         m.set_migration_id("20260101-000000");
         m.save(&mp).unwrap();
 
@@ -1689,7 +1791,8 @@ mod tests {
         // Rollback safety leans entirely on this manifest. Serialize → parse →
         // compare every field so a future field addition doesn't silently get
         // dropped on disk.
-        let archived_at: chrono::DateTime<Utc> = "2026-06-07T15:30:12Z".parse().unwrap();
+        let archived_at: chrono::DateTime<Utc> =
+            "2026-06-07T15:30:12Z".parse().unwrap();
         let rb = RollbackManifest {
             migration_id: "20260607-153012".into(),
             archived_at,
@@ -1704,9 +1807,14 @@ mod tests {
             )),
             removed_files: vec![RemovedFile {
                 original: PathBuf::from(".claude/skills/diary"),
-                archived: PathBuf::from(".whetstone/migration-20260607-153012/skills/diary"),
+                archived: PathBuf::from(
+                    ".whetstone/migration-20260607-153012/skills/diary",
+                ),
             }],
-            removed_hook_indices: vec!["PreToolUse[0]".into(), "Stop[1]".into()],
+            removed_hook_indices: vec![
+                "PreToolUse[0]".into(),
+                "Stop[1]".into(),
+            ],
         };
 
         let json = serde_json::to_string(&rb).unwrap();
@@ -1759,7 +1867,8 @@ mod tests {
         });
         fs::create_dir_all(home.path().join(".claude")).unwrap();
         let sp = home.path().join(".claude/settings.json");
-        fs::write(&sp, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
+        fs::write(&sp, serde_json::to_string_pretty(&settings).unwrap())
+            .unwrap();
 
         // First pass strips the v2 entry.
         let det1 = detect_at(project.path(), home.path()).unwrap();

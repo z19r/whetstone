@@ -8,10 +8,16 @@ use crate::ui;
 /// Deprecated entry point for the old top-level `uninstall` command.
 /// Guides the user to the scoped replacements without removing anything.
 pub fn run_deprecated_notice() {
-    ui::warn("`whetstone uninstall` is deprecated and does nothing on its own.");
+    ui::warn(
+        "`whetstone uninstall` is deprecated and does nothing on its own.",
+    );
     ui::info("Use one of the scoped commands instead:");
-    ui::info("  whetstone project uninstall   # remove files from this project");
-    ui::info("  whetstone global uninstall    # remove binaries, RTK, Headroom");
+    ui::info(
+        "  whetstone project uninstall   # remove files from this project",
+    );
+    ui::info(
+        "  whetstone global uninstall    # remove binaries, RTK, Headroom",
+    );
 }
 
 /// Remove whetstone files from the current project directory only.
@@ -20,7 +26,8 @@ pub fn run_project() -> Result<()> {
     let project_dir = std::env::current_dir()?;
     eprintln!("project dir: {}", project_dir.display());
 
-    if ui::confirm("Remove whetstone files from this project directory?", false) {
+    if ui::confirm("Remove whetstone files from this project directory?", false)
+    {
         remove_project_files(&project_dir);
     } else {
         ui::warn("skipped project file removal");

@@ -7,7 +7,8 @@ use std::process::Command;
 use crate::ui;
 use crate::version;
 
-const NPM_REGISTRY_URL: &str = "https://registry.npmjs.org/@anthropic-ai/claude-code/latest";
+const NPM_REGISTRY_URL: &str =
+    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum InstallMethod {
@@ -63,7 +64,9 @@ fn resolve_claude_binary() -> Option<PathBuf> {
     fs::canonicalize(&path).ok().or(Some(path))
 }
 
-fn detect_install_method_from_path(binary_path: Option<PathBuf>) -> InstallMethod {
+fn detect_install_method_from_path(
+    binary_path: Option<PathBuf>,
+) -> InstallMethod {
     let Some(path) = binary_path else {
         return InstallMethod::Unknown;
     };
@@ -164,7 +167,9 @@ fn cleanup_native_install() {
     }
 
     if versions_dir.is_dir() {
-        ui::info("removing stale native versions directory (~/.local/share/claude/)");
+        ui::info(
+            "removing stale native versions directory (~/.local/share/claude/)",
+        );
         let _ = fs::remove_dir_all(&versions_dir);
     }
 }
@@ -239,7 +244,8 @@ mod tests {
 
     #[test]
     fn parse_npm_response_valid() {
-        let body = r#"{"name":"@anthropic-ai/claude-code","version":"2.1.172"}"#;
+        let body =
+            r#"{"name":"@anthropic-ai/claude-code","version":"2.1.172"}"#;
         assert_eq!(parse_npm_response(body), Some("2.1.172".into()));
     }
 
@@ -315,12 +321,14 @@ mod tests {
     fn fix_install_method_rewrites_native_to_npm() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join(".claude.json");
-        fs::write(&config, r#"{"installMethod":"native","numStartups":10}"#).unwrap();
+        fs::write(&config, r#"{"installMethod":"native","numStartups":10}"#)
+            .unwrap();
 
         fix_install_method_in_config(dir.path());
 
         let result: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+            serde_json::from_str(&fs::read_to_string(&config).unwrap())
+                .unwrap();
         assert_eq!(result["installMethod"], "npm");
         assert_eq!(result["numStartups"], 10);
     }
@@ -347,7 +355,8 @@ mod tests {
         fix_install_method_in_config(dir.path());
 
         let result: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+            serde_json::from_str(&fs::read_to_string(&config).unwrap())
+                .unwrap();
         assert_eq!(result["installMethod"], "npm");
     }
 

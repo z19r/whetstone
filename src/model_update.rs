@@ -95,7 +95,8 @@ fn model_offers(
 
     // Signal: a brand-new family flagship (only after seeding).
     if !seen.is_empty() {
-        let seen_families: HashSet<u8> = seen.iter().map(|id| family_order(id)).collect();
+        let seen_families: HashSet<u8> =
+            seen.iter().map(|id| family_order(id)).collect();
         let mut new_families: Vec<u8> = available
             .iter()
             .map(|id| family_order(id))
@@ -104,7 +105,9 @@ fn model_offers(
         new_families.sort_unstable();
         new_families.dedup();
         for f in new_families {
-            if let Some(flagship) = available.iter().filter(|id| family_order(id) == f).max() {
+            if let Some(flagship) =
+                available.iter().filter(|id| family_order(id) == f).max()
+            {
                 offers.push(flagship.clone());
             }
         }
@@ -122,7 +125,8 @@ fn model_offers(
 /// Canonicalizes when possible so `.`/symlinks map to one file; falls back to
 /// the raw path (e.g. for a not-yet-existing dir in tests).
 fn hash_project_dir(project_dir: &Path) -> String {
-    let canon = std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
+    let canon = std::fs::canonicalize(project_dir)
+        .unwrap_or_else(|_| project_dir.to_path_buf());
     let mut hasher = DefaultHasher::new();
     canon.to_string_lossy().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
@@ -192,16 +196,20 @@ fn apply_action(
 ) -> Result<ModelDecision> {
     match action {
         ModalAction::Pin => {
-            let Some(mut manifest) = WhetstoneManifest::load(manifest_path)? else {
+            let Some(mut manifest) = WhetstoneManifest::load(manifest_path)?
+            else {
                 return Ok(ModelDecision::NoChange);
             };
             manifest.settings.api_model = Some(selected.to_string());
             manifest.touch_and_save(manifest_path)?;
             Ok(ModelDecision::UsePinned(selected.to_string()))
         }
-        ModalAction::Session => Ok(ModelDecision::UseSession(selected.to_string())),
+        ModalAction::Session => {
+            Ok(ModelDecision::UseSession(selected.to_string()))
+        }
         ModalAction::Dismiss => {
-            let Some(mut manifest) = WhetstoneManifest::load(manifest_path)? else {
+            let Some(mut manifest) = WhetstoneManifest::load(manifest_path)?
+            else {
                 return Ok(ModelDecision::NoChange);
             };
             if !manifest.dismissed_models.iter().any(|d| d == selected) {
@@ -233,10 +241,11 @@ pub fn maybe_prompt(resolved: &ResolvedSettings) -> ModelDecision {
         return ModelDecision::NoChange;
     };
 
-    let effective =
-        effective_model(resolved).unwrap_or_else(|| crate::wrapper::DEFAULT_MODEL.to_string());
+    let effective = effective_model(resolved)
+        .unwrap_or_else(|| crate::wrapper::DEFAULT_MODEL.to_string());
     let seen = read_seen(&cwd);
-    let offers = model_offers(&effective, &available, &seen, &manifest.dismissed_models);
+    let offers =
+        model_offers(&effective, &available, &seen, &manifest.dismissed_models);
 
     // Record the current list as the new baseline whenever it changed (this is
     // also the first-run seeding that suppresses brand-new-family until later).
@@ -249,7 +258,8 @@ pub fn maybe_prompt(resolved: &ResolvedSettings) -> ModelDecision {
     }
 
     let (action, selected) = prompt_modal(&offers);
-    apply_action(action, &selected, &manifest_path).unwrap_or(ModelDecision::NoChange)
+    apply_action(action, &selected, &manifest_path)
+        .unwrap_or(ModelDecision::NoChange)
 }
 
 /// Full-screen modal offering the newer/new model(s). Returns the chosen
@@ -270,7 +280,10 @@ fn prompt_modal(offered: &[String]) -> (ModalAction, String) {
 
 /// Render/input loop for the modal. `Enter`/`p` pin, `s` session, `d` dismiss,
 /// `Esc`/`q` not now; `↑↓`/`j`/`k` move the highlight when >1 model is offered.
-fn modal_loop(terminal: &mut DefaultTerminal, offered: &[String]) -> Result<(ModalAction, String)> {
+fn modal_loop(
+    terminal: &mut DefaultTerminal,
+    offered: &[String],
+) -> Result<(ModalAction, String)> {
     let mut selected = 0usize;
     loop {
         terminal.draw(|frame| draw_modal(frame, offered, selected))?;
@@ -289,7 +302,9 @@ fn modal_loop(terminal: &mut DefaultTerminal, offered: &[String]) -> Result<(Mod
             KeyCode::Up | KeyCode::Char('k') => {
                 selected = selected.saturating_sub(1);
             }
-            KeyCode::Down | KeyCode::Char('j') if selected + 1 < offered.len() => {
+            KeyCode::Down | KeyCode::Char('j')
+                if selected + 1 < offered.len() =>
+            {
                 selected += 1;
             }
             KeyCode::Char('p') | KeyCode::Enter => {
@@ -350,7 +365,12 @@ fn draw_modal_header(frame: &mut Frame, area: Rect) {
     frame.render_widget(body, area);
 }
 
-fn draw_modal_list(frame: &mut Frame, area: Rect, offered: &[String], selected: usize) {
+fn draw_modal_list(
+    frame: &mut Frame,
+    area: Rect,
+    offered: &[String],
+    selected: usize,
+) {
     let lines: Vec<Line<'_>> = offered
         .iter()
         .enumerate()
@@ -368,8 +388,8 @@ fn draw_modal_list(frame: &mut Frame, area: Rect, offered: &[String], selected: 
         })
         .collect();
 
-    let list =
-        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Offered "));
+    let list = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title(" Offered "));
     frame.render_widget(list, area);
 }
 
@@ -403,8 +423,13 @@ mod tests {
     fn apply_pin_writes_api_model_and_returns_use_pinned() {
         let f = tempfile::NamedTempFile::new().unwrap();
         seed_manifest(f.path());
-        let decision = apply_action(ModalAction::Pin, "claude-opus-4-8", f.path()).unwrap();
-        assert_eq!(decision, ModelDecision::UsePinned("claude-opus-4-8".into()));
+        let decision =
+            apply_action(ModalAction::Pin, "claude-opus-4-8", f.path())
+                .unwrap();
+        assert_eq!(
+            decision,
+            ModelDecision::UsePinned("claude-opus-4-8".into())
+        );
         let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
         assert_eq!(
             loaded.settings.api_model.as_deref(),
@@ -416,7 +441,9 @@ mod tests {
     fn apply_dismiss_appends_to_dismissed_models_and_returns_no_change() {
         let f = tempfile::NamedTempFile::new().unwrap();
         seed_manifest(f.path());
-        let decision = apply_action(ModalAction::Dismiss, "claude-fable-5", f.path()).unwrap();
+        let decision =
+            apply_action(ModalAction::Dismiss, "claude-fable-5", f.path())
+                .unwrap();
         assert_eq!(decision, ModelDecision::NoChange);
         let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
         assert_eq!(loaded.dismissed_models, s(&["claude-fable-5"]));
@@ -426,7 +453,9 @@ mod tests {
     fn apply_session_persists_nothing_returns_use_session() {
         let f = tempfile::NamedTempFile::new().unwrap();
         seed_manifest(f.path());
-        let decision = apply_action(ModalAction::Session, "claude-sonnet-5", f.path()).unwrap();
+        let decision =
+            apply_action(ModalAction::Session, "claude-sonnet-5", f.path())
+                .unwrap();
         assert_eq!(
             decision,
             ModelDecision::UseSession("claude-sonnet-5".into())
@@ -440,7 +469,9 @@ mod tests {
     fn apply_not_now_persists_nothing_returns_no_change() {
         let f = tempfile::NamedTempFile::new().unwrap();
         seed_manifest(f.path());
-        let decision = apply_action(ModalAction::NotNow, "claude-sonnet-5", f.path()).unwrap();
+        let decision =
+            apply_action(ModalAction::NotNow, "claude-sonnet-5", f.path())
+                .unwrap();
         assert_eq!(decision, ModelDecision::NoChange);
         let loaded = WhetstoneManifest::load(f.path()).unwrap().unwrap();
         assert!(loaded.settings.api_model.is_none());
@@ -507,7 +538,8 @@ mod tests {
     #[test]
     fn first_run_suppresses_brand_new_family() {
         // seen empty ⇒ everything looks new; only family-upgrade may fire.
-        let available = s(&["claude-opus-4-6", "claude-opus-4-8", "claude-fable-5"]);
+        let available =
+            s(&["claude-opus-4-6", "claude-opus-4-8", "claude-fable-5"]);
         let offers = model_offers("claude-opus-4-6", &available, &[], &[]);
         assert_eq!(offers, s(&["claude-opus-4-8"]));
     }
@@ -573,7 +605,9 @@ mod tests {
         // effective is already newest in family ⇒ not offered.
         let available = s(&["claude-sonnet-5"]);
         let seen = s(&["claude-sonnet-5"]);
-        assert!(model_offers("claude-sonnet-5", &available, &seen, &[]).is_empty());
+        assert!(
+            model_offers("claude-sonnet-5", &available, &seen, &[]).is_empty()
+        );
 
         // Family-upgrade and brand-new-family compute the same flagship for a
         // family absent from `seen`; result is deduped.

@@ -30,12 +30,14 @@ pub fn detect_profile() -> Option<PathBuf> {
 
 pub fn ensure_in_profile(line: &str) -> Result<()> {
     let Some(profile) = detect_profile() else {
-        crate::ui::warn("could not detect shell profile — set ANTHROPIC_BASE_URL manually");
+        crate::ui::warn(
+            "could not detect shell profile — set ANTHROPIC_BASE_URL manually",
+        );
         return Ok(());
     };
 
-    let contents =
-        fs::read_to_string(&profile).with_context(|| format!("reading {}", profile.display()))?;
+    let contents = fs::read_to_string(&profile)
+        .with_context(|| format!("reading {}", profile.display()))?;
 
     if contents.contains(line) {
         return Ok(());
@@ -48,7 +50,8 @@ pub fn ensure_in_profile(line: &str) -> Result<()> {
     appended.push_str(line);
     appended.push('\n');
 
-    fs::write(&profile, appended).with_context(|| format!("writing to {}", profile.display()))?;
+    fs::write(&profile, appended)
+        .with_context(|| format!("writing to {}", profile.display()))?;
 
     crate::ui::ok(&format!("appended to {}", profile.display()));
     Ok(())

@@ -212,10 +212,18 @@ fn emit_lines(lines: Vec<Line<'static>>, plain: &str) {
     eprintln!("{plain}");
 }
 
-fn status_line(tag: &'static str, color: Color, leading: &'static str, msg: &str) -> Line<'static> {
+fn status_line(
+    tag: &'static str,
+    color: Color,
+    leading: &'static str,
+    msg: &str,
+) -> Line<'static> {
     Line::from(vec![
         Span::raw(leading),
-        Span::styled(tag, Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            tag,
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ),
         Span::raw(format!(" {msg}")),
     ])
 }
@@ -276,7 +284,11 @@ pub fn confirm(prompt: &str, default: bool) -> bool {
     result
 }
 
-pub fn select<T: std::fmt::Display>(prompt: &str, items: &[T], default: usize) -> usize {
+pub fn select<T: std::fmt::Display>(
+    prompt: &str,
+    items: &[T],
+    default: usize,
+) -> usize {
     if !is_interactive() || items.is_empty() {
         return default;
     }
@@ -309,7 +321,9 @@ pub fn select<T: std::fmt::Display>(prompt: &str, items: &[T], default: usize) -
                 event::KeyCode::Up | event::KeyCode::Char('k') => {
                     selected = selected.saturating_sub(1);
                 }
-                event::KeyCode::Down | event::KeyCode::Char('j') if selected + 1 < items.len() => {
+                event::KeyCode::Down | event::KeyCode::Char('j')
+                    if selected + 1 < items.len() =>
+                {
                     selected += 1;
                 }
                 event::KeyCode::Enter => break,
@@ -337,7 +351,10 @@ pub fn select<T: std::fmt::Display>(prompt: &str, items: &[T], default: usize) -
     selected
 }
 
-pub fn upgrade_banner(components: &[crate::update::OutdatedComponent], v2_project: bool) {
+pub fn upgrade_banner(
+    components: &[crate::update::OutdatedComponent],
+    v2_project: bool,
+) {
     if components.is_empty() && !v2_project {
         return;
     }
@@ -414,9 +431,15 @@ pub fn section(title: &str) {
             Line::from(""),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled(title_owned, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    title_owned,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" "),
-                Span::styled(rule, Style::default().add_modifier(Modifier::DIM)),
+                Span::styled(
+                    rule,
+                    Style::default().add_modifier(Modifier::DIM),
+                ),
             ]),
             Line::from(""),
         ],
@@ -441,7 +464,10 @@ pub fn component_line(name: &str, status: &ComponentStatus) {
             Span::raw("  "),
             Span::styled("●", Style::default().fg(Color::Green)),
             Span::raw(" "),
-            Span::styled(label_owned, Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                label_owned,
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" "),
             Span::styled(
                 format!("{ver} (up to date)"),
@@ -452,9 +478,15 @@ pub fn component_line(name: &str, status: &ComponentStatus) {
             Span::raw("  "),
             Span::styled("●", Style::default().fg(Color::Green)),
             Span::raw(" "),
-            Span::styled(label_owned, Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                label_owned,
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" "),
-            Span::styled(from.clone(), Style::default().add_modifier(Modifier::DIM)),
+            Span::styled(
+                from.clone(),
+                Style::default().add_modifier(Modifier::DIM),
+            ),
             Span::raw(" → "),
             Span::styled(
                 to.clone(),
@@ -467,7 +499,10 @@ pub fn component_line(name: &str, status: &ComponentStatus) {
             Span::raw("  "),
             Span::styled("○", Style::default().add_modifier(Modifier::DIM)),
             Span::raw(" "),
-            Span::styled(label_owned, Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                label_owned,
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" "),
             Span::styled(
                 "not installed",
@@ -478,15 +513,22 @@ pub fn component_line(name: &str, status: &ComponentStatus) {
             Span::raw("  "),
             Span::styled("✗", Style::default().fg(Color::Red)),
             Span::raw(" "),
-            Span::styled(label_owned, Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                label_owned,
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" "),
             Span::styled(reason.clone(), Style::default().fg(Color::Red)),
         ]),
     };
 
     let plain = match status {
-        ComponentStatus::UpToDate(ver) => format!("  ● {label} {ver} (up to date)"),
-        ComponentStatus::Updated(from, to) => format!("  ● {label} {from} → {to}"),
+        ComponentStatus::UpToDate(ver) => {
+            format!("  ● {label} {ver} (up to date)")
+        }
+        ComponentStatus::Updated(from, to) => {
+            format!("  ● {label} {from} → {to}")
+        }
         ComponentStatus::NotInstalled => format!("  ○ {label} not installed"),
         ComponentStatus::Failed(reason) => format!("  ✗ {label} {reason}"),
     };
@@ -557,7 +599,10 @@ pub fn summary_info(msg: &str) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" "),
-                Span::styled(msg_owned, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    msg_owned,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(""),
         ],
