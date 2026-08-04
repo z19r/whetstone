@@ -338,6 +338,12 @@ fn spawn_proxy_detached(memory: bool) -> std::io::Result<()> {
         cmd.env("HEADROOM_TELEMETRY", "off");
     }
 
+    // NOTE: keys that `wrap_claude` already exported via `env::set_var`
+    // (or that the user exported externally) are seen as present here and so
+    // are omitted from `apply` — they reach the child through normal env
+    // inheritance instead. This is what preserves the external-env-wins
+    // precedence. Do NOT add `.env_clear()` to this Command: it would drop
+    // those inherited overrides while leaving the exec sink intact.
     let hr_plan = headroom_env_plan();
     for (key, value) in &hr_plan.apply {
         cmd.env(key, value);
@@ -626,6 +632,16 @@ fn path_is_executable(path: &Path) -> bool {
 
 pub fn wrap_proxy(args: &[String], memory: bool) -> ! {
     set_proxy_env();
+
+    // A standalone `whetstone proxy` launches Headroom directly, so it gets
+    // the same opinionated defaults + `headroom_env` overrides as the bare
+    // `whetstone` / `whetstone claude` paths. exec inherits process env.
+    let hr_plan = headroom_env_plan();
+    warn_ignored_headroom_env(&hr_plan.ignored);
+    for (key, value) in &hr_plan.apply {
+        env::set_var(key, value);
+    }
+
     let mut proxy_args = vec!["proxy".to_string()];
     if memory && !args.iter().any(|a| a == "--memory") {
         proxy_args.push("--memory".into());

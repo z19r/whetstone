@@ -80,3 +80,9 @@ over both. `HEADROOM_PORT` is reserved (whetstone pins `8787`) and ignored
 if set via the map.
 
     "headroom_env": { "HEADROOM_TARGET_RATIO": "0.2" }
+
+A few keys are whetstone-owned and silently dropped from the map because they
+have dedicated levers: set **HEADROOM_SAVINGS_PROFILE** by exporting it as an
+env var before launch, and **HEADROOM_TELEMETRY** via the **Headroom Telemetry**
+setting above. `HEADROOM_PORT` is likewise ignored. Putting any of these in the
+`headroom_env` map has no effect.
