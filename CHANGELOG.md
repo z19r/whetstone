@@ -4,6 +4,19 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-08-04
+
+### Added
+
+- add curated HEADROOM_* knobs to settings TUI (#75)
+- headroom_env launch passthrough + 80-char reflow (#74)
+- launch-time model-update prompt (#72)
+- scope uninstall into project/global; add Anthropic API URL setting (#71)
+
+### Changed
+
+- add superpowers planning and spec for model-update-prompt (#73)
+
 ### Added
 
 - Launch-time model-update prompt: when Anthropic ships a model newer than the one this project runs — or a brand-new model family — `whetstone` shows a full-screen modal offering to pin it as the project default, use it for one session only, or dismiss it. Dismissals are remembered per-project (`dismissed_models` in `.claude/whetstone.json`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` is passed explicitly.
