@@ -73,6 +73,11 @@ whetstone db init|add-session|add-insight|search|get-sessions|...
 
 On launch, whetstone (`src/model_update.rs`) checks the 12h-cached Anthropic models list for a model newer than the one this project runs — or a brand-new model family — and shows a full-screen modal offering to pin it as the project default (`api_model`), use it for one session, or dismiss it permanently (recorded in the manifest's top-level `dismissed_models`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` was passed explicitly.
 
+whetstone also supports `headroom_env` — a map of any Headroom launch knobs in
+`.claude/whetstone.json` (project) or `~/.whetstone/settings.json` (global),
+with precedence: external `HEADROOM_*` env vars > project map > global map >
+whetstone defaults (`HEADROOM_PORT` reserved, wins always).
+
 ## Architecture
 
 ```

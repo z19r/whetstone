@@ -8,6 +8,13 @@ All notable changes to whetstone will be documented in this file.
 
 - Launch-time model-update prompt: when Anthropic ships a model newer than the one this project runs — or a brand-new model family — `whetstone` shows a full-screen modal offering to pin it as the project default, use it for one session only, or dismiss it. Dismissals are remembered per-project (`dismissed_models` in `.claude/whetstone.json`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` is passed explicitly.
 - Anthropic API URL setting in `whetstone settings` — a custom upstream Anthropic API URL for the Headroom proxy, exported as `ANTHROPIC_TARGET_API_URL` before launch (project- or global-scoped; an externally-set env var takes precedence)
+- Opinionated Headroom launch defaults with full override control: whetstone
+  now sets `HEADROOM_CODE_AWARE_ENABLED=1` (and suppresses Headroom's own
+  memory tools when ICM is the provider) alongside the existing `agent-90`
+  savings profile. Every Headroom knob is overridable via a `headroom_env`
+  map in `.claude/whetstone.json` or `~/.whetstone/settings.json`
+  (project-over-global), with external `HEADROOM_*` env vars winning over
+  both. `HEADROOM_PORT` stays whetstone-owned.
 
 ### Changed
 

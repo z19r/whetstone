@@ -38,6 +38,7 @@
 | `HEADROOM_BUDGET` | (none) | Daily USD spending limit |
 | `HEADROOM_DEFAULT_MODE` | `optimize` | `optimize`, `audit` (observe only), or `off` |
 | `WHETSTONE_ASSETS` | (none) | Override path to assets directory |
+| `HEADROOM_*` (any) | (varies) | External Headroom knobs (e.g. `HEADROOM_TARGET_RATIO`). Win over `headroom_env` map; `HEADROOM_PORT` is reserved |
 
 ## Whetstone Settings
 
@@ -61,3 +62,21 @@ The launch-time model-update prompt (see the CLI Reference) also writes the
 project **API Model** when you pin a newer model. Models you permanently dismiss
 from that prompt are recorded in the top-level `dismissed_models` array of
 `.claude/whetstone.json` so they are not offered again for that project.
+
+### Headroom launch environment (`headroom_env`)
+
+whetstone sets a small set of opinionated Headroom defaults when it launches
+the proxy:
+
+- `HEADROOM_SAVINGS_PROFILE=agent-90` (compression posture for agents)
+- `HEADROOM_CODE_AWARE_ENABLED=1` (AST-aware compression for code)
+- `HEADROOM_NO_MEMORY_TOOLS=1` + `HEADROOM_NO_MEMORY_CONTEXT=1` **only when
+  the project's memory provider is ICM** (ICM owns memory)
+
+Override any Headroom knob by adding it to a `headroom_env` map in
+`.claude/whetstone.json` (project) or `~/.whetstone/settings.json` (global);
+project entries win over global. An externally-set `HEADROOM_*` env var wins
+over both. `HEADROOM_PORT` is reserved (whetstone pins `8787`) and ignored
+if set via the map.
+
+    "headroom_env": { "HEADROOM_TARGET_RATIO": "0.2" }
