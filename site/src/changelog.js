@@ -2,6 +2,41 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.8.0",
+    "date": "2026-08-04",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add curated HEADROOM_ knobs to settings TUI (#75)",
+          "headroom_env launch passthrough + 80-char reflow (#74)",
+          "launch-time model-update prompt (#72)",
+          "scope uninstall into project/global; add Anthropic API URL setting (#71)"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "add superpowers planning and spec for model-update-prompt (#73)"
+        ]
+      },
+      {
+        "name": "added",
+        "bullets": [
+          "Launch-time model-update prompt: when Anthropic ships a model newer than the one this project runs — or a brand-new model family — whetston…",
+          "Anthropic API URL setting in whetstone settings — a custom upstream Anthropic API URL for the Headroom proxy, exported as ANTHROPIC_TARGET_…",
+          "Opinionated Headroom launch defaults with full override control: whetstone now sets HEADROOM_CODE_AWARE_ENABLED=1 (and suppresses Headroom'…"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "Split whetstone uninstall into whetstone project uninstall (removes per-project files) and whetstone global uninstall (removes the whetston…"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.7.0",
     "date": "2026-07-02",
     "sections": [
@@ -133,18 +168,6 @@ window.WHETSTONE_CHANGELOG = [
         "bullets": [
           "pass --no-proxy so headroom wrap never hot-restarts the proxy",
           "start headroom proxy with HEADROOM_SAVINGS_PROFILE"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.4.0",
-    "date": "2026-06-12",
-    "sections": [
-      {
-        "name": "fixed",
-        "bullets": [
-          "conditional --savings-profile and installMethod mismatch fix"
         ]
       }
     ]
