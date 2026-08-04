@@ -8,18 +8,15 @@ use crate::config::ProviderTag;
 
 /// Whetstone hardwires the proxy port; letting the map set it would make
 /// whetstone launch on one port and health-check `8787`. Dropped + warned.
-#[allow(dead_code)]
 const RESERVED_DENY: &[&str] = &["HEADROOM_PORT"];
 
 /// Governed by dedicated code paths already; dropped silently to avoid
 /// setting the same var twice with conflicting values.
-#[allow(dead_code)]
 const RESERVED_OWNED: &[&str] =
     &["HEADROOM_SAVINGS_PROFILE", "HEADROOM_TELEMETRY"];
 
 /// The env whetstone will set when launching headroom.
 #[derive(Debug, Default, PartialEq, Eq)]
-#[allow(dead_code)]
 pub struct HeadroomEnvPlan {
     /// `(key, value)` pairs to set on the proxy child / exec env.
     pub apply: Vec<(String, String)>,
@@ -31,7 +28,6 @@ pub struct HeadroomEnvPlan {
 /// Build the launch-env plan. Precedence per key: an existing external env
 /// var always wins (we skip it); otherwise a user-map entry wins over a
 /// whetstone default. Reserved keys are filtered per the rules above.
-#[allow(dead_code)]
 pub fn build_headroom_env(
     user_map: &BTreeMap<String, String>,
     provider: ProviderTag,
