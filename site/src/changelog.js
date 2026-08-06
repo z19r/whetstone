@@ -2,6 +2,19 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.8.1",
+    "date": "2026-08-06",
+    "sections": [
+      {
+        "name": "fixed",
+        "bullets": [
+          "stop passing --no-rtk to headroom wrap (#79)",
+          "stop v3 slash commands from triggering false v2 migration (#78)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.8.0",
     "date": "2026-08-04",
     "sections": [
@@ -149,25 +162,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "added",
         "bullets": [
           "settings TUI with global/project layering"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.5.0",
-    "date": "2026-06-15",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "prompt to run setup in unconfigured projects"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "pass --no-proxy so headroom wrap never hot-restarts the proxy",
-          "start headroom proxy with HEADROOM_SAVINGS_PROFILE"
         ]
       }
     ]
