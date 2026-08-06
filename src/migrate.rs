@@ -74,15 +74,16 @@ pub const MANAGED_RULES: &[&str] = &[
     "work.md",
 ];
 
-/// Command files whetstone bundles into `.claude/commands/`. Includes
-/// both the v2 names (cleaned during migration) and the v3 names
-/// shipped today, so cleanup paths stay symmetric across upgrades.
-pub const MANAGED_COMMANDS: &[&str] = &[
-    "memstack-headroom.md",
-    "memstack-search.md",
-    "whetstone-headroom.md",
-    "whetstone-status.md",
-];
+/// v2 command files whetstone bundled into `.claude/commands/`.
+///
+/// These are *v2 markers*: their presence is evidence of an old install
+/// that needs migrating. The v3 slash commands (`whetstone-headroom.md`,
+/// `whetstone-status.md`) are deliberately NOT listed here — v3 setup
+/// copies them into every project, so treating them as migration markers
+/// would make every already-configured v3 project falsely report
+/// "needs migration".
+pub const MANAGED_COMMANDS: &[&str] =
+    &["memstack-headroom.md", "memstack-search.md"];
 
 /// Canonical relative path (under a project's `.claude/`) of the v2
 /// MemStack SQLite database.
@@ -1492,6 +1493,39 @@ mod tests {
         assert_eq!(det.v2_hook_count, 0);
         assert!(!det.automem_present);
         assert!(det.managed_skills.is_empty());
+    }
+
+    #[test]
+    fn v3_slash_commands_do_not_trigger_migration() {
+        // A clean v3 project has the whetstone-* slash commands copied into
+        // .claude/commands/ by setup. Those must NOT be read as v2 markers,
+        // or every configured v3 project would falsely report needs_migration.
+        let project = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        touch(
+            &project
+                .path()
+                .join(".claude/commands/whetstone-headroom.md"),
+        );
+        touch(&project.path().join(".claude/commands/whetstone-status.md"));
+
+        let det = detect_at(project.path(), home.path()).unwrap();
+        assert!(det.managed_commands.is_empty());
+        assert!(!det.needs_migration());
+    }
+
+    #[test]
+    fn v2_memstack_commands_still_trigger_migration() {
+        let project = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        touch(&project.path().join(".claude/commands/memstack-search.md"));
+
+        let det = detect_at(project.path(), home.path()).unwrap();
+        assert_eq!(
+            det.managed_commands,
+            vec!["memstack-search.md".to_string()]
+        );
+        assert!(det.needs_migration());
     }
 
     #[test]
