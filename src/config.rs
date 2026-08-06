@@ -73,9 +73,20 @@ pub struct ProjectSettings {
     pub api_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anthropic_api_url: Option<String>,
+    /// Claude Code edit/permission mode passed as `--permission-mode` when set
+    /// (see [`PERMISSION_MODES`]). `None` means whetstone injects no flag and
+    /// Claude Code uses its own default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headroom_env: BTreeMap<String, String>,
 }
+
+/// Valid Claude Code `--permission-mode` values, most-permissive-first for the
+/// settings TUI's cycle order (the first entry is the value a freshly-enabled
+/// setting seeds).
+pub const PERMISSION_MODES: &[&str] =
+    &["acceptEdits", "default", "plan", "bypassPermissions"];
 
 const GLOBAL_DIR: &str = ".whetstone";
 const GLOBAL_SETTINGS_FILENAME: &str = "settings.json";
@@ -90,6 +101,8 @@ pub struct GlobalSettings {
     pub api_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anthropic_api_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headroom_env: BTreeMap<String, String>,
 }
@@ -133,6 +146,7 @@ pub struct ResolvedSettings {
     pub headroom_memory: bool,
     pub api_model: Option<String>,
     pub anthropic_api_url: Option<String>,
+    pub permission_mode: Option<String>,
     pub headroom_env: BTreeMap<String, String>,
 }
 
@@ -156,6 +170,10 @@ impl ResolvedSettings {
                 .anthropic_api_url
                 .clone()
                 .or_else(|| global.anthropic_api_url.clone()),
+            permission_mode: project
+                .permission_mode
+                .clone()
+                .or_else(|| global.permission_mode.clone()),
             headroom_env,
         }
     }
@@ -297,6 +315,50 @@ mod tests {
             &ProjectSettings::default(),
         );
         assert!(resolved.anthropic_api_url.is_none());
+    }
+
+    #[test]
+    fn resolve_prefers_project_permission_mode() {
+        let global = GlobalSettings {
+            permission_mode: Some("plan".into()),
+            ..Default::default()
+        };
+        let project = ProjectSettings {
+            permission_mode: Some("acceptEdits".into()),
+            ..Default::default()
+        };
+        let resolved = ResolvedSettings::resolve(&global, &project);
+        assert_eq!(resolved.permission_mode.as_deref(), Some("acceptEdits"));
+    }
+
+    #[test]
+    fn resolve_falls_back_to_global_permission_mode() {
+        let global = GlobalSettings {
+            permission_mode: Some("bypassPermissions".into()),
+            ..Default::default()
+        };
+        let resolved =
+            ResolvedSettings::resolve(&global, &ProjectSettings::default());
+        assert_eq!(
+            resolved.permission_mode.as_deref(),
+            Some("bypassPermissions")
+        );
+    }
+
+    #[test]
+    fn resolve_permission_mode_none_when_unset() {
+        let resolved = ResolvedSettings::resolve(
+            &GlobalSettings::default(),
+            &ProjectSettings::default(),
+        );
+        assert!(resolved.permission_mode.is_none());
+    }
+
+    #[test]
+    fn empty_permission_mode_omitted_from_project_json() {
+        let s = ProjectSettings::default();
+        let raw = serde_json::to_string(&s).unwrap();
+        assert!(!raw.contains("permission_mode"));
     }
 
     #[test]

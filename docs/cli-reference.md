@@ -12,7 +12,7 @@
 | `whetstone rtk [args...]` | Run RTK |
 | `whetstone doctor` | Inspect installed tool versions, `~/.claude/settings.json` hooks, and the per-project manifest |
 | `whetstone dashboard` | TUI dashboard for installed tool versions vs. pinned floors |
-| `whetstone settings` | Interactively edit whetstone settings, layered global/project (Headroom telemetry, Headroom memory, default API model, Anthropic API URL) |
+| `whetstone settings` | Interactively edit whetstone settings, layered global/project (Headroom telemetry, Headroom memory, default API model, edit/permission mode, Anthropic API URL) |
 | `whetstone migrate [--dry-run] [-y] [--rollback ID]` | Migrate a v2 install to v3 (or roll back) — see [Migration Guide](migration.md) |
 | `whetstone version` | Print version |
 | `whetstone stats` | Token-savings summary from RTK + Headroom stats endpoints |

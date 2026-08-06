@@ -12,7 +12,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::config::{GlobalSettings, ProjectSettings, WhetstoneManifest};
+use crate::config::{
+    GlobalSettings, ProjectSettings, WhetstoneManifest, PERMISSION_MODES,
+};
 use crate::memory::MemoryProvider;
 use crate::ui;
 
@@ -226,6 +228,7 @@ enum SettingId {
     HeadroomBudget,
     HeadroomLogMessages,
     ApiModel,
+    PermissionMode,
     AnthropicApiUrl,
 }
 
@@ -236,6 +239,7 @@ const SETTINGS: &[SettingId] = &[
     SettingId::HeadroomBudget,
     SettingId::HeadroomLogMessages,
     SettingId::ApiModel,
+    SettingId::PermissionMode,
     SettingId::AnthropicApiUrl,
 ];
 
@@ -314,6 +318,15 @@ impl SettingsState {
                     Scope::Off
                 }
             }
+            SettingId::PermissionMode => {
+                if self.project.permission_mode.is_some() {
+                    Scope::Project
+                } else if self.global.permission_mode.is_some() {
+                    Scope::Global
+                } else {
+                    Scope::Off
+                }
+            }
             SettingId::AnthropicApiUrl => {
                 if self.project.anthropic_api_url.is_some() {
                     Scope::Project
@@ -383,6 +396,27 @@ impl SettingsState {
                         .clone()
                         .unwrap_or_else(|| self.models[0].clone());
                     self.project.api_model = Some(base);
+                }
+            },
+            SettingId::PermissionMode => match next {
+                Scope::Off => {
+                    self.global.permission_mode = None;
+                    self.project.permission_mode = None;
+                }
+                Scope::Global => {
+                    if self.global.permission_mode.is_none() {
+                        self.global.permission_mode =
+                            Some(PERMISSION_MODES[0].to_string());
+                    }
+                    self.project.permission_mode = None;
+                }
+                Scope::Project => {
+                    let base = self
+                        .global
+                        .permission_mode
+                        .clone()
+                        .unwrap_or_else(|| PERMISSION_MODES[0].to_string());
+                    self.project.permission_mode = Some(base);
                 }
             },
             SettingId::AnthropicApiUrl => match next {
@@ -505,6 +539,25 @@ impl SettingsState {
         *target = Some(self.models[idx].clone());
     }
 
+    fn cycle_permission_mode_value(&mut self) {
+        let id = SETTINGS[self.selected];
+        if id != SettingId::PermissionMode {
+            return;
+        }
+        let target = match self.scope(id) {
+            Scope::Global => &mut self.global.permission_mode,
+            Scope::Project => &mut self.project.permission_mode,
+            Scope::Off => return,
+        };
+        let current = target.as_deref().unwrap_or(PERMISSION_MODES[0]);
+        let idx = PERMISSION_MODES
+            .iter()
+            .position(|m| *m == current)
+            .map(|i| (i + 1) % PERMISSION_MODES.len())
+            .unwrap_or(0);
+        *target = Some(PERMISSION_MODES[idx].to_string());
+    }
+
     /// The stored value shown next to a value-bearing setting (model id or API
     /// URL), or `None` for toggle settings and `Scope::Off`.
     fn current_value_display(&self, id: SettingId) -> Option<&str> {
@@ -516,6 +569,11 @@ impl SettingsState {
                 Scope::Off => None,
                 Scope::Global => self.global.api_model.as_deref(),
                 Scope::Project => self.project.api_model.as_deref(),
+            },
+            SettingId::PermissionMode => match self.scope(id) {
+                Scope::Off => None,
+                Scope::Global => self.global.permission_mode.as_deref(),
+                Scope::Project => self.project.permission_mode.as_deref(),
             },
             SettingId::AnthropicApiUrl => match self.scope(id) {
                 Scope::Off => None,
@@ -738,6 +796,8 @@ fn run_loop(
                         let id = SETTINGS[state.selected];
                         if id == SettingId::ApiModel {
                             state.cycle_model_value();
+                        } else if id == SettingId::PermissionMode {
+                            state.cycle_permission_mode_value();
                         } else if is_value_editable(id) {
                             state.begin_edit();
                         }
@@ -890,6 +950,10 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
                 "Log message content for debugging (HEADROOM_LOG_MESSAGES)",
             ),
             SettingId::ApiModel => ("API Model", "Model used for Claude Code sessions"),
+            SettingId::PermissionMode => (
+                "Edit Mode",
+                "Claude Code --permission-mode (acceptEdits/default/plan/bypassPermissions)",
+            ),
             SettingId::AnthropicApiUrl => (
                 "Anthropic API URL",
                 "Custom upstream Anthropic API URL for the Headroom proxy",
@@ -934,6 +998,8 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
 
         let desc_line = if id == SettingId::ApiModel && scope != Scope::Off {
             format!("{desc}  (tab to cycle model)")
+        } else if id == SettingId::PermissionMode && scope != Scope::Off {
+            format!("{desc}  (tab to cycle mode)")
         } else if is_value_editable(id) && scope != Scope::Off {
             if is_editing {
                 format!("{desc}  (enter to save, esc to cancel)")
@@ -1456,6 +1522,92 @@ mod tests {
         s.selected = 0;
         s.cycle_model_value();
         assert!(s.global.api_model.is_none());
+    }
+
+    #[test]
+    fn permission_mode_scope_detection() {
+        let mut s = default_state();
+        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Off);
+
+        s.global.permission_mode = Some("plan".into());
+        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Global);
+
+        s.project.permission_mode = Some("acceptEdits".into());
+        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Project);
+    }
+
+    #[test]
+    fn permission_mode_cycle_through_scopes() {
+        let mut s = default_state();
+
+        s.cycle_scope(SettingId::PermissionMode);
+        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Global);
+        assert_eq!(
+            s.global.permission_mode.as_deref(),
+            Some(PERMISSION_MODES[0])
+        );
+
+        s.cycle_scope(SettingId::PermissionMode);
+        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Project);
+        assert_eq!(
+            s.project.permission_mode.as_deref(),
+            Some(PERMISSION_MODES[0])
+        );
+
+        s.cycle_scope(SettingId::PermissionMode);
+        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Off);
+        assert!(s.global.permission_mode.is_none());
+        assert!(s.project.permission_mode.is_none());
+    }
+
+    #[test]
+    fn permission_mode_value_cycling_wraps() {
+        let mut s = default_state();
+        s.selected = index_of(SettingId::PermissionMode);
+        s.global.permission_mode =
+            Some(PERMISSION_MODES[PERMISSION_MODES.len() - 1].to_string());
+
+        s.cycle_permission_mode_value();
+        assert_eq!(
+            s.global.permission_mode.as_deref(),
+            Some(PERMISSION_MODES[0])
+        );
+    }
+
+    #[test]
+    fn permission_mode_value_cycles_forward() {
+        let mut s = default_state();
+        s.selected = index_of(SettingId::PermissionMode);
+        s.global.permission_mode = Some(PERMISSION_MODES[0].to_string());
+
+        s.cycle_permission_mode_value();
+        assert_eq!(
+            s.global.permission_mode.as_deref(),
+            Some(PERMISSION_MODES[1])
+        );
+    }
+
+    #[test]
+    fn permission_mode_value_cycle_noop_when_off() {
+        let mut s = default_state();
+        s.selected = index_of(SettingId::PermissionMode);
+        s.cycle_permission_mode_value();
+        assert!(s.global.permission_mode.is_none());
+        assert!(s.project.permission_mode.is_none());
+    }
+
+    #[test]
+    fn permission_mode_inherits_global_on_promote() {
+        let mut s = default_state();
+        s.cycle_scope(SettingId::PermissionMode);
+        s.global.permission_mode = Some("bypassPermissions".into());
+
+        s.cycle_scope(SettingId::PermissionMode);
+        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Project);
+        assert_eq!(
+            s.project.permission_mode.as_deref(),
+            Some("bypassPermissions")
+        );
     }
 
     #[test]

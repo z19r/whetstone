@@ -5,7 +5,7 @@
 | File | Owner | Purpose |
 |------|-------|---------|
 | `~/.claude/settings.json` | RTK + whetstone | All hooks, including whetstone's absolute `.../rtk hook claude` command |
-| `~/.whetstone/settings.json` | whetstone | Global whetstone settings (Headroom telemetry/memory, default model, Anthropic API URL) |
+| `~/.whetstone/settings.json` | whetstone | Global whetstone settings (Headroom telemetry/memory, default model, edit mode, Anthropic API URL) |
 | `~/.claude/RTK.md` | RTK | RTK instructions for Claude Code context |
 | `~/.claude/CLAUDE.md` | Claude Code | Global instructions (references `@RTK.md`) |
 | `~/.headroom/models.json` | Headroom | Custom model context limits and pricing |
@@ -51,6 +51,7 @@ taking precedence over global ones.
 | Headroom Telemetry | Toggle Headroom telemetry |
 | Headroom Memory | Persist the `--memory` flag (Headroom cross-session memory) |
 | API Model | Default model injected into `headroom wrap claude` (otherwise: newest Sonnet, else `claude-opus-4-6`) |
+| Edit Mode | Claude Code `--permission-mode` injected into `headroom wrap claude` — one of `acceptEdits`, `default`, `plan`, `bypassPermissions`. When **Off**, no flag is injected and Claude Code uses its own default. An explicit `--permission-mode` on the command line always wins |
 | Anthropic API URL | Custom upstream Anthropic API URL for the Headroom proxy (exported as `ANTHROPIC_TARGET_API_URL`) |
 
 Values persist to:
