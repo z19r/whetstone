@@ -4,6 +4,17 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-08-06
+
+### Added
+
+- add configurable Claude Code edit mode setting (#81)
+
+### Fixed
+
+- stop passing --no-rtk to headroom wrap (#79)
+- stop v3 slash commands from triggering false v2 migration (#78)
+
 ## [3.8.1] - 2026-08-06
 
 ### Fixed
