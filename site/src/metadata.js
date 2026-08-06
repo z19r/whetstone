@@ -2,8 +2,8 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-08-06",
   releaseDateHuman: "AUG 06 2026",
-  sha: "3054a56",
-  tagline: "add curated HEADROOM_* knobs to settings TUI (#75)",
+  sha: "9841fb3",
+  tagline: "stop passing --no-rtk to headroom wrap (#79)",
   assets: { commands: 2 },
   modules: [
     { id: "headroom", label: "HEADROOM PROXY", sub: "Context compression" },

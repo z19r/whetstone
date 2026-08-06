@@ -2,6 +2,25 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.9.0",
+    "date": "2026-08-06",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add configurable Claude Code edit mode setting (#81)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "stop passing --no-rtk to headroom wrap (#79)",
+          "stop v3 slash commands from triggering false v2 migration (#78)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.8.1",
     "date": "2026-08-06",
     "sections": [
@@ -150,18 +169,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "store changelog regex patterns in variables for bash compatibility"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.5.1",
-    "date": "2026-06-15",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "settings TUI with global/project layering"
         ]
       }
     ]
