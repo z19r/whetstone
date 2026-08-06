@@ -79,6 +79,7 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
         decision.proxy_ready,
         decision.wrap_memory,
         &model,
+        resolved.permission_mode.as_deref(),
     );
 
     exec("headroom", &cmd_args);
@@ -449,6 +450,7 @@ fn build_claude_args(
     proxy_ready: bool,
     wrap_memory: bool,
     model: &str,
+    permission_mode: Option<&str>,
 ) -> Vec<String> {
     let mut cmd_args = vec!["wrap".to_string(), "claude".to_string()];
 
@@ -472,6 +474,15 @@ fn build_claude_args(
         cmd_args.push(model.into());
     }
 
+    // Inject the configured Claude Code edit mode unless the user passed their
+    // own `--permission-mode` (which always wins, like `--model`).
+    if let Some(mode) = permission_mode {
+        if !user_set_permission_mode(args) {
+            cmd_args.push("--permission-mode".into());
+            cmd_args.push(mode.into());
+        }
+    }
+
     cmd_args.extend_from_slice(args);
     cmd_args
 }
@@ -480,6 +491,13 @@ fn build_claude_args(
 fn user_set_model(args: &[String]) -> bool {
     args.iter()
         .any(|a| a == "--model" || a.starts_with("--model="))
+}
+
+// Whether the user passed an explicit `--permission-mode` on the command line.
+fn user_set_permission_mode(args: &[String]) -> bool {
+    args.iter().any(|a| {
+        a == "--permission-mode" || a.starts_with("--permission-mode=")
+    })
 }
 
 pub fn wrap_proxy(args: &[String], memory: bool) -> ! {
@@ -543,6 +561,7 @@ mod tests {
             headroom_memory: false,
             api_model: None,
             anthropic_api_url: None,
+            permission_mode: None,
             headroom_env: std::collections::BTreeMap::new(),
         };
         let plan = headroom_env_plan_for(
@@ -631,7 +650,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_injects_default_model_when_absent() {
-        let args = build_claude_args(&[], false, false, DEFAULT_MODEL);
+        let args = build_claude_args(&[], false, false, DEFAULT_MODEL, None);
 
         assert_eq!(
             args,
@@ -652,6 +671,7 @@ mod tests {
             false,
             false,
             DEFAULT_MODEL,
+            None,
         );
 
         assert_eq!(
@@ -674,6 +694,7 @@ mod tests {
             false,
             false,
             DEFAULT_MODEL,
+            None,
         );
 
         assert_eq!(
@@ -694,6 +715,7 @@ mod tests {
             false,
             false,
             DEFAULT_MODEL,
+            None,
         );
 
         assert_eq!(
@@ -712,7 +734,8 @@ mod tests {
 
     #[test]
     fn build_claude_args_uses_configured_model() {
-        let args = build_claude_args(&[], false, false, "claude-sonnet-4-6");
+        let args =
+            build_claude_args(&[], false, false, "claude-sonnet-4-6", None);
 
         assert_eq!(
             args,
@@ -724,6 +747,67 @@ mod tests {
                 "claude-sonnet-4-6"
             ])
         );
+    }
+
+    #[test]
+    fn build_claude_args_injects_permission_mode_when_configured() {
+        let args = build_claude_args(
+            &[],
+            false,
+            false,
+            DEFAULT_MODEL,
+            Some("acceptEdits"),
+        );
+        assert_eq!(
+            args,
+            strings(&[
+                "wrap",
+                "claude",
+                "--no-serena",
+                "--model",
+                DEFAULT_MODEL,
+                "--permission-mode",
+                "acceptEdits",
+            ])
+        );
+    }
+
+    #[test]
+    fn build_claude_args_omits_permission_mode_when_none() {
+        let args = build_claude_args(&[], false, false, DEFAULT_MODEL, None);
+        assert!(!args.contains(&"--permission-mode".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_preserves_explicit_permission_mode() {
+        let args = build_claude_args(
+            &["--permission-mode".into(), "plan".into()],
+            false,
+            false,
+            DEFAULT_MODEL,
+            Some("acceptEdits"),
+        );
+        assert_eq!(
+            args.iter()
+                .filter(|a| a.as_str() == "--permission-mode")
+                .count(),
+            1
+        );
+        assert!(args.contains(&"plan".to_string()));
+        assert!(!args.contains(&"acceptEdits".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_preserves_explicit_permission_mode_equals_form() {
+        let args = build_claude_args(
+            &["--permission-mode=plan".into()],
+            false,
+            false,
+            DEFAULT_MODEL,
+            Some("acceptEdits"),
+        );
+        assert!(args.contains(&"--permission-mode=plan".to_string()));
+        assert!(!args.contains(&"acceptEdits".to_string()));
     }
 
     #[test]
@@ -761,7 +845,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_injects_memory_when_wrap_manages_proxy() {
-        let args = build_claude_args(&[], false, true, DEFAULT_MODEL);
+        let args = build_claude_args(&[], false, true, DEFAULT_MODEL, None);
         assert!(args.contains(&"--memory".to_string()));
         // wrap owns the proxy here, so --no-proxy must NOT be present.
         assert!(!args.contains(&"--no-proxy".to_string()));
@@ -769,7 +853,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_omits_memory_by_default() {
-        let args = build_claude_args(&[], true, false, DEFAULT_MODEL);
+        let args = build_claude_args(&[], true, false, DEFAULT_MODEL, None);
         assert!(!args.contains(&"--memory".to_string()));
     }
 
@@ -857,14 +941,14 @@ mod tests {
 
     #[test]
     fn build_claude_args_adds_no_proxy_when_proxy_ready() {
-        let args = build_claude_args(&[], true, false, DEFAULT_MODEL);
+        let args = build_claude_args(&[], true, false, DEFAULT_MODEL, None);
         assert!(args.contains(&"--no-proxy".to_string()));
         assert_eq!(&args[0..2], &["wrap".to_string(), "claude".to_string()]);
     }
 
     #[test]
     fn build_claude_args_omits_no_proxy_when_proxy_not_ready() {
-        let args = build_claude_args(&[], false, false, DEFAULT_MODEL);
+        let args = build_claude_args(&[], false, false, DEFAULT_MODEL, None);
         assert!(!args.contains(&"--no-proxy".to_string()));
     }
 
@@ -879,6 +963,7 @@ mod tests {
                     proxy_ready,
                     wrap_memory,
                     DEFAULT_MODEL,
+                    None,
                 );
                 assert!(
                     !args.contains(&"--no-rtk".to_string()),

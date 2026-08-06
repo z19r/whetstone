@@ -71,6 +71,8 @@ whetstone db init|add-session|add-insight|search|get-sessions|...
 
 `whetstone settings` also exposes **Anthropic API URL** — a custom upstream Anthropic API URL for the Headroom proxy. When set (per-project or globally), whetstone exports it as `ANTHROPIC_TARGET_API_URL` before launching Headroom, so the whetstone-spawned proxy targets that upstream (mirrors Headroom's `proxy --anthropic-api-url` flag). An externally-set `ANTHROPIC_TARGET_API_URL` env var takes precedence over the stored setting.
 
+`whetstone settings` also exposes **Edit Mode** — the Claude Code `--permission-mode` (`acceptEdits`, `default`, `plan`, `bypassPermissions`) whetstone injects into `headroom wrap claude`. Stored per-project (`permission_mode` in `.claude/whetstone.json`) or globally, project-over-global. When unset (**Off**), whetstone injects no flag and Claude Code uses its own default; an explicit `--permission-mode` on the command line always wins.
+
 On launch, whetstone (`src/model_update.rs`) checks the 12h-cached Anthropic models list for a model newer than the one this project runs — or a brand-new model family — and shows a full-screen modal offering to pin it as the project default (`api_model`), use it for one session, or dismiss it permanently (recorded in the manifest's top-level `dismissed_models`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` was passed explicitly.
 
 whetstone also supports `headroom_env` — a map of any Headroom launch knobs in
