@@ -234,7 +234,7 @@ pub(crate) fn refresh_all_assets(assets: &Path) -> Result<()> {
 /// (e.g. `whetstone update`'s per-project refresh) can update
 /// [`crate::config::ToolVersions`] without duplicating the spawn.
 pub(crate) fn current_icm_version() -> Option<String> {
-    installed_icm_version()
+    crate::icm::installed_version()
 }
 
 /// Install the memory provider's binary only. Integration (init) happens in
@@ -283,7 +283,7 @@ fn write_manifest(provider: MemoryProvider) -> Result<()> {
     let manifest_path = WhetstoneManifest::path_for(&project_dir);
     let tools = ToolVersions {
         rtk: rtk::installed_version(),
-        icm: installed_icm_version(),
+        icm: crate::icm::installed_version(),
         headroom: headroom::installed_version(),
     };
     let mut manifest = config::WhetstoneManifest::new(provider, tools);
@@ -297,15 +297,6 @@ fn write_manifest(provider: MemoryProvider) -> Result<()> {
     manifest.save(&manifest_path)?;
     ui::ok(&format!("wrote manifest to {}", manifest_path.display()));
     Ok(())
-}
-
-fn installed_icm_version() -> Option<String> {
-    let output = std::process::Command::new("icm")
-        .arg("--version")
-        .output()
-        .ok()?;
-    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    crate::version::extract_semver(&raw)
 }
 
 fn copy_subdirs(assets: &Path, claude_dir: &Path, force: bool) -> Result<()> {
