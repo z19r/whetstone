@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::config::{ToolVersions, WhetstoneManifest, INTEGRATION_VERSION};
 use crate::memory::MemoryProvider;
 use crate::{
-    claude_code, doctor, headroom, integrations, migrate, rtk, setup, ui,
+    claude_code, doctor, headroom, icm, integrations, migrate, rtk, setup, ui,
     version,
 };
 
@@ -33,6 +33,10 @@ struct VersionCache {
     claude_code_latest: Option<String>,
     #[serde(default)]
     claude_code_current: Option<String>,
+    #[serde(default)]
+    icm_latest: Option<String>,
+    #[serde(default)]
+    icm_current: Option<String>,
     /// Phase 4.3: bundled `INTEGRATION_VERSION` at last cache write.
     /// `#[serde(default)]` so v1-format caches still parse.
     #[serde(default)]
@@ -84,6 +88,8 @@ fn read_cache() -> Option<VersionCache> {
         headroom_current: None,
         claude_code_latest: None,
         claude_code_current: None,
+        icm_latest: None,
+        icm_current: None,
         integration_version_bundled: None,
         integration_version_project: None,
         timestamp: ts,
@@ -158,6 +164,18 @@ pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
         if version::is_older(current, latest) {
             outdated.push(OutdatedComponent {
                 name: "claude code",
+                current: current.clone(),
+                latest: latest.clone(),
+            });
+        }
+    }
+
+    if let (Some(current), Some(latest)) =
+        (&cache.icm_current, &cache.icm_latest)
+    {
+        if version::is_older(current, latest) {
+            outdated.push(OutdatedComponent {
+                name: "memory (ICM)",
                 current: current.clone(),
                 latest: latest.clone(),
             });
@@ -577,7 +595,26 @@ pub fn run(full: bool) -> Result<()> {
     };
     ui::component_line("claude code", &claude_code_status);
 
-    let memory_status = ui::ComponentStatus::UpToDate("embedded".into());
+    let icm_current = icm::installed_version();
+    let icm_remote = icm::latest_remote_version();
+    let memory_status = match dependency_decision(
+        icm_current.as_deref(),
+        icm_remote.as_deref(),
+        full,
+    ) {
+        DependencyDecision::UpToDate(v) => ui::ComponentStatus::UpToDate(v),
+        DependencyDecision::Refresh => match icm::update() {
+            Ok(status) => {
+                warn_if_upgrade_stuck("icm", &status, icm_remote.as_deref());
+                status
+            }
+            Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+        },
+        DependencyDecision::NotInstalled => ui::ComponentStatus::NotInstalled,
+    };
+    if matches!(&memory_status, ui::ComponentStatus::Updated(_, _)) {
+        updated_count += 1;
+    }
     ui::component_line("memory (ICM)", &memory_status);
 
     // Phase 4.1: per-project integration refresh. Logs and never aborts
@@ -603,6 +640,8 @@ pub fn run(full: bool) -> Result<()> {
         claude_code_current: claude_code::installed_version(),
         claude_code_latest: claude_code::installed_version()
             .or(claude_code_remote),
+        icm_current: icm::installed_version(),
+        icm_latest: icm::installed_version().or(icm_remote),
         integration_version_bundled: Some(INTEGRATION_VERSION),
         integration_version_project: project_integration_version,
         timestamp: now_epoch(),
@@ -624,7 +663,8 @@ pub fn run(full: bool) -> Result<()> {
                 || matches!(
                     &claude_code_status,
                     ui::ComponentStatus::Failed(_)
-                );
+                )
+                || matches!(&memory_status, ui::ComponentStatus::Failed(_));
 
         if has_failures {
             ui::summary_info(
@@ -786,6 +826,8 @@ mod tests {
             headroom_current: Some("0.23.0".into()),
             claude_code_latest: Some("2.1.172".into()),
             claude_code_current: Some("2.1.153".into()),
+            icm_latest: Some("0.10.61".into()),
+            icm_current: Some("0.10.43".into()),
             integration_version_bundled: Some(INTEGRATION_VERSION),
             integration_version_project: Some(1),
             timestamp: 1_700_000_000,
@@ -800,6 +842,8 @@ mod tests {
         assert_eq!(parsed.integration_version_project, Some(1));
         assert_eq!(parsed.claude_code_latest, Some("2.1.172".into()));
         assert_eq!(parsed.claude_code_current, Some("2.1.153".into()));
+        assert_eq!(parsed.icm_latest, Some("0.10.61".into()));
+        assert_eq!(parsed.icm_current, Some("0.10.43".into()));
     }
 
     #[test]

@@ -9,7 +9,7 @@ use ratatui::{
 };
 use std::time::{Duration, Instant};
 
-use crate::{headroom, rtk, update, version};
+use crate::{headroom, icm, rtk, update, version};
 
 const POLL_MS: u64 = 250;
 const REFRESH_SECS: u64 = 30;
@@ -93,6 +93,9 @@ impl DashboardState {
         let headroom_latest = is_outdated("headroom")
             .map(|c| c.latest.clone())
             .or_else(headroom::installed_version);
+        let icm_latest = is_outdated("memory (ICM)")
+            .map(|c| c.latest.clone())
+            .or_else(icm::installed_version);
 
         self.components = vec![
             ComponentInfo {
@@ -111,9 +114,9 @@ impl DashboardState {
                 latest: rtk_latest,
             },
             ComponentInfo {
-                name: "memory",
-                installed: Some("ICM (embedded)".into()),
-                latest: None,
+                name: "memory (ICM)",
+                installed: icm::installed_version(),
+                latest: icm_latest,
             },
         ];
         self.last_refresh = Instant::now();

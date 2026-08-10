@@ -7,6 +7,7 @@ mod db;
 mod doctor;
 mod headroom;
 mod headroom_env;
+mod icm;
 mod integrations;
 mod memory;
 mod memory_consolidate;
