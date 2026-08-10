@@ -62,6 +62,7 @@ whetstone release patch|minor|major|set X.Y.Z
 whetstone release-publish patch|minor|major|set X.Y.Z # Deprecated
 whetstone changelog-sync [--input F] [--output F] [--limit N]  # regen site/src/changelog.js
 whetstone db init|add-session|add-insight|search|get-sessions|...
+whetstone memory consolidate [--dry-run]   # drain stray project-local .headroom stores into ~/.headroom
 ```
 <!-- AUTO-GENERATED: end -->
 
@@ -128,6 +129,7 @@ src/
 ├── changelog.rs     # CHANGELOG.md parsing / site changelog sync
 ├── db.rs            # SQLite ops for session/memory database
 ├── memory.rs        # MemoryProvider enum (ICM, Skip)
+├── memory_consolidate.rs # Drain stray project-local .headroom stores into ~/.headroom
 ├── config.rs        # ProjectSettings/GlobalSettings + .claude/whetstone.json manifest
 ├── shell.rs         # Shell profile detection, env var injection
 ├── preflight.rs     # Dependency checks (python, git, curl, uv)
@@ -144,6 +146,7 @@ src/
 - **Idempotent**: setup skips already-installed components; safe to rerun
 - **Absolute paths in hooks**: avoids PATH/shell-state issues
 - **Global tools, per-project config**: RTK/Headroom installed globally; memory provider and version-pinned manifest are per-project
+- **Global Headroom memory root**: because the proxy is a single shared process, whetstone pins `HEADROOM_MEMORY_DB_PATH` to `~/.headroom/memory.db` so per-project memory DBs live under `~/.headroom/memories/projects/` instead of accumulating in whichever project launched the proxy. `wrap_claude` auto-consolidates any stray project-local `.headroom` store into that root (never overwriting global data; seed DBs migrate all-or-nothing), and `whetstone memory consolidate [--dry-run]` runs it explicitly (`src/memory_consolidate.rs`)
 - **Tool-managed hooks**: v3 delegates `~/.claude/settings.json` hook entries to `rtk init` / `icm init`; whetstone never hand-merges them (`doctor` reports drift, `migrate` archives before touching state)
 - **Layered settings**: `GlobalSettings` (`~/.whetstone/settings.json`) and per-project `ProjectSettings` (in `.claude/whetstone.json`) resolve with project-over-global precedence
 - **rusqlite bundled**: statically links SQLite, no system dependency

@@ -31,6 +31,7 @@ pub struct HeadroomEnvPlan {
 pub fn build_headroom_env(
     user_map: &BTreeMap<String, String>,
     provider: ProviderTag,
+    memory_db_path: Option<&str>,
     env_has: impl Fn(&str) -> bool,
 ) -> HeadroomEnvPlan {
     let mut plan = HeadroomEnvPlan::default();
@@ -46,6 +47,15 @@ pub fn build_headroom_env(
 
     // Unconditional opinionated default: AST-aware compression for code.
     default(&mut plan, "HEADROOM_CODE_AWARE_ENABLED", "1");
+
+    // Pin the memory store root to a global home-dir location. Whetstone runs
+    // a single shared proxy, so Headroom's default `{cwd}/.headroom` root would
+    // otherwise dump every project's per-project store inside whichever project
+    // launched the proxy. A global root keeps the per-project partitioning but
+    // stops the cross-project litter.
+    if let Some(path) = memory_db_path {
+        default(&mut plan, "HEADROOM_MEMORY_DB_PATH", path);
+    }
 
     // Provider-gated: ICM owns memory, so suppress Headroom's own tools.
     if provider == ProviderTag::Icm {
@@ -82,17 +92,67 @@ mod tests {
 
     #[test]
     fn applies_code_aware_default() {
-        let plan =
-            build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, no_env);
+        let plan = build_headroom_env(
+            &BTreeMap::new(),
+            ProviderTag::Skip,
+            None,
+            no_env,
+        );
         assert!(plan
             .apply
             .contains(&("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into())));
     }
 
     #[test]
+    fn pins_memory_db_path_when_provided() {
+        let plan = build_headroom_env(
+            &BTreeMap::new(),
+            ProviderTag::Skip,
+            Some("/home/u/.headroom/memory.db"),
+            no_env,
+        );
+        assert!(plan.apply.contains(&(
+            "HEADROOM_MEMORY_DB_PATH".into(),
+            "/home/u/.headroom/memory.db".into()
+        )));
+    }
+
+    #[test]
+    fn omits_memory_db_path_when_none() {
+        let plan = build_headroom_env(
+            &BTreeMap::new(),
+            ProviderTag::Skip,
+            None,
+            no_env,
+        );
+        assert!(!plan
+            .apply
+            .iter()
+            .any(|(k, _)| k == "HEADROOM_MEMORY_DB_PATH"));
+    }
+
+    #[test]
+    fn external_memory_db_path_wins() {
+        let plan = build_headroom_env(
+            &BTreeMap::new(),
+            ProviderTag::Skip,
+            Some("/global/memory.db"),
+            |k| k == "HEADROOM_MEMORY_DB_PATH",
+        );
+        assert!(!plan
+            .apply
+            .iter()
+            .any(|(k, _)| k == "HEADROOM_MEMORY_DB_PATH"));
+    }
+
+    #[test]
     fn icm_provider_suppresses_headroom_memory() {
-        let plan =
-            build_headroom_env(&BTreeMap::new(), ProviderTag::Icm, no_env);
+        let plan = build_headroom_env(
+            &BTreeMap::new(),
+            ProviderTag::Icm,
+            None,
+            no_env,
+        );
         assert!(plan
             .apply
             .contains(&("HEADROOM_NO_MEMORY_TOOLS".into(), "1".into())));
@@ -103,8 +163,12 @@ mod tests {
 
     #[test]
     fn skip_provider_leaves_memory_alone() {
-        let plan =
-            build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, no_env);
+        let plan = build_headroom_env(
+            &BTreeMap::new(),
+            ProviderTag::Skip,
+            None,
+            no_env,
+        );
         assert!(!plan
             .apply
             .iter()
@@ -113,10 +177,12 @@ mod tests {
 
     #[test]
     fn external_env_wins_over_default() {
-        let plan =
-            build_headroom_env(&BTreeMap::new(), ProviderTag::Skip, |k| {
-                k == "HEADROOM_CODE_AWARE_ENABLED"
-            });
+        let plan = build_headroom_env(
+            &BTreeMap::new(),
+            ProviderTag::Skip,
+            None,
+            |k| k == "HEADROOM_CODE_AWARE_ENABLED",
+        );
         assert!(!plan
             .apply
             .iter()
@@ -127,7 +193,7 @@ mod tests {
     fn user_map_wins_over_default() {
         let mut map = BTreeMap::new();
         map.insert("HEADROOM_CODE_AWARE_ENABLED".into(), "0".into());
-        let plan = build_headroom_env(&map, ProviderTag::Skip, no_env);
+        let plan = build_headroom_env(&map, ProviderTag::Skip, None, no_env);
         // default not re-added; the user's 0 is applied exactly once
         let hits: Vec<_> = plan
             .apply
@@ -144,7 +210,7 @@ mod tests {
     fn external_env_wins_over_user_map() {
         let mut map = BTreeMap::new();
         map.insert("HEADROOM_RPM".into(), "120".into());
-        let plan = build_headroom_env(&map, ProviderTag::Skip, |k| {
+        let plan = build_headroom_env(&map, ProviderTag::Skip, None, |k| {
             k == "HEADROOM_RPM"
         });
         assert!(!plan.apply.iter().any(|(k, _)| k == "HEADROOM_RPM"));
@@ -154,7 +220,7 @@ mod tests {
     fn port_is_denied_and_reported() {
         let mut map = BTreeMap::new();
         map.insert("HEADROOM_PORT".into(), "9999".into());
-        let plan = build_headroom_env(&map, ProviderTag::Skip, no_env);
+        let plan = build_headroom_env(&map, ProviderTag::Skip, None, no_env);
         assert!(!plan.apply.iter().any(|(k, _)| k == "HEADROOM_PORT"));
         assert_eq!(plan.ignored, vec!["HEADROOM_PORT".to_string()]);
     }
@@ -164,7 +230,7 @@ mod tests {
         let mut map = BTreeMap::new();
         map.insert("HEADROOM_SAVINGS_PROFILE".into(), "agent-50".into());
         map.insert("HEADROOM_TELEMETRY".into(), "on".into());
-        let plan = build_headroom_env(&map, ProviderTag::Skip, no_env);
+        let plan = build_headroom_env(&map, ProviderTag::Skip, None, no_env);
         assert!(!plan.apply.iter().any(|(k, _)| {
             k == "HEADROOM_SAVINGS_PROFILE" || k == "HEADROOM_TELEMETRY"
         }));
@@ -175,7 +241,7 @@ mod tests {
     fn user_map_passthrough_applied() {
         let mut map = BTreeMap::new();
         map.insert("HEADROOM_LOG_MESSAGES".into(), "1".into());
-        let plan = build_headroom_env(&map, ProviderTag::Skip, no_env);
+        let plan = build_headroom_env(&map, ProviderTag::Skip, None, no_env);
         assert!(plan
             .apply
             .contains(&("HEADROOM_LOG_MESSAGES".into(), "1".into())));

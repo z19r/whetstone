@@ -138,6 +138,23 @@ pub enum Command {
         #[command(subcommand)]
         action: DbCommand,
     },
+
+    /// Headroom persistent-memory maintenance
+    Memory {
+        #[command(subcommand)]
+        action: MemoryCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MemoryCommand {
+    /// Drain a stray project-local `.headroom` store into the global
+    /// `~/.headroom` root (fixes cross-project memory litter)
+    Consolidate {
+        /// Show what would move without changing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
