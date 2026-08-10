@@ -2,6 +2,27 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.10.1",
+    "date": "2026-08-10",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add configurable Claude Code edit mode setting (#81)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "actually check and upgrade ICM in whetstone update (#85)",
+          "pin Headroom memory to a global root, stop cross-project litter (#83)",
+          "stop passing --no-rtk to headroom wrap (#79)",
+          "stop v3 slash commands from triggering false v2 migration (#78)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.10.0",
     "date": "2026-08-10",
     "sections": [
@@ -152,25 +173,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "changed",
         "bullets": [
           "update the claude models (#64)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.6.0",
-    "date": "2026-06-28",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "integrate self-update and migration into setup command (#62)",
-          "settings TUI with global/project layering (#57)"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "store changelog regex patterns in variables for bash compatibility"
         ]
       }
     ]

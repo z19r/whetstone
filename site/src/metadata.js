@@ -2,7 +2,7 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-08-10",
   releaseDateHuman: "AUG 10 2026",
-  sha: "db918fd",
+  sha: "82a66e5",
   tagline: "add configurable Claude Code edit mode setting (#81)",
   assets: { commands: 2 },
   modules: [
