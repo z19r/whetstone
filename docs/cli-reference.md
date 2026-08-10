@@ -20,11 +20,21 @@
 | `whetstone release patch\|minor\|major\|set X.Y.Z` | Verify, bump version, and open a release PR |
 | `whetstone release-publish ...` | **Deprecated** — use `whetstone release` |
 | `whetstone db <subcommand>` | Session database operations (init / add-session / add-insight / search / get-sessions / get-insights / stats) |
+| `whetstone memory consolidate [--dry-run]` | Drain a stray project-local `.headroom` store into the global `~/.headroom` root (fixes cross-project memory litter) |
 | `whetstone changelog-sync [--input F] [--output F] [--limit N]` | Regenerate `site/src/changelog.js` from `CHANGELOG.md` (maintainer tooling) |
 
 The global `--memory` flag (e.g. `whetstone --memory` or `whetstone --memory claude`)
 enables Headroom persistent cross-session memory for that run. Persist it per-project
 or globally via `whetstone settings` (Headroom Memory).
+
+Because whetstone runs a single shared Headroom proxy, it pins the memory store
+root to a global location (`~/.headroom/memory.db` via `HEADROOM_MEMORY_DB_PATH`)
+so per-project memory DBs land under `~/.headroom/memories/projects/` instead of
+littering whichever project happened to launch the proxy. On launch, whetstone
+also auto-consolidates any stray project-local `.headroom` store into that global
+root (conservative: it never overwrites existing global data and leaves a legacy
+seed DB in place rather than mixing stores). Run `whetstone memory consolidate
+--dry-run` to preview.
 
 Add a `headroom_env` map to `.claude/whetstone.json` (project) or
 `~/.whetstone/settings.json` (global) to override any Headroom launch knob

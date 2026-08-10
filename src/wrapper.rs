@@ -55,6 +55,10 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     let resolved = resolved_settings();
     apply_anthropic_api_url(resolved.anthropic_api_url.as_deref());
 
+    // Drain any stray `.headroom` store this project accumulated before memory
+    // was pinned to the global root. Idempotent no-op once clean.
+    crate::memory_consolidate::auto_consolidate_cwd();
+
     let hr_plan = headroom_env_plan();
     warn_ignored_headroom_env(&hr_plan.ignored);
     for (key, value) in &hr_plan.apply {
@@ -219,11 +223,13 @@ fn resolved_provider() -> crate::config::ProviderTag {
 fn headroom_env_plan_for(
     resolved: &crate::config::ResolvedSettings,
     provider: crate::config::ProviderTag,
+    memory_db_path: Option<&str>,
     env_has: impl Fn(&str) -> bool,
 ) -> crate::headroom_env::HeadroomEnvPlan {
     crate::headroom_env::build_headroom_env(
         &resolved.headroom_env,
         provider,
+        memory_db_path,
         env_has,
     )
 }
@@ -232,7 +238,11 @@ fn headroom_env_plan_for(
 fn headroom_env_plan() -> crate::headroom_env::HeadroomEnvPlan {
     let resolved = resolved_settings();
     let provider = resolved_provider();
-    headroom_env_plan_for(&resolved, provider, |k| env::var_os(k).is_some())
+    let db_path = crate::memory_consolidate::global_memory_db_path();
+    let db_path = db_path.as_deref().map(|p| p.to_string_lossy().to_string());
+    headroom_env_plan_for(&resolved, provider, db_path.as_deref(), |k| {
+        env::var_os(k).is_some()
+    })
 }
 
 /// Warn once per reserved key the user tried to set via `headroom_env`.
@@ -567,11 +577,34 @@ mod tests {
         let plan = headroom_env_plan_for(
             &resolved,
             crate::config::ProviderTag::Skip,
+            None,
             |_| false,
         );
         assert!(plan
             .apply
             .contains(&("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into())));
+    }
+
+    #[test]
+    fn plan_pins_global_memory_db_path() {
+        let resolved = crate::config::ResolvedSettings {
+            headroom_telemetry: false,
+            headroom_memory: false,
+            api_model: None,
+            anthropic_api_url: None,
+            permission_mode: None,
+            headroom_env: std::collections::BTreeMap::new(),
+        };
+        let plan = headroom_env_plan_for(
+            &resolved,
+            crate::config::ProviderTag::Skip,
+            Some("/home/u/.headroom/memory.db"),
+            |_| false,
+        );
+        assert!(plan.apply.contains(&(
+            "HEADROOM_MEMORY_DB_PATH".into(),
+            "/home/u/.headroom/memory.db".into()
+        )));
     }
 
     #[test]

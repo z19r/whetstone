@@ -9,6 +9,7 @@ mod headroom;
 mod headroom_env;
 mod integrations;
 mod memory;
+mod memory_consolidate;
 mod migrate;
 mod model_update;
 mod preflight;
@@ -231,6 +232,13 @@ fn main() {
                     ui::fail(&e.to_string());
                 }
             }
+            Command::Memory { action } => match action {
+                cli::MemoryCommand::Consolidate { dry_run } => {
+                    if let Err(e) = memory_consolidate::run_command(dry_run) {
+                        ui::fail(&format!("{e:#}"));
+                    }
+                }
+            },
             Command::Migrate {
                 dry_run,
                 yes,
