@@ -4,6 +4,19 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.10.1] - 2026-08-10
+
+### Added
+
+- add configurable Claude Code edit mode setting (#81)
+
+### Fixed
+
+- actually check and upgrade ICM in whetstone update (#85)
+- pin Headroom memory to a global root, stop cross-project litter (#83)
+- stop passing --no-rtk to headroom wrap (#79)
+- stop v3 slash commands from triggering false v2 migration (#78)
+
 ## [3.10.0] - 2026-08-10
 
 ### Added
