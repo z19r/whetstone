@@ -223,6 +223,7 @@ impl Scope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SettingId {
     HeadroomTelemetry,
+    HeadroomBeacon,
     HeadroomMemory,
     HeadroomTargetRatio,
     HeadroomBudget,
@@ -234,6 +235,7 @@ enum SettingId {
 
 const SETTINGS: &[SettingId] = &[
     SettingId::HeadroomTelemetry,
+    SettingId::HeadroomBeacon,
     SettingId::HeadroomMemory,
     SettingId::HeadroomTargetRatio,
     SettingId::HeadroomBudget,
@@ -262,6 +264,9 @@ fn env_knob(id: SettingId) -> Option<(&'static str, EnvKind)> {
         SettingId::HeadroomBudget => Some(("HEADROOM_BUDGET", EnvKind::Value)),
         SettingId::HeadroomLogMessages => {
             Some(("HEADROOM_LOG_MESSAGES", EnvKind::Toggle("1")))
+        }
+        SettingId::HeadroomBeacon => {
+            Some(("HEADROOM_BEACON", EnvKind::Toggle("off")))
         }
         _ => None,
     }
@@ -292,7 +297,8 @@ impl SettingsState {
         match id {
             SettingId::HeadroomTargetRatio
             | SettingId::HeadroomBudget
-            | SettingId::HeadroomLogMessages => {
+            | SettingId::HeadroomLogMessages
+            | SettingId::HeadroomBeacon => {
                 self.env_scope(env_knob(id).unwrap().0)
             }
             SettingId::HeadroomTelemetry => {
@@ -351,7 +357,8 @@ impl SettingsState {
         match id {
             SettingId::HeadroomTargetRatio
             | SettingId::HeadroomBudget
-            | SettingId::HeadroomLogMessages => unreachable!(),
+            | SettingId::HeadroomLogMessages
+            | SettingId::HeadroomBeacon => unreachable!(),
             SettingId::HeadroomTelemetry => match next {
                 Scope::Off => {
                     self.global.headroom_telemetry = false;
@@ -933,6 +940,10 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
                 "Headroom Telemetry",
                 "Send anonymous usage data to Headroom",
             ),
+            SettingId::HeadroomBeacon => (
+                "Headroom Beacon",
+                "Opt out of the anonymous telemetry upload beacon (HEADROOM_BEACON=off)",
+            ),
             SettingId::HeadroomMemory => (
                 "Headroom Memory",
                 "Enable Headroom persistent cross-session memory (proxy --memory)",
@@ -1272,6 +1283,43 @@ mod tests {
         assert_eq!(s.scope(id), Scope::Off);
         assert!(s.global.headroom_env.is_empty());
         assert!(s.project.headroom_env.is_empty());
+    }
+
+    #[test]
+    fn beacon_toggle_cycle_writes_opt_out_value() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomBeacon;
+        assert_eq!(s.scope(id), Scope::Off);
+
+        s.cycle_scope(id);
+        assert_eq!(s.scope(id), Scope::Global);
+        assert_eq!(
+            s.global
+                .headroom_env
+                .get("HEADROOM_BEACON")
+                .map(String::as_str),
+            Some("off")
+        );
+
+        s.cycle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(
+            s.project
+                .headroom_env
+                .get("HEADROOM_BEACON")
+                .map(String::as_str),
+            Some("off")
+        );
+
+        s.cycle_scope(id);
+        assert_eq!(s.scope(id), Scope::Off);
+        assert!(s.global.headroom_env.is_empty());
+        assert!(s.project.headroom_env.is_empty());
+    }
+
+    #[test]
+    fn beacon_is_not_free_text_editable() {
+        assert!(!is_value_editable(SettingId::HeadroomBeacon));
     }
 
     #[test]
