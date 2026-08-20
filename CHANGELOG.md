@@ -4,6 +4,12 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-08-20
+
+### Added
+
+- add HEADROOM_BEACON opt-out toggle to settings (#87)
+
 ## [3.10.1] - 2026-08-10
 
 ### Added

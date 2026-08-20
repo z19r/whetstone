@@ -2,6 +2,18 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.11.0",
+    "date": "2026-08-20",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add HEADROOM_BEACON opt-out toggle to settings (#87)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.10.1",
     "date": "2026-08-10",
     "sections": [
@@ -129,31 +141,6 @@ window.WHETSTONE_CHANGELOG = [
   },
   {
     "ver": "3.6.2",
-    "date": "2026-06-28",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "integrate self-update and migration into setup command (#62)",
-          "settings TUI with global/project layering (#57)"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "store changelog regex patterns in variables for bash compatibility"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "update the claude models (#64)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.6.1",
     "date": "2026-06-28",
     "sections": [
       {
