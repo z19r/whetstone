@@ -106,6 +106,8 @@ reports unknown extras and is left alone.
 
 `whetstone settings` also exposes **Edit Mode** — the Claude Code `--permission-mode` (`acceptEdits`, `default`, `plan`, `bypassPermissions`) whetstone injects into `headroom wrap claude`. Stored per-project (`permission_mode` in `.claude/whetstone.json`) or globally, project-over-global. When unset (**Off**), whetstone injects no flag and Claude Code uses its own default; an explicit `--permission-mode` on the command line always wins.
 
+`whetstone settings` also exposes **Headroom Savings Profile** — the Headroom compression profile (`coding`, `agent-90`, `balanced`, `general`) whetstone exports as `HEADROOM_SAVINGS_PROFILE` before launching Headroom, so the spawned proxy and the exec'd `headroom wrap claude` read the same profile (keeping them in agreement and part of the per-config proxy fingerprint). Stored per-project (`savings_profile` in `.claude/whetstone.json`) or globally, project-over-global. When unset (**Off**/None), whetstone exports nothing and Headroom falls back to its own default (`agent-90`); an externally-set `HEADROOM_SAVINGS_PROFILE` env var takes precedence over the stored setting.
+
 On launch, whetstone (`src/model_update.rs`) checks the 12h-cached Anthropic models list for a model newer than the one this project runs — or a brand-new model family — and shows a full-screen modal offering to pin it as the project default (`api_model`), use it for one session, or dismiss it permanently (recorded in the manifest's top-level `dismissed_models`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` was passed explicitly.
 
 whetstone also supports `headroom_env` — a map of any Headroom launch knobs in

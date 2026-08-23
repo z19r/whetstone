@@ -14,6 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::{
     GlobalSettings, ProjectSettings, WhetstoneManifest, PERMISSION_MODES,
+    SAVINGS_PROFILES,
 };
 use crate::memory::MemoryProvider;
 use crate::ui;
@@ -231,6 +232,7 @@ enum SettingId {
     HeadroomLogMessages,
     ApiModel,
     PermissionMode,
+    HeadroomSavingsProfile,
     AnthropicApiUrl,
 }
 
@@ -243,6 +245,7 @@ const SETTINGS: &[SettingId] = &[
     SettingId::HeadroomLogMessages,
     SettingId::ApiModel,
     SettingId::PermissionMode,
+    SettingId::HeadroomSavingsProfile,
     SettingId::AnthropicApiUrl,
 ];
 
@@ -263,7 +266,9 @@ fn control_kind(id: SettingId) -> Control {
         | SettingId::HeadroomBeacon
         | SettingId::HeadroomMemory
         | SettingId::HeadroomLogMessages => Control::Bool,
-        SettingId::ApiModel | SettingId::PermissionMode => Control::Choice,
+        SettingId::ApiModel
+        | SettingId::PermissionMode
+        | SettingId::HeadroomSavingsProfile => Control::Choice,
         SettingId::HeadroomTargetRatio
         | SettingId::HeadroomBudget
         | SettingId::AnthropicApiUrl => Control::Text,
@@ -281,6 +286,7 @@ fn label(id: SettingId) -> &'static str {
         SettingId::HeadroomLogMessages => "Headroom Log Messages",
         SettingId::ApiModel => "API Model",
         SettingId::PermissionMode => "Edit Mode",
+        SettingId::HeadroomSavingsProfile => "Headroom Savings Profile",
         SettingId::AnthropicApiUrl => "Anthropic API URL",
     }
 }
@@ -363,6 +369,15 @@ impl SettingsState {
                 if self.project.permission_mode.is_some() {
                     Scope::Project
                 } else if self.global.permission_mode.is_some() {
+                    Scope::Global
+                } else {
+                    Scope::Off
+                }
+            }
+            SettingId::HeadroomSavingsProfile => {
+                if self.project.savings_profile.is_some() {
+                    Scope::Project
+                } else if self.global.savings_profile.is_some() {
                     Scope::Global
                 } else {
                     Scope::Off
@@ -463,6 +478,27 @@ impl SettingsState {
                         .clone()
                         .unwrap_or_else(|| PERMISSION_MODES[0].to_string());
                     self.project.permission_mode = Some(base);
+                }
+            },
+            SettingId::HeadroomSavingsProfile => match target {
+                Scope::Off => {
+                    self.global.savings_profile = None;
+                    self.project.savings_profile = None;
+                }
+                Scope::Global => {
+                    if self.global.savings_profile.is_none() {
+                        self.global.savings_profile =
+                            Some(SAVINGS_PROFILES[0].to_string());
+                    }
+                    self.project.savings_profile = None;
+                }
+                Scope::Project => {
+                    let base = self
+                        .global
+                        .savings_profile
+                        .clone()
+                        .unwrap_or_else(|| SAVINGS_PROFILES[0].to_string());
+                    self.project.savings_profile = Some(base);
                 }
             },
             SettingId::AnthropicApiUrl => match target {
@@ -577,6 +613,9 @@ impl SettingsState {
             SettingId::PermissionMode => {
                 PERMISSION_MODES.iter().map(|s| s.to_string()).collect()
             }
+            SettingId::HeadroomSavingsProfile => {
+                SAVINGS_PROFILES.iter().map(|s| s.to_string()).collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -625,6 +664,12 @@ impl SettingsState {
             (SettingId::PermissionMode, Scope::Project) => {
                 self.project.permission_mode = Some(value)
             }
+            (SettingId::HeadroomSavingsProfile, Scope::Global) => {
+                self.global.savings_profile = Some(value)
+            }
+            (SettingId::HeadroomSavingsProfile, Scope::Project) => {
+                self.project.savings_profile = Some(value)
+            }
             _ => {}
         }
     }
@@ -656,6 +701,11 @@ impl SettingsState {
                 Scope::Off => None,
                 Scope::Global => self.global.permission_mode.as_deref(),
                 Scope::Project => self.project.permission_mode.as_deref(),
+            },
+            SettingId::HeadroomSavingsProfile => match self.scope(id) {
+                Scope::Off => None,
+                Scope::Global => self.global.savings_profile.as_deref(),
+                Scope::Project => self.project.savings_profile.as_deref(),
             },
             SettingId::AnthropicApiUrl => match self.scope(id) {
                 Scope::Off => None,
@@ -724,6 +774,15 @@ impl SettingsState {
                 None => "Off — Claude Code uses its own default permission mode."
                     .to_string(),
             },
+            SettingId::HeadroomSavingsProfile => {
+                match self.current_value_display(id) {
+                    Some(p) => format!(
+                        "Headroom compresses with the {p} savings profile (HEADROOM_SAVINGS_PROFILE)."
+                    ),
+                    None => "Off — Headroom uses its default savings profile (agent-90)."
+                        .to_string(),
+                }
+            }
             SettingId::AnthropicApiUrl => match self.current_value_display(id) {
                 Some(u) if !u.trim().is_empty() => {
                     format!("Headroom proxies to {u} instead of the default Anthropic API.")
@@ -1399,6 +1458,42 @@ mod tests {
         );
         s.cycle_choice(id, Dir::Next);
         assert_eq!(s.scope(id), Scope::Off);
+    }
+
+    #[test]
+    fn savings_profile_cycles_off_through_profiles() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomSavingsProfile;
+        assert_eq!(s.scope(id), Scope::Off);
+
+        s.cycle_choice(id, Dir::Next);
+        assert_eq!(s.scope(id), Scope::Global);
+        assert_eq!(
+            s.global.savings_profile.as_deref(),
+            Some(SAVINGS_PROFILES[0])
+        );
+
+        for _ in 1..SAVINGS_PROFILES.len() {
+            s.cycle_choice(id, Dir::Next);
+        }
+        assert_eq!(
+            s.global.savings_profile.as_deref(),
+            Some(SAVINGS_PROFILES[SAVINGS_PROFILES.len() - 1])
+        );
+        s.cycle_choice(id, Dir::Next);
+        assert_eq!(s.scope(id), Scope::Off);
+        assert!(s.global.savings_profile.is_none());
+    }
+
+    #[test]
+    fn savings_profile_scope_toggle_preserves_value() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomSavingsProfile;
+        s.cycle_choice(id, Dir::Next); // Global, SAVINGS_PROFILES[0]
+        s.set_choice_value(id, "balanced".to_string());
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(s.project.savings_profile.as_deref(), Some("balanced"));
     }
 
     // ---- text value + scope ---------------------------------------------

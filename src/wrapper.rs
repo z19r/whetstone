@@ -51,11 +51,43 @@ fn resolve_anthropic_api_url(
         .map(str::to_string)
 }
 
+/// Export the configured Headroom savings profile so a whetstone-spawned proxy
+/// *and* the exec'd `headroom wrap claude` read the same profile from the
+/// environment (they both source it from `HEADROOM_SAVINGS_PROFILE`, so this
+/// keeps them in agreement and avoids wrap's "missing --savings-profile"
+/// hot-restart). An externally-set env var wins over the stored setting, and
+/// blank/whitespace settings are ignored.
+fn apply_savings_profile(setting: Option<&str>) {
+    if let Some(profile) = resolve_savings_profile_env(
+        setting,
+        env::var(HEADROOM_SAVINGS_PROFILE_ENV).ok(),
+    ) {
+        env::set_var(HEADROOM_SAVINGS_PROFILE_ENV, profile);
+    }
+}
+
+/// Pure resolution for [`apply_savings_profile`]: an existing non-empty env
+/// override takes precedence; otherwise a non-blank setting is used. `None`
+/// means "leave the environment untouched" (so Headroom's own default applies).
+fn resolve_savings_profile_env(
+    setting: Option<&str>,
+    existing_env: Option<String>,
+) -> Option<String> {
+    if existing_env.is_some_and(|v| !v.trim().is_empty()) {
+        return None;
+    }
+    setting
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     set_proxy_env();
 
     let resolved = resolved_settings();
     apply_anthropic_api_url(resolved.anthropic_api_url.as_deref());
+    apply_savings_profile(resolved.savings_profile.as_deref());
 
     // Drain any stray `.headroom` store this project accumulated before memory
     // was pinned to the global root. Idempotent no-op once clean.
@@ -479,8 +511,13 @@ fn headroom_telemetry_enabled() -> bool {
 // the `HEADROOM_SAVINGS_PROFILE` env var, not a CLI flag, in current headroom.
 const DEFAULT_SAVINGS_PROFILE: &str = "agent-90";
 
+// The env var headroom reads for the savings profile. Whetstone owns this key
+// (see `headroom_env::RESERVED_OWNED`): `apply_savings_profile` exports the
+// configured setting here, and both the spawned proxy and exec'd wrap read it.
+const HEADROOM_SAVINGS_PROFILE_ENV: &str = "HEADROOM_SAVINGS_PROFILE";
+
 fn required_savings_profile() -> String {
-    resolve_savings_profile(env::var("HEADROOM_SAVINGS_PROFILE").ok())
+    resolve_savings_profile(env::var(HEADROOM_SAVINGS_PROFILE_ENV).ok())
 }
 
 // Honor an existing override (matching what `headroom wrap claude` will read),
@@ -665,6 +702,7 @@ mod tests {
             api_model: None,
             anthropic_api_url: None,
             permission_mode: None,
+            savings_profile: None,
             headroom_env: std::collections::BTreeMap::new(),
         };
         let plan = headroom_env_plan_for(
@@ -686,6 +724,7 @@ mod tests {
             api_model: None,
             anthropic_api_url: None,
             permission_mode: None,
+            savings_profile: None,
             headroom_env: std::collections::BTreeMap::new(),
         };
         let plan = headroom_env_plan_for(
@@ -761,6 +800,39 @@ mod tests {
                 Some("  ".to_string())
             ),
             Some("https://setting.example".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_savings_profile_env_uses_setting_when_env_unset() {
+        assert_eq!(
+            resolve_savings_profile_env(Some("coding"), None),
+            Some("coding".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_savings_profile_env_override_wins() {
+        assert_eq!(
+            resolve_savings_profile_env(
+                Some("coding"),
+                Some("balanced".to_string())
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn resolve_savings_profile_env_ignores_blank_setting() {
+        assert_eq!(resolve_savings_profile_env(Some("   "), None), None);
+        assert_eq!(resolve_savings_profile_env(None, None), None);
+    }
+
+    #[test]
+    fn resolve_savings_profile_env_ignores_blank_override() {
+        assert_eq!(
+            resolve_savings_profile_env(Some("coding"), Some("  ".to_string())),
+            Some("coding".to_string())
         );
     }
 
