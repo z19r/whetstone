@@ -43,6 +43,7 @@ pub fn run_global() -> Result<()> {
     ui::info("whetstone global uninstall");
 
     remove_bins();
+    remove_proxies();
 
     if ui::confirm("Remove RTK (global)?", false) {
         remove_rtk();
@@ -123,4 +124,24 @@ fn remove_project_files(project_dir: &Path) {
     let _ = fs::remove_file(project_dir.join("STACK-SETUP.md"));
 
     ui::ok("project whetstone files removed");
+}
+
+fn remove_proxies() {
+    use crate::proxy_registry as reg;
+    let Some(path) = reg::registry_path() else {
+        return;
+    };
+    let registry = reg::Registry::load(&path);
+    if registry.entries.is_empty() {
+        return;
+    }
+    ui::info("stopping whetstone-spawned Headroom proxies...");
+    reg::kill_all(&registry, |pid| {
+        let _ = std::process::Command::new("kill")
+            .arg(pid.to_string())
+            .status();
+    });
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(path.with_extension("lock"));
+    ui::ok("stopped registered proxies and removed the registry");
 }
