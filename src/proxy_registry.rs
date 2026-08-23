@@ -216,6 +216,27 @@ fn lock_is_stale(path: &Path, stale_after: Duration) -> bool {
     modified.elapsed().map(|age| age >= stale_after).unwrap_or(false)
 }
 
+/// Backward-compat anchor port. Assigned best-effort to the first proxy
+/// whetstone spawns so a bare `claude` launch and doctor's fast-path still
+/// find a proxy at `127.0.0.1:8787`.
+#[allow(dead_code)]
+pub const ANCHOR_PORT: u16 = 8787;
+
+/// Pick a port for a new proxy: the anchor when it's free and unclaimed,
+/// otherwise a fresh OS-assigned free port.
+#[allow(dead_code)]
+pub fn choose_port(
+    reg: &Registry,
+    port_free: impl Fn(u16) -> bool,
+    free_port: impl Fn() -> Option<u16>,
+) -> Option<u16> {
+    let anchor_claimed = reg.entries.iter().any(|e| e.port == ANCHOR_PORT);
+    if !anchor_claimed && port_free(ANCHOR_PORT) {
+        return Some(ANCHOR_PORT);
+    }
+    free_port()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,5 +382,31 @@ mod tests {
         // Verify it contains the other PID, not our guard's.
         let contents = std::fs::read_to_string(&lock).unwrap();
         assert_eq!(contents, other_pid.to_string());
+    }
+
+    fn entry(fp: &str, port: u16) -> ProxyEntry {
+        ProxyEntry { fingerprint: fp.into(), port, pid: 1 }
+    }
+
+    #[test]
+    fn choose_port_prefers_anchor_when_free_and_unclaimed() {
+        let reg = Registry::default();
+        let port = choose_port(&reg, |_| true, || Some(9001));
+        assert_eq!(port, Some(ANCHOR_PORT));
+    }
+
+    #[test]
+    fn choose_port_skips_anchor_when_claimed_by_a_live_entry() {
+        let reg = Registry { entries: vec![entry("x", ANCHOR_PORT)] };
+        let port = choose_port(&reg, |_| true, || Some(9002));
+        assert_eq!(port, Some(9002));
+    }
+
+    #[test]
+    fn choose_port_skips_anchor_when_port_busy() {
+        let reg = Registry::default();
+        // Anchor reported busy by the OS even though no entry claims it.
+        let port = choose_port(&reg, |p| p != ANCHOR_PORT, || Some(9003));
+        assert_eq!(port, Some(9003));
     }
 }
