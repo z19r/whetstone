@@ -4,6 +4,13 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-08-23
+
+### Added
+
+- add install-tools command and doctor startup/extras verification (#89)
+- add HEADROOM_BEACON opt-out toggle to settings (#87)
+
 ### Added
 
 - `whetstone install-tools` — install or repair every managed dependency
