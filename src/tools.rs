@@ -167,8 +167,15 @@ impl RepairMode {
     /// Prompting requires a TTY; degrade to reporting when there isn't one so
     /// `whetstone doctor` stays usable in scripts and CI.
     pub fn effective(self) -> Self {
+        self.resolve(ui::is_interactive())
+    }
+
+    /// Pure resolution of the effective mode given whether the session is
+    /// interactive. Split out so it can be tested without depending on the
+    /// ambient TTY of whoever runs `cargo test`.
+    fn resolve(self, interactive: bool) -> Self {
         match self {
-            Self::Prompt if !ui::is_interactive() => Self::Report,
+            Self::Prompt if !interactive => Self::Report,
             other => other,
         }
     }
@@ -613,11 +620,21 @@ mod tests {
 
     #[test]
     fn prompt_mode_degrades_to_report_without_a_tty() {
-        // Tests run without a TTY, so `Prompt` must never try to ask — an
-        // unattended `whetstone doctor` has to stay non-blocking.
-        assert_eq!(RepairMode::Prompt.effective(), RepairMode::Report);
-        assert_eq!(RepairMode::Force.effective(), RepairMode::Force);
-        assert_eq!(RepairMode::Report.effective(), RepairMode::Report);
+        // Non-interactive: `Prompt` must degrade so an unattended
+        // `whetstone doctor` stays non-blocking. Drive the pure resolver
+        // directly so the result never depends on the TTY of whoever runs
+        // the tests.
+        assert_eq!(RepairMode::Prompt.resolve(false), RepairMode::Report);
+        assert_eq!(RepairMode::Force.resolve(false), RepairMode::Force);
+        assert_eq!(RepairMode::Report.resolve(false), RepairMode::Report);
+    }
+
+    #[test]
+    fn prompt_mode_stays_prompt_when_interactive() {
+        // Interactive: `Prompt` is honoured; the others still pass through.
+        assert_eq!(RepairMode::Prompt.resolve(true), RepairMode::Prompt);
+        assert_eq!(RepairMode::Force.resolve(true), RepairMode::Force);
+        assert_eq!(RepairMode::Report.resolve(true), RepairMode::Report);
     }
 
     #[test]
