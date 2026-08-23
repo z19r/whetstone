@@ -120,7 +120,7 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     let model = choose_model(user_set, model_decision, &fallback);
     let cmd_args = build_claude_args(
         args,
-        proxy_ready,
+        selected,
         wrap_memory,
         &model,
         resolved.permission_mode.as_deref(),
@@ -585,15 +585,22 @@ fn choose_model(
 
 fn build_claude_args(
     args: &[String],
-    proxy_ready: bool,
+    proxy_port: Option<u16>,
     wrap_memory: bool,
     model: &str,
     permission_mode: Option<&str>,
 ) -> Vec<String> {
     let mut cmd_args = vec!["wrap".to_string(), "claude".to_string()];
 
-    if proxy_ready {
+    // When whetstone owns the proxy, tell wrap both to skip starting one
+    // (`--no-proxy`) AND which port to point Claude at (`--port`). `wrap`
+    // always re-derives `ANTHROPIC_BASE_URL` from `--port` (default 8787), so
+    // without the port a per-config proxy on a fresh port is spawned but never
+    // used — Claude keeps talking to 8787.
+    if let Some(port) = proxy_port {
         cmd_args.push("--no-proxy".into());
+        cmd_args.push("--port".into());
+        cmd_args.push(port.to_string());
     }
 
     // Newer headroom spells this `--code-memory none`, but keeps `--no-serena`
@@ -876,7 +883,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_injects_default_model_when_absent() {
-        let args = build_claude_args(&[], false, false, DEFAULT_MODEL, None);
+        let args = build_claude_args(&[], None, false, DEFAULT_MODEL, None);
 
         assert_eq!(
             args,
@@ -894,7 +901,7 @@ mod tests {
     fn build_claude_args_preserves_explicit_model() {
         let args = build_claude_args(
             &["--model".into(), "claude-sonnet".into()],
-            false,
+            None,
             false,
             DEFAULT_MODEL,
             None,
@@ -917,7 +924,7 @@ mod tests {
     fn build_claude_args_preserves_explicit_model_equals_form() {
         let args = build_claude_args(
             &["--model=claude-sonnet".into()],
-            false,
+            None,
             false,
             DEFAULT_MODEL,
             None,
@@ -938,7 +945,7 @@ mod tests {
     fn build_claude_args_passes_through_arbitrary_args_unchanged() {
         let args = build_claude_args(
             &["--dangerously-skip-permissions".into(), "--print".into()],
-            false,
+            None,
             false,
             DEFAULT_MODEL,
             None,
@@ -961,7 +968,7 @@ mod tests {
     #[test]
     fn build_claude_args_uses_configured_model() {
         let args =
-            build_claude_args(&[], false, false, "claude-sonnet-4-6", None);
+            build_claude_args(&[], None, false, "claude-sonnet-4-6", None);
 
         assert_eq!(
             args,
@@ -979,7 +986,7 @@ mod tests {
     fn build_claude_args_injects_permission_mode_when_configured() {
         let args = build_claude_args(
             &[],
-            false,
+            None,
             false,
             DEFAULT_MODEL,
             Some("acceptEdits"),
@@ -1000,7 +1007,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_omits_permission_mode_when_none() {
-        let args = build_claude_args(&[], false, false, DEFAULT_MODEL, None);
+        let args = build_claude_args(&[], None, false, DEFAULT_MODEL, None);
         assert!(!args.contains(&"--permission-mode".to_string()));
     }
 
@@ -1008,7 +1015,7 @@ mod tests {
     fn build_claude_args_preserves_explicit_permission_mode() {
         let args = build_claude_args(
             &["--permission-mode".into(), "plan".into()],
-            false,
+            None,
             false,
             DEFAULT_MODEL,
             Some("acceptEdits"),
@@ -1027,7 +1034,7 @@ mod tests {
     fn build_claude_args_preserves_explicit_permission_mode_equals_form() {
         let args = build_claude_args(
             &["--permission-mode=plan".into()],
-            false,
+            None,
             false,
             DEFAULT_MODEL,
             Some("acceptEdits"),
@@ -1191,7 +1198,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_injects_memory_when_wrap_manages_proxy() {
-        let args = build_claude_args(&[], false, true, DEFAULT_MODEL, None);
+        let args = build_claude_args(&[], None, true, DEFAULT_MODEL, None);
         assert!(args.contains(&"--memory".to_string()));
         // wrap owns the proxy here, so --no-proxy must NOT be present.
         assert!(!args.contains(&"--no-proxy".to_string()));
@@ -1199,7 +1206,8 @@ mod tests {
 
     #[test]
     fn build_claude_args_omits_memory_by_default() {
-        let args = build_claude_args(&[], true, false, DEFAULT_MODEL, None);
+        let args =
+            build_claude_args(&[], Some(8787), false, DEFAULT_MODEL, None);
         assert!(!args.contains(&"--memory".to_string()));
     }
 
@@ -1257,34 +1265,40 @@ mod tests {
     }
 
     #[test]
-    fn build_claude_args_adds_no_proxy_when_proxy_ready() {
-        let args = build_claude_args(&[], true, false, DEFAULT_MODEL, None);
+    fn build_claude_args_adds_no_proxy_and_port_when_proxy_ready() {
+        let args =
+            build_claude_args(&[], Some(42111), false, DEFAULT_MODEL, None);
         assert!(args.contains(&"--no-proxy".to_string()));
+        // wrap re-derives ANTHROPIC_BASE_URL from --port, so the managed
+        // proxy's actual port must be passed through, not left to default 8787.
+        let idx = args.iter().position(|a| a == "--port").expect("--port");
+        assert_eq!(args[idx + 1], "42111");
         assert_eq!(&args[0..2], &["wrap".to_string(), "claude".to_string()]);
     }
 
     #[test]
-    fn build_claude_args_omits_no_proxy_when_proxy_not_ready() {
-        let args = build_claude_args(&[], false, false, DEFAULT_MODEL, None);
+    fn build_claude_args_omits_no_proxy_and_port_when_proxy_not_ready() {
+        let args = build_claude_args(&[], None, false, DEFAULT_MODEL, None);
         assert!(!args.contains(&"--no-proxy".to_string()));
+        assert!(!args.contains(&"--port".to_string()));
     }
 
     // headroom 0.34.0 removed `--no-rtk`; emitting it aborts the launch with
     // "no such option". No flag combination may reintroduce it.
     #[test]
     fn build_claude_args_never_emits_no_rtk() {
-        for proxy_ready in [false, true] {
+        for proxy_port in [None, Some(8787u16)] {
             for wrap_memory in [false, true] {
                 let args = build_claude_args(
                     &["--resume".into()],
-                    proxy_ready,
+                    proxy_port,
                     wrap_memory,
                     DEFAULT_MODEL,
                     None,
                 );
                 assert!(
                     !args.contains(&"--no-rtk".to_string()),
-                    "--no-rtk leaked with proxy_ready={proxy_ready} \
+                    "--no-rtk leaked with proxy_port={proxy_port:?} \
                      wrap_memory={wrap_memory}"
                 );
             }
