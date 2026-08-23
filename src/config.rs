@@ -83,6 +83,11 @@ pub struct ProjectSettings {
     /// Headroom uses its own default (`agent-90`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub savings_profile: Option<String>,
+    /// When on, whetstone exports `ENABLE_TOOL_SEARCH=1` so Claude Code turns on
+    /// deferred-tool search. `None` means whetstone exports nothing and any
+    /// externally-set `ENABLE_TOOL_SEARCH` passes through untouched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_tool_search: Option<bool>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headroom_env: BTreeMap<String, String>,
 }
@@ -116,6 +121,8 @@ pub struct GlobalSettings {
     pub permission_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub savings_profile: Option<String>,
+    #[serde(default)]
+    pub enable_tool_search: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headroom_env: BTreeMap<String, String>,
 }
@@ -161,6 +168,7 @@ pub struct ResolvedSettings {
     pub anthropic_api_url: Option<String>,
     pub permission_mode: Option<String>,
     pub savings_profile: Option<String>,
+    pub enable_tool_search: bool,
     pub headroom_env: BTreeMap<String, String>,
 }
 
@@ -192,6 +200,9 @@ impl ResolvedSettings {
                 .savings_profile
                 .clone()
                 .or_else(|| global.savings_profile.clone()),
+            enable_tool_search: project
+                .enable_tool_search
+                .unwrap_or(global.enable_tool_search),
             headroom_env,
         }
     }
@@ -418,6 +429,61 @@ mod tests {
         let s = ProjectSettings::default();
         let raw = serde_json::to_string(&s).unwrap();
         assert!(!raw.contains("savings_profile"));
+    }
+
+    #[test]
+    fn resolve_prefers_project_enable_tool_search() {
+        let global = GlobalSettings {
+            enable_tool_search: false,
+            ..Default::default()
+        };
+        let project = ProjectSettings {
+            enable_tool_search: Some(true),
+            ..Default::default()
+        };
+        let resolved = ResolvedSettings::resolve(&global, &project);
+        assert!(resolved.enable_tool_search);
+    }
+
+    #[test]
+    fn resolve_falls_back_to_global_enable_tool_search() {
+        let global = GlobalSettings {
+            enable_tool_search: true,
+            ..Default::default()
+        };
+        let resolved =
+            ResolvedSettings::resolve(&global, &ProjectSettings::default());
+        assert!(resolved.enable_tool_search);
+    }
+
+    #[test]
+    fn resolve_enable_tool_search_off_when_unset() {
+        let resolved = ResolvedSettings::resolve(
+            &GlobalSettings::default(),
+            &ProjectSettings::default(),
+        );
+        assert!(!resolved.enable_tool_search);
+    }
+
+    #[test]
+    fn resolve_project_false_overrides_global_enable_tool_search() {
+        let global = GlobalSettings {
+            enable_tool_search: true,
+            ..Default::default()
+        };
+        let project = ProjectSettings {
+            enable_tool_search: Some(false),
+            ..Default::default()
+        };
+        let resolved = ResolvedSettings::resolve(&global, &project);
+        assert!(!resolved.enable_tool_search);
+    }
+
+    #[test]
+    fn empty_enable_tool_search_omitted_from_project_json() {
+        let s = ProjectSettings::default();
+        let raw = serde_json::to_string(&s).unwrap();
+        assert!(!raw.contains("enable_tool_search"));
     }
 
     #[test]

@@ -230,9 +230,12 @@ enum SettingId {
     HeadroomTargetRatio,
     HeadroomBudget,
     HeadroomLogMessages,
+    HeadroomRolloutChannel,
+    HeadroomOutputShaper,
     ApiModel,
     PermissionMode,
     HeadroomSavingsProfile,
+    EnableToolSearch,
     AnthropicApiUrl,
 }
 
@@ -243,9 +246,12 @@ const SETTINGS: &[SettingId] = &[
     SettingId::HeadroomTargetRatio,
     SettingId::HeadroomBudget,
     SettingId::HeadroomLogMessages,
+    SettingId::HeadroomRolloutChannel,
+    SettingId::HeadroomOutputShaper,
     SettingId::ApiModel,
     SettingId::PermissionMode,
     SettingId::HeadroomSavingsProfile,
+    SettingId::EnableToolSearch,
     SettingId::AnthropicApiUrl,
 ];
 
@@ -265,12 +271,15 @@ fn control_kind(id: SettingId) -> Control {
         SettingId::HeadroomTelemetry
         | SettingId::HeadroomBeacon
         | SettingId::HeadroomMemory
-        | SettingId::HeadroomLogMessages => Control::Bool,
+        | SettingId::HeadroomLogMessages
+        | SettingId::EnableToolSearch => Control::Bool,
         SettingId::ApiModel
         | SettingId::PermissionMode
         | SettingId::HeadroomSavingsProfile => Control::Choice,
         SettingId::HeadroomTargetRatio
         | SettingId::HeadroomBudget
+        | SettingId::HeadroomRolloutChannel
+        | SettingId::HeadroomOutputShaper
         | SettingId::AnthropicApiUrl => Control::Text,
     }
 }
@@ -284,9 +293,12 @@ fn label(id: SettingId) -> &'static str {
         SettingId::HeadroomTargetRatio => "Headroom Target Ratio",
         SettingId::HeadroomBudget => "Headroom Budget",
         SettingId::HeadroomLogMessages => "Headroom Log Messages",
+        SettingId::HeadroomRolloutChannel => "Headroom Rollout Channel",
+        SettingId::HeadroomOutputShaper => "Headroom Output Shaper",
         SettingId::ApiModel => "API Model",
         SettingId::PermissionMode => "Edit Mode",
         SettingId::HeadroomSavingsProfile => "Headroom Savings Profile",
+        SettingId::EnableToolSearch => "Tool Search",
         SettingId::AnthropicApiUrl => "Anthropic API URL",
     }
 }
@@ -308,6 +320,12 @@ fn env_knob(id: SettingId) -> Option<(&'static str, EnvKind)> {
             Some(("HEADROOM_TARGET_RATIO", EnvKind::Value))
         }
         SettingId::HeadroomBudget => Some(("HEADROOM_BUDGET", EnvKind::Value)),
+        SettingId::HeadroomRolloutChannel => {
+            Some(("HEADROOM_ROLLOUT_CHANNEL", EnvKind::Value))
+        }
+        SettingId::HeadroomOutputShaper => {
+            Some(("HEADROOM_OUTPUT_SHAPER", EnvKind::Value))
+        }
         SettingId::HeadroomLogMessages => {
             Some(("HEADROOM_LOG_MESSAGES", EnvKind::Toggle("1")))
         }
@@ -356,6 +374,14 @@ impl SettingsState {
                 None if self.global.headroom_memory => Scope::Global,
                 None => Scope::Off,
             },
+            SettingId::EnableToolSearch => {
+                match self.project.enable_tool_search {
+                    Some(true) => Scope::Project,
+                    Some(false) => Scope::Off,
+                    None if self.global.enable_tool_search => Scope::Global,
+                    None => Scope::Off,
+                }
+            }
             SettingId::ApiModel => {
                 if self.project.api_model.is_some() {
                     Scope::Project
@@ -396,6 +422,8 @@ impl SettingsState {
             SettingId::HeadroomTargetRatio
             | SettingId::HeadroomBudget
             | SettingId::HeadroomLogMessages
+            | SettingId::HeadroomRolloutChannel
+            | SettingId::HeadroomOutputShaper
             | SettingId::HeadroomBeacon => unreachable!(),
         }
     }
@@ -437,6 +465,19 @@ impl SettingsState {
                 }
                 Scope::Project => {
                     self.project.headroom_memory = Some(true);
+                }
+            },
+            SettingId::EnableToolSearch => match target {
+                Scope::Off => {
+                    self.global.enable_tool_search = false;
+                    self.project.enable_tool_search = None;
+                }
+                Scope::Global => {
+                    self.global.enable_tool_search = true;
+                    self.project.enable_tool_search = None;
+                }
+                Scope::Project => {
+                    self.project.enable_tool_search = Some(true);
                 }
             },
             SettingId::ApiModel => match target {
@@ -524,6 +565,8 @@ impl SettingsState {
             SettingId::HeadroomTargetRatio
             | SettingId::HeadroomBudget
             | SettingId::HeadroomLogMessages
+            | SettingId::HeadroomRolloutChannel
+            | SettingId::HeadroomOutputShaper
             | SettingId::HeadroomBeacon => unreachable!(),
         }
     }
@@ -761,6 +804,12 @@ impl SettingsState {
                 "Off — message content is not logged."
             }
             .to_string(),
+            SettingId::EnableToolSearch => if self.value_on(id) {
+                "On — Claude Code turns on deferred-tool search (ENABLE_TOOL_SEARCH=1)."
+            } else {
+                "Off — Claude Code uses its own default; any external ENABLE_TOOL_SEARCH passes through."
+            }
+            .to_string(),
             SettingId::ApiModel => match self.current_value_display(id) {
                 Some(m) => format!("Claude Code sessions use {m}."),
                 None => {
@@ -805,6 +854,24 @@ impl SettingsState {
                 }
                 _ => "Off — no spend cap on the Headroom proxy.".to_string(),
             },
+            SettingId::HeadroomRolloutChannel => {
+                match self.current_value_display(id) {
+                    Some(v) if !v.trim().is_empty() => format!(
+                        "Headroom uses the {v} rollout channel (HEADROOM_ROLLOUT_CHANNEL)."
+                    ),
+                    _ => "Off — Headroom uses its default rollout channel."
+                        .to_string(),
+                }
+            }
+            SettingId::HeadroomOutputShaper => {
+                match self.current_value_display(id) {
+                    Some(v) if !v.trim().is_empty() => format!(
+                        "Headroom shapes output with {v} (HEADROOM_OUTPUT_SHAPER)."
+                    ),
+                    _ => "Off — Headroom uses its default output shaper."
+                        .to_string(),
+                }
+            }
         }
     }
 
@@ -1325,6 +1392,34 @@ mod tests {
     }
 
     #[test]
+    fn tool_search_toggle_on_off() {
+        let mut s = default_state();
+        let id = SettingId::EnableToolSearch;
+        assert!(!s.value_on(id));
+        s.toggle_bool(id);
+        assert!(s.value_on(id));
+        assert!(s.global.enable_tool_search);
+        assert_eq!(s.scope(id), Scope::Global);
+        s.toggle_bool(id);
+        assert!(!s.value_on(id));
+        assert!(!s.global.enable_tool_search);
+    }
+
+    #[test]
+    fn tool_search_scope_toggle_moves_global_project() {
+        let mut s = default_state();
+        let id = SettingId::EnableToolSearch;
+        s.toggle_bool(id); // On @ Global
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(s.project.enable_tool_search, Some(true));
+
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Global);
+        assert!(s.global.enable_tool_search);
+    }
+
+    #[test]
     fn beacon_is_inverted_opt_out() {
         let mut s = default_state();
         let id = SettingId::HeadroomBeacon;
@@ -1577,6 +1672,33 @@ mod tests {
                 .get("HEADROOM_TARGET_RATIO")
                 .map(String::as_str),
             Some("0.6")
+        );
+    }
+
+    #[test]
+    fn rollout_channel_and_output_shaper_write_env_value_knobs() {
+        let mut s = default_state();
+
+        s.selected = index_of(SettingId::HeadroomRolloutChannel);
+        s.editing = Some("beta".into());
+        s.commit_edit();
+        assert_eq!(
+            s.global
+                .headroom_env
+                .get("HEADROOM_ROLLOUT_CHANNEL")
+                .map(String::as_str),
+            Some("beta")
+        );
+
+        s.selected = index_of(SettingId::HeadroomOutputShaper);
+        s.editing = Some("markdown".into());
+        s.commit_edit();
+        assert_eq!(
+            s.global
+                .headroom_env
+                .get("HEADROOM_OUTPUT_SHAPER")
+                .map(String::as_str),
+            Some("markdown")
         );
     }
 

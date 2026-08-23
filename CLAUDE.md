@@ -108,12 +108,20 @@ reports unknown extras and is left alone.
 
 `whetstone settings` also exposes **Headroom Savings Profile** — the Headroom compression profile (`coding`, `agent-90`, `balanced`, `general`) whetstone exports as `HEADROOM_SAVINGS_PROFILE` before launching Headroom, so the spawned proxy and the exec'd `headroom wrap claude` read the same profile (keeping them in agreement and part of the per-config proxy fingerprint). Stored per-project (`savings_profile` in `.claude/whetstone.json`) or globally, project-over-global. When unset (**Off**/None), whetstone exports nothing and Headroom falls back to its own default (`agent-90`); an externally-set `HEADROOM_SAVINGS_PROFILE` env var takes precedence over the stored setting.
 
+`whetstone settings` also exposes **Tool Search** — a boolean that, when **On**, exports `ENABLE_TOOL_SEARCH=1` before launching so Claude Code turns on deferred-tool search. This is a Claude Code concern (exported into the environment the exec'd `headroom wrap claude` passes to Claude Code), *not* a Headroom one, so it is not part of the per-config proxy fingerprint. Stored per-project (`enable_tool_search` in `.claude/whetstone.json`) or globally, project-over-global (a project value of `false` overrides a global `true`). When **Off**, whetstone exports nothing, so any externally-set `ENABLE_TOOL_SEARCH` passes through untouched.
+
 On launch, whetstone (`src/model_update.rs`) checks the 12h-cached Anthropic models list for a model newer than the one this project runs — or a brand-new model family — and shows a full-screen modal offering to pin it as the project default (`api_model`), use it for one session, or dismiss it permanently (recorded in the manifest's top-level `dismissed_models`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` was passed explicitly.
 
 whetstone also supports `headroom_env` — a map of any Headroom launch knobs in
 `.claude/whetstone.json` (project) or `~/.whetstone/settings.json` (global),
 with precedence: external `HEADROOM_*` env vars > project map > global map >
-whetstone defaults (`HEADROOM_PORT` reserved, wins always).
+whetstone defaults (`HEADROOM_PORT` reserved, wins always). `whetstone settings`
+surfaces several of these map keys as named free-text knobs — **Headroom Target
+Ratio** (`HEADROOM_TARGET_RATIO`), **Headroom Budget** (`HEADROOM_BUDGET`),
+**Headroom Rollout Channel** (`HEADROOM_ROLLOUT_CHANNEL`), and **Headroom Output
+Shaper** (`HEADROOM_OUTPUT_SHAPER`) — each stored as an ordinary `headroom_env`
+entry, so they follow the same precedence and become part of the per-config
+proxy fingerprint like any other applied `HEADROOM_*` var.
 
 ## Architecture
 

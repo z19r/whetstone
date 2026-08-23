@@ -82,12 +82,24 @@ fn resolve_savings_profile_env(
         .map(str::to_string)
 }
 
+/// Export `ENABLE_TOOL_SEARCH=1` when the setting is on so Claude Code (launched
+/// by the exec'd `headroom wrap claude`) turns on deferred-tool search. When
+/// off, whetstone touches nothing, so any externally-set `ENABLE_TOOL_SEARCH`
+/// passes through untouched. Not part of the proxy fingerprint — this is a
+/// Claude Code concern, not a Headroom one.
+fn apply_enable_tool_search(on: bool) {
+    if on {
+        env::set_var(ENABLE_TOOL_SEARCH_ENV, "1");
+    }
+}
+
 pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     set_proxy_env();
 
     let resolved = resolved_settings();
     apply_anthropic_api_url(resolved.anthropic_api_url.as_deref());
     apply_savings_profile(resolved.savings_profile.as_deref());
+    apply_enable_tool_search(resolved.enable_tool_search);
 
     // Drain any stray `.headroom` store this project accumulated before memory
     // was pinned to the global root. Idempotent no-op once clean.
@@ -516,6 +528,9 @@ const DEFAULT_SAVINGS_PROFILE: &str = "agent-90";
 // configured setting here, and both the spawned proxy and exec'd wrap read it.
 const HEADROOM_SAVINGS_PROFILE_ENV: &str = "HEADROOM_SAVINGS_PROFILE";
 
+// The env var Claude Code reads to turn on deferred-tool search.
+const ENABLE_TOOL_SEARCH_ENV: &str = "ENABLE_TOOL_SEARCH";
+
 fn required_savings_profile() -> String {
     resolve_savings_profile(env::var(HEADROOM_SAVINGS_PROFILE_ENV).ok())
 }
@@ -710,6 +725,7 @@ mod tests {
             anthropic_api_url: None,
             permission_mode: None,
             savings_profile: None,
+            enable_tool_search: false,
             headroom_env: std::collections::BTreeMap::new(),
         };
         let plan = headroom_env_plan_for(
@@ -732,6 +748,7 @@ mod tests {
             anthropic_api_url: None,
             permission_mode: None,
             savings_profile: None,
+            enable_tool_search: false,
             headroom_env: std::collections::BTreeMap::new(),
         };
         let plan = headroom_env_plan_for(
