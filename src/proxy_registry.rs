@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 /// Everything that varies a spawned Headroom proxy's behavior. Two specs with
 /// the same fingerprint may share one proxy.
@@ -120,9 +121,73 @@ impl Registry {
     }
 }
 
+/// Advisory lockfile guard. Holds an `O_EXCL`-created file for the duration of
+/// a registry critical section; removes it on drop.
+pub struct LockGuard {
+    path: PathBuf,
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Acquire the registry lock, spinning until it's free or `timeout` elapses. A
+/// lockfile older than `stale_after` (a crashed holder) is stolen.
+pub fn acquire_lock(
+    path: &Path,
+    timeout: Duration,
+    stale_after: Duration,
+) -> Result<LockGuard> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let deadline = Instant::now() + timeout;
+    loop {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
+            Ok(_) => return Ok(LockGuard { path: path.to_path_buf() }),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if lock_is_stale(path, stale_after) {
+                    let _ = std::fs::remove_file(path);
+                    continue;
+                }
+                if Instant::now() >= deadline {
+                    anyhow::bail!(
+                        "timed out acquiring proxy registry lock at {}",
+                        path.display()
+                    );
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                return Err(e).with_context(|| {
+                    format!("opening lock {}", path.display())
+                })
+            }
+        }
+    }
+}
+
+fn lock_is_stale(path: &Path, stale_after: Duration) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = meta.modified() else {
+        return false;
+    };
+    modified.elapsed().map(|age| age >= stale_after).unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn load_missing_file_is_empty() {
@@ -211,5 +276,34 @@ mod tests {
         let mut env = base();
         env.env.insert("HEADROOM_RPM".into(), "120".into());
         assert_ne!(f0, proxy_fingerprint(&env));
+    }
+
+    #[test]
+    fn lock_is_exclusive_then_released_on_drop() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("proxies.lock");
+        let short = std::time::Duration::from_millis(200);
+        let stale = std::time::Duration::from_secs(60);
+
+        let g = acquire_lock(&lock, short, stale).unwrap();
+        // Second acquisition times out while the first is held.
+        assert!(acquire_lock(&lock, short, stale).is_err());
+        drop(g);
+        // After release, it succeeds again.
+        assert!(acquire_lock(&lock, short, stale).is_ok());
+    }
+
+    #[test]
+    fn stale_lock_is_stolen() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("proxies.lock");
+        std::fs::write(&lock, "old").unwrap();
+        // stale_after = 0 → any existing lock is immediately stealable.
+        let g = acquire_lock(
+            &lock,
+            std::time::Duration::from_millis(200),
+            std::time::Duration::from_secs(0),
+        );
+        assert!(g.is_ok());
     }
 }
