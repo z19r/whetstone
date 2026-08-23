@@ -69,7 +69,7 @@ whetstone memory consolidate [--dry-run]   # drain stray project-local .headroom
 
 `--headroom-extras` accepts: `all` (default = `proxy,code,mcp`), `none`, or comma-separated like `proxy,code`.
 
-`--memory` is a global flag (e.g. `whetstone --memory`, `whetstone --memory claude`). It enables Headroom persistent cross-session memory by passing `--memory` to the proxy whetstone spawns. If a proxy is already running *without* memory, whetstone prompts: restart it with memory (replaces the global proxy), start a memory proxy for this session only, or cancel. It can also be set persistently per-project or globally via `whetstone settings` (Headroom Memory).
+`--memory` is a global flag (e.g. `whetstone --memory`, `whetstone --memory claude`). It enables Headroom persistent cross-session memory by passing `--memory` to the proxy whetstone spawns. Memory on/off is part of the per-config fingerprint (see Architecture below), so a session that wants memory never fights one that doesn't — each gets its own proxy, and there is no restart/replace prompt to resolve the conflict. It can also be set persistently per-project or globally via `whetstone settings` (Headroom Memory).
 
 `whetstone doctor` checks the managed dependencies (headroom, rtk, claude
 code, and the project's memory provider) before it looks at hooks: a tool that
@@ -121,6 +121,8 @@ User → Claude Code
          ├── Context    → [Headroom Proxy :8787] → Anthropic API
          └── Memory     → [ICM, embedded SQLite] → persistent context
 ```
+
+Whetstone runs one Headroom proxy per distinct resolved config (savings profile, telemetry, memory, upstream URL, and the `HEADROOM_*` apply set — see the "Global Headroom memory root" bullet below), reusing a live proxy only when a session's config fingerprint matches exactly. There is no memory-conflict prompt: memory on/off is part of that fingerprint, so a session that wants memory and one that doesn't simply get separate proxies instead of racing to replace each other's.
 
 **Setup flow** (`whetstone setup`, orchestrated by `src/setup.rs`). Setup first self-updates and offers v2→v3 migration; if the terminal is interactive it runs `src/wizard.rs`, otherwise the headless sequence below:
 1. Resolve assets; preflight-check dependencies (python, git, curl, uv)
@@ -179,7 +181,8 @@ src/
 - **Idempotent**: setup skips already-installed components; safe to rerun
 - **Absolute paths in hooks**: avoids PATH/shell-state issues
 - **Global tools, per-project config**: RTK/Headroom installed globally; memory provider and version-pinned manifest are per-project
-- **Global Headroom memory root**: because the proxy is a single shared process, whetstone pins `HEADROOM_MEMORY_DB_PATH` to `~/.headroom/memory.db` so per-project memory DBs live under `~/.headroom/memories/projects/` instead of accumulating in whichever project launched the proxy. `wrap_claude` auto-consolidates any stray project-local `.headroom` store into that root (never overwriting global data; seed DBs migrate all-or-nothing), and `whetstone memory consolidate [--dry-run]` runs it explicitly (`src/memory_consolidate.rs`)
+- **Per-config proxy registry**: whetstone runs one proxy per distinct resolved config, keyed by a fingerprint (savings profile, telemetry, memory, upstream URL, and the non-memory-path `HEADROOM_*` apply set) over entries in `~/.whetstone/proxies.json` (`src/proxy_registry.rs`). Two sessions that would spawn a byte-identical proxy share it; anything that differs — including memory on vs. off — gets its own. Port `8787` is only a best-effort launch-order anchor so a bare `claude` launch and doctor's fast path still find a proxy there when nothing else has claimed it; it is not a fixed single-proxy port. The memory DB path itself stays out of the fingerprint (see below), so it can't fracture reuse on its own.
+- **Global Headroom memory root**: whetstone pins `HEADROOM_MEMORY_DB_PATH` to `~/.headroom/memory.db` so per-project memory DBs live under `~/.headroom/memories/projects/` instead of accumulating in whichever project launched the proxy — unaffected by per-config proxy reuse above. `wrap_claude` auto-consolidates any stray project-local `.headroom` store into that root (never overwriting global data; seed DBs migrate all-or-nothing), and `whetstone memory consolidate [--dry-run]` runs it explicitly (`src/memory_consolidate.rs`)
 - **Tool-managed hooks**: v3 delegates `~/.claude/settings.json` hook entries to `rtk init` / `icm init`; whetstone never hand-merges them (`doctor` reports drift, `migrate` archives before touching state)
 - **Layered settings**: `GlobalSettings` (`~/.whetstone/settings.json`) and per-project `ProjectSettings` (in `.claude/whetstone.json`) resolve with project-over-global precedence
 - **rusqlite bundled**: statically links SQLite, no system dependency
