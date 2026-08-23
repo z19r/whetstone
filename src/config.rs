@@ -78,6 +78,11 @@ pub struct ProjectSettings {
     /// Claude Code uses its own default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
+    /// Headroom savings profile exported as `HEADROOM_SAVINGS_PROFILE` when set
+    /// (see [`SAVINGS_PROFILES`]). `None` means whetstone exports nothing and
+    /// Headroom uses its own default (`agent-90`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub savings_profile: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headroom_env: BTreeMap<String, String>,
 }
@@ -85,8 +90,14 @@ pub struct ProjectSettings {
 /// Valid Claude Code `--permission-mode` values, most-permissive-first for the
 /// settings TUI's cycle order (the first entry is the value a freshly-enabled
 /// setting seeds).
-pub const PERMISSION_MODES: &[&str] =
-    &["acceptEdits", "default", "plan", "bypassPermissions"];
+pub const PERMISSION_MODES: [&str; 4] =
+    ["acceptEdits", "default", "plan", "bypassPermissions"];
+
+/// Selectable Headroom savings profiles for the settings TUI's cycle order.
+/// The TUI's leading "Off" slot is the "None" option (no override; Headroom
+/// falls back to its own default, `agent-90`).
+pub const SAVINGS_PROFILES: [&str; 4] =
+    ["coding", "agent-90", "balanced", "general"];
 
 const GLOBAL_DIR: &str = ".whetstone";
 const GLOBAL_SETTINGS_FILENAME: &str = "settings.json";
@@ -103,6 +114,8 @@ pub struct GlobalSettings {
     pub anthropic_api_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub savings_profile: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headroom_env: BTreeMap<String, String>,
 }
@@ -147,6 +160,7 @@ pub struct ResolvedSettings {
     pub api_model: Option<String>,
     pub anthropic_api_url: Option<String>,
     pub permission_mode: Option<String>,
+    pub savings_profile: Option<String>,
     pub headroom_env: BTreeMap<String, String>,
 }
 
@@ -174,6 +188,10 @@ impl ResolvedSettings {
                 .permission_mode
                 .clone()
                 .or_else(|| global.permission_mode.clone()),
+            savings_profile: project
+                .savings_profile
+                .clone()
+                .or_else(|| global.savings_profile.clone()),
             headroom_env,
         }
     }
@@ -359,6 +377,47 @@ mod tests {
         let s = ProjectSettings::default();
         let raw = serde_json::to_string(&s).unwrap();
         assert!(!raw.contains("permission_mode"));
+    }
+
+    #[test]
+    fn resolve_prefers_project_savings_profile() {
+        let global = GlobalSettings {
+            savings_profile: Some("balanced".into()),
+            ..Default::default()
+        };
+        let project = ProjectSettings {
+            savings_profile: Some("coding".into()),
+            ..Default::default()
+        };
+        let resolved = ResolvedSettings::resolve(&global, &project);
+        assert_eq!(resolved.savings_profile.as_deref(), Some("coding"));
+    }
+
+    #[test]
+    fn resolve_falls_back_to_global_savings_profile() {
+        let global = GlobalSettings {
+            savings_profile: Some("general".into()),
+            ..Default::default()
+        };
+        let resolved =
+            ResolvedSettings::resolve(&global, &ProjectSettings::default());
+        assert_eq!(resolved.savings_profile.as_deref(), Some("general"));
+    }
+
+    #[test]
+    fn resolve_savings_profile_none_when_unset() {
+        let resolved = ResolvedSettings::resolve(
+            &GlobalSettings::default(),
+            &ProjectSettings::default(),
+        );
+        assert!(resolved.savings_profile.is_none());
+    }
+
+    #[test]
+    fn empty_savings_profile_omitted_from_project_json() {
+        let s = ProjectSettings::default();
+        let raw = serde_json::to_string(&s).unwrap();
+        assert!(!raw.contains("savings_profile"));
     }
 
     #[test]
