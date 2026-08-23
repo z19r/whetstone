@@ -2,6 +2,37 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.14.0",
+    "date": "2026-08-23",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add Headroom Savings Profile setting",
+          "kill registered proxies on global uninstall",
+          "per-config proxy selection; drop memory-conflict prompt",
+          "prune + reuse/spawn resolve orchestrator"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "tolerate transient probe + surface registry save errors",
+          "remove dead test scaffolding struct",
+          "add PID ownership check to lockfile guard, fix deadline check, and remove unused imports"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "use fixed-size arrays for mode/profile consts",
+          "per-config proxy plan + launch-order anchor spec refinement",
+          "per-config headroom proxy reuse design"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.13.0",
     "date": "2026-08-23",
     "sections": [
@@ -140,41 +171,6 @@ window.WHETSTONE_CHANGELOG = [
         "bullets": [
           "stop passing --no-rtk to headroom wrap (#79)",
           "stop v3 slash commands from triggering false v2 migration (#78)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.8.0",
-    "date": "2026-08-04",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "add curated HEADROOM_ knobs to settings TUI (#75)",
-          "headroom_env launch passthrough + 80-char reflow (#74)",
-          "launch-time model-update prompt (#72)",
-          "scope uninstall into project/global; add Anthropic API URL setting (#71)"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "add superpowers planning and spec for model-update-prompt (#73)"
-        ]
-      },
-      {
-        "name": "added",
-        "bullets": [
-          "Launch-time model-update prompt: when Anthropic ships a model newer than the one this project runs — or a brand-new model family — whetston…",
-          "Anthropic API URL setting in whetstone settings — a custom upstream Anthropic API URL for the Headroom proxy, exported as ANTHROPIC_TARGET_…",
-          "Opinionated Headroom launch defaults with full override control: whetstone now sets HEADROOM_CODE_AWARE_ENABLED=1 (and suppresses Headroom'…"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "Split whetstone uninstall into whetstone project uninstall (removes per-project files) and whetstone global uninstall (removes the whetston…"
         ]
       }
     ]
