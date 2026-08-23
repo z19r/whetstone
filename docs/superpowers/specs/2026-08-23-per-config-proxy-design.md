@@ -133,24 +133,30 @@ spawned) and always passes `--no-proxy`. The `wrap_memory` fallback path
 reached when a spawn fails to come up — same soft-fallback semantics as
 today.
 
-### Port allocation
+### Port allocation (launch-order anchor)
 
-- The **default** fingerprint — what a project with no divergent
-  proxy-affecting settings resolves to — is pinned to port **8787**.
-- Any other fingerprint gets a port from `free_port()`.
+Port **8787** is the *anchor* port, assigned best-effort to whichever
+proxy whetstone spawns first:
 
-This preserves backward compatibility for the common case:
+- Spawning a new proxy: if 8787 is free and unclaimed by a live registry
+  entry, use 8787; otherwise take a port from `free_port()`.
+- Every fingerprint records its actual assigned port in the registry.
+
+Correctness never depends on which fingerprint holds 8787 — reuse is
+always fingerprint → recorded port. 8787's only job is the backward-compat
+conveniences, and they only need *a* live proxy there:
 
 - The shell-profile `export ANTHROPIC_BASE_URL=…:8787` (written by
   `src/shell.rs` at setup) still points a bare, non-whetstone `claude`
-  launch at a live default-config proxy.
+  launch at a live proxy.
 - doctor's `:8787` fast-path (`check_proxy_starts` →
-  `ProxyStartCheck::AlreadyRunning`) still recognizes a running default
-  proxy as proof headroom starts.
+  `ProxyStartCheck::AlreadyRunning`) still recognizes a running proxy as
+  proof headroom starts.
 
-whetstone computes the default fingerprint deterministically (global
-settings only, empty project overrides) so "is this the default config?"
-is a pure comparison, not a launch-order heuristic.
+(Planning refinement: an earlier draft pinned 8787 to "the default-config
+fingerprint," but the ICM-vs-Skip provider gating makes a single canonical
+"default config" ill-defined. The launch-order anchor reaches the same
+compat goals without computing one.)
 
 ## `ANTHROPIC_BASE_URL` ownership change
 
