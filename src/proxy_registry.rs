@@ -2,7 +2,10 @@
 //! session would spawn, so two sessions share a proxy iff they would spawn a
 //! byte-identical one. Keyed reuse via `~/.whetstone/proxies.json`.
 
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 /// Everything that varies a spawned Headroom proxy's behavior. Two specs with
 /// the same fingerprint may share one proxy.
@@ -62,9 +65,98 @@ pub fn proxy_fingerprint(spec: &ProxySpec) -> String {
     format!("{:016x}", fnv1a(canonical(spec).as_bytes()))
 }
 
+const GLOBAL_DIR: &str = ".whetstone";
+const REGISTRY_FILENAME: &str = "proxies.json";
+
+/// One whetstone-spawned proxy: its config fingerprint, bound port, and pid.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProxyEntry {
+    pub fingerprint: String,
+    pub port: u16,
+    pub pid: u32,
+}
+
+/// The set of live whetstone-spawned proxies. Persisted to
+/// `~/.whetstone/proxies.json`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct Registry {
+    #[serde(default)]
+    pub entries: Vec<ProxyEntry>,
+}
+
+/// `~/.whetstone/proxies.json`, or `None` if the home dir can't be found.
+#[allow(dead_code)]
+pub fn registry_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(GLOBAL_DIR).join(REGISTRY_FILENAME))
+}
+
+impl Registry {
+    /// Load the registry, treating a missing or corrupt file as empty — a
+    /// stale registry must never block a launch.
+    #[allow(dead_code)]
+    pub fn load(path: &Path) -> Self {
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            return Self::default();
+        };
+        serde_json::from_str(&raw).unwrap_or_default()
+    }
+
+    #[allow(dead_code)]
+    pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        let pretty = serde_json::to_string_pretty(self)
+            .context("serializing proxy registry")?;
+        std::fs::write(path, pretty)
+            .with_context(|| format!("writing {}", path.display()))
+    }
+
+    #[allow(dead_code)]
+    pub fn find(&self, fingerprint: &str) -> Option<&ProxyEntry> {
+        self.entries.iter().find(|e| e.fingerprint == fingerprint)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_missing_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("proxies.json");
+        let reg = Registry::load(&path);
+        assert!(reg.entries.is_empty());
+    }
+
+    #[test]
+    fn save_then_load_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("proxies.json");
+        let reg = Registry {
+            entries: vec![ProxyEntry {
+                fingerprint: "abc123".into(),
+                port: 8801,
+                pid: 4242,
+            }],
+        };
+        reg.save(&path).unwrap();
+        let back = Registry::load(&path);
+        assert_eq!(back.entries, reg.entries);
+        assert_eq!(back.find("abc123").map(|e| e.port), Some(8801));
+        assert!(back.find("nope").is_none());
+    }
+
+    #[test]
+    fn load_corrupt_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("proxies.json");
+        std::fs::write(&path, "not json").unwrap();
+        assert!(Registry::load(&path).entries.is_empty());
+    }
 
     fn base() -> ProxySpec {
         ProxySpec {
