@@ -2,8 +2,8 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-08-23",
   releaseDateHuman: "AUG 23 2026",
-  sha: "92ee267",
-  tagline: "kill registered proxies on global uninstall",
+  sha: "c707e64",
+  tagline: "add Headroom Savings Profile setting",
   assets: { commands: 2 },
   modules: [
     { id: "headroom", label: "HEADROOM PROXY", sub: "Context compression" },
