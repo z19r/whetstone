@@ -2,6 +2,34 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.12.0",
+    "date": "2026-08-23",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add install-tools command and doctor startup/extras verification (#89)",
+          "add HEADROOM_BEACON opt-out toggle to settings (#87)"
+        ]
+      },
+      {
+        "name": "added",
+        "bullets": [
+          "whetstone install-tools — install or repair every managed dependency (headroom, rtk, claude code, memory provider), re-run their init hooks…",
+          "whetstone doctor now checks that the managed dependencies still exist before inspecting ~/.claude/settings.json, offers to reinstall the mi…",
+          "launching a managed tool that was uninstalled now offers to reinstall it instead of failing with a bare exec error",
+          "whetstone doctor now verifies that headroom actually starts: it probes the running proxy, or spawns a throwaway one on a free port with the…"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "whetstone now verifies headroom's extras, not just its version: an install recorded by uv without proxy/code/mcp is reported by doctor and …"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.11.0",
     "date": "2026-08-20",
     "sections": [
@@ -135,31 +163,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "re-sync headroom MCP on update; prefer newest Sonnet as default model (#68)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.6.2",
-    "date": "2026-06-28",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "integrate self-update and migration into setup command (#62)",
-          "settings TUI with global/project layering (#57)"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "store changelog regex patterns in variables for bash compatibility"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "update the claude models (#64)"
         ]
       }
     ]
