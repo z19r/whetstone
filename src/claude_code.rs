@@ -90,6 +90,36 @@ fn detect_install_method_from_path(
     InstallMethod::Unknown
 }
 
+/// Install Claude Code globally via npm.
+///
+/// Claude Code is the one managed dependency whetstone can't install without
+/// a Node toolchain, so bail with an actionable message rather than letting
+/// `npm` fail obscurely.
+pub fn install() -> Result<()> {
+    if which::which("npm").is_err() {
+        bail!(
+            "npm not found — install Node.js (https://nodejs.org) then rerun, \
+             or install Claude Code yourself"
+        );
+    }
+
+    ui::info(
+        "installing claude code (npm install -g @anthropic-ai/claude-code)",
+    );
+    run_npm_install()?;
+    ensure_config_install_method_is_npm();
+
+    match installed_version() {
+        Some(ver) => {
+            ui::ok(&format!("claude code {ver}"));
+            Ok(())
+        }
+        None => bail!(
+            "claude code installed but `claude` is not on PATH — check your npm global bin dir"
+        ),
+    }
+}
+
 pub fn update() -> Result<ui::ComponentStatus> {
     let Some(old_ver) = installed_version() else {
         return Ok(ui::ComponentStatus::NotInstalled);

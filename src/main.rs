@@ -20,6 +20,7 @@ mod settings;
 mod setup;
 mod shell;
 mod stats;
+mod tools;
 mod ui;
 mod uninstall;
 mod update;
@@ -40,6 +41,7 @@ fn show_upgrade_banner(cmd: &Option<Command>) {
                 | Command::Dashboard
                 | Command::Stats
                 | Command::Migrate { .. }
+                | Command::InstallTools { .. }
         )
     );
     if skip {
@@ -199,8 +201,26 @@ fn main() {
                     ui::fail(&format!("{e:#}"));
                 }
             }
-            Command::Doctor => {
-                if let Err(e) = doctor::run() {
+            Command::Doctor {
+                fix,
+                headroom_extras,
+            } => {
+                let result = if fix {
+                    doctor::run_fix(&headroom_extras)
+                } else {
+                    doctor::run()
+                };
+                if let Err(e) = result {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
+            Command::InstallTools {
+                force,
+                headroom_extras,
+            } => {
+                if let Err(e) =
+                    tools::run_install_tools(force, &headroom_extras)
+                {
                     ui::fail(&format!("{e:#}"));
                 }
             }

@@ -53,15 +53,158 @@ pub fn installed_version() -> Option<String> {
     version::extract_semver(&raw)
 }
 
+/// Extras uv recorded for the installed `headroom-ai` tool.
+///
+/// `None` means "unknown" — no uv receipt, or a receipt shape we don't
+/// recognize (a pip install, for instance). Callers must never read that as
+/// "no extras", or whetstone would reinstall on every run.
+pub fn recorded_extras() -> Option<Vec<String>> {
+    let receipt = fs::read_to_string(uv_receipt_path()?).ok()?;
+    parse_receipt_extras(&receipt)
+}
+
+fn uv_receipt_path() -> Option<PathBuf> {
+    let tool_dir = match std::env::var("UV_TOOL_DIR") {
+        Ok(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
+        _ => dirs::data_dir()?.join("uv").join("tools"),
+    };
+    Some(tool_dir.join("headroom-ai").join("uv-receipt.toml"))
+}
+
+/// Pull the extras out of uv's receipt, which pins the requirement on one
+/// line: `requirements = [{ name = "headroom-ai", extras = ["proxy", …] }]`.
+/// Deliberately a narrow scan rather than a TOML dependency — anything that
+/// doesn't match the expected shape returns `None` (unknown), and a receipt
+/// naming the package with no `extras` key returns an empty list (installed
+/// bare).
+fn parse_receipt_extras(receipt: &str) -> Option<Vec<String>> {
+    let line = receipt
+        .lines()
+        .find(|line| line.contains(r#"name = "headroom-ai""#))?;
+
+    let Some(rest) = line.split_once("extras = [") else {
+        return Some(Vec::new());
+    };
+    let list = rest.1.split_once(']')?.0;
+
+    Some(
+        list.split(',')
+            .map(|item| item.trim().trim_matches('"').to_string())
+            .filter(|item| !item.is_empty())
+            .collect(),
+    )
+}
+
+/// Extras requested by `extras` that the recorded install doesn't have.
+///
+/// Empty when everything asked for is present *or* when the install predates
+/// uv (unknown extras) — this only reports what it can prove is missing.
+pub fn missing_extras(extras: &str) -> Vec<String> {
+    let Some(installed) = recorded_extras() else {
+        return Vec::new();
+    };
+    diff_extras(&resolve_extras(extras), &installed)
+}
+
+fn diff_extras(requested: &str, installed: &[String]) -> Vec<String> {
+    requested
+        .split(',')
+        .map(str::trim)
+        .filter(|want| !want.is_empty())
+        .filter(|want| !installed.iter().any(|have| have == want))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Headroom's own settings file (not whetstone's). Keys here are turned into
+/// proxy flags at launch, which is how a setting saved when a feature was
+/// ungated can hard-fail every start after an upgrade.
+pub fn settings_path() -> Option<PathBuf> {
+    Some(dirs::home_dir()?.join(".headroom").join("settings.json"))
+}
+
+/// Given headroom's startup complaint, name the settings key that caused it.
+///
+/// Headroom rejects a gated flag with:
+/// `error: --read-maturation is not available in the current rollout channel`
+/// and that flag is the kebab-case spelling of the JSON key
+/// (`read_maturation`) whetstone can remove.
+pub fn blocked_setting_key(detail: &str) -> Option<String> {
+    if !detail.contains("not available in the current rollout channel") {
+        return None;
+    }
+    let flag = detail
+        .split_whitespace()
+        .find(|token| token.starts_with("--") && token.len() > 2)?;
+    Some(flag.trim_start_matches('-').replace('-', "_"))
+}
+
+/// Remove `key` from headroom's settings file, backing the file up first.
+/// `Ok(false)` means the key wasn't there — nothing was written.
+pub fn disable_setting(key: &str) -> Result<bool> {
+    let path = settings_path().context("could not determine home directory")?;
+    disable_setting_in(&path, key)
+}
+
+fn disable_setting_in(path: &Path, key: &str) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("reading {}", path.display()))?;
+    let mut settings: serde_json::Value = serde_json::from_str(&raw)
+        .with_context(|| format!("parsing {}", path.display()))?;
+
+    let Some(obj) = settings.as_object_mut() else {
+        return Ok(false);
+    };
+    if obj.remove(key).is_none() {
+        return Ok(false);
+    }
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let backup = path.with_file_name(format!("settings.json.bak.{ts}"));
+    fs::copy(path, &backup)
+        .with_context(|| format!("backing up {}", path.display()))?;
+
+    let pretty = serde_json::to_string_pretty(&settings)
+        .context("serializing headroom settings")?;
+    fs::write(path, format!("{pretty}\n"))
+        .with_context(|| format!("writing {}", path.display()))?;
+
+    ui::info(&format!(
+        "removed `{key}` from {} (backup: {})",
+        path.display(),
+        backup.display(),
+    ));
+    Ok(true)
+}
+
 pub fn install(extras: &str, force: bool) -> Result<()> {
     let spec = package_spec(extras);
 
     if let Some(ver) = installed_version() {
-        if !force && !version::is_older(&ver, MIN_VERSION) {
+        let missing = missing_extras(extras);
+
+        if !force && !version::is_older(&ver, MIN_VERSION) && missing.is_empty()
+        {
             ui::ok(&format!("headroom {ver} (>= {MIN_VERSION})"));
             return Ok(());
         }
-        ui::info(&format!("upgrading headroom from {ver}"));
+
+        // A version-only check calls a bare `headroom-ai` healthy forever,
+        // and then `headroom proxy` / `headroom mcp` don't exist at runtime.
+        if missing.is_empty() {
+            ui::info(&format!("upgrading headroom from {ver}"));
+        } else {
+            ui::info(&format!(
+                "headroom {ver} is missing extras ({}) — reinstalling as {spec}",
+                missing.join(", "),
+            ));
+        }
         run_uv_install(&spec, true)?;
     } else {
         ui::info("installing headroom");
@@ -71,6 +214,14 @@ pub fn install(extras: &str, force: bool) -> Result<()> {
     match installed_version() {
         Some(ver) => ui::ok(&format!("headroom {ver}")),
         None => bail!("headroom installation failed — check uv output above"),
+    }
+
+    let still_missing = missing_extras(extras);
+    if !still_missing.is_empty() {
+        ui::warn(&format!(
+            "headroom installed but extras are still missing: {}",
+            still_missing.join(", "),
+        ));
     }
     Ok(())
 }
@@ -325,6 +476,143 @@ mod tests {
     fn ignores_config_without_mcp_servers() {
         let json = serde_json::json!({ "projects": {} });
         assert!(!json_has_headroom_mcp(&json));
+    }
+
+    const RECEIPT_WITH_EXTRAS: &str = r#"[tool]
+requirements = [{ name = "headroom-ai", extras = ["proxy", "code", "mcp"] }]
+entrypoints = [
+    { name = "headroom", install-path = "/home/u/.local/bin/headroom", from = "headroom-ai" },
+]
+"#;
+
+    const RECEIPT_BARE: &str = r#"[tool]
+requirements = [{ name = "headroom-ai" }]
+"#;
+
+    #[test]
+    fn names_the_settings_key_behind_a_blocked_flag() {
+        let detail = "error: --read-maturation is not available in the current \
+                      rollout channel (stable). Set HEADROOM_ROLLOUT_CHANNEL=beta";
+        assert_eq!(
+            blocked_setting_key(detail),
+            Some("read_maturation".to_string()),
+        );
+    }
+
+    #[test]
+    fn unrelated_startup_errors_name_no_key() {
+        // Only the rollout-channel rejection maps cleanly onto a settings key;
+        // whetstone must not start deleting keys for other failures.
+        assert_eq!(
+            blocked_setting_key("Error: Proxy dependencies not installed."),
+            None,
+        );
+        assert_eq!(blocked_setting_key("error: address already in use"), None);
+    }
+
+    #[test]
+    fn disable_setting_removes_the_key_and_leaves_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            r#"{"anthropic_base_url":"https://api.anthropic.com","read_maturation":true}"#,
+        )
+        .unwrap();
+
+        assert!(disable_setting_in(&path, "read_maturation").unwrap());
+
+        let after: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(after.get("read_maturation").is_none());
+        assert_eq!(
+            after.get("anthropic_base_url").and_then(|v| v.as_str()),
+            Some("https://api.anthropic.com"),
+        );
+    }
+
+    #[test]
+    fn disable_setting_backs_the_file_up_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, r#"{"read_maturation":true}"#).unwrap();
+
+        disable_setting_in(&path, "read_maturation").unwrap();
+
+        let backups: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .contains("settings.json.bak.")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1, "expected exactly one backup file");
+    }
+
+    #[test]
+    fn disable_setting_is_a_no_op_for_an_absent_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, r#"{"anthropic_base_url":"x"}"#).unwrap();
+
+        assert!(!disable_setting_in(&path, "read_maturation").unwrap());
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            r#"{"anthropic_base_url":"x"}"#
+        );
+    }
+
+    #[test]
+    fn disable_setting_on_a_missing_file_is_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nope.json");
+        assert!(!disable_setting_in(&path, "read_maturation").unwrap());
+    }
+
+    #[test]
+    fn parses_extras_from_a_uv_receipt() {
+        assert_eq!(
+            parse_receipt_extras(RECEIPT_WITH_EXTRAS),
+            Some(vec!["proxy".into(), "code".into(), "mcp".into()]),
+        );
+    }
+
+    #[test]
+    fn receipt_without_extras_means_installed_bare() {
+        // Distinct from "unknown": uv knows about this install and it has no
+        // extras, so whetstone should repair it.
+        assert_eq!(parse_receipt_extras(RECEIPT_BARE), Some(Vec::new()));
+    }
+
+    #[test]
+    fn unrecognized_receipt_is_unknown_not_empty() {
+        // Anything we can't read must NOT look like "no extras", or every run
+        // would reinstall headroom.
+        assert_eq!(parse_receipt_extras("[tool]\nrequirements = []\n"), None);
+        assert_eq!(parse_receipt_extras(""), None);
+    }
+
+    #[test]
+    fn diff_reports_only_the_extras_that_are_absent() {
+        let installed = vec!["proxy".to_string(), "code".to_string()];
+        assert_eq!(
+            diff_extras(&resolve_extras("all"), &installed),
+            vec!["mcp".to_string()],
+        );
+        assert!(
+            diff_extras(&resolve_extras("proxy,code"), &installed).is_empty()
+        );
+        assert!(diff_extras(&resolve_extras("none"), &installed).is_empty());
+    }
+
+    #[test]
+    fn bare_install_is_missing_every_requested_extra() {
+        assert_eq!(
+            diff_extras(&resolve_extras("all"), &[]),
+            vec!["proxy".to_string(), "code".to_string(), "mcp".to_string()],
+        );
     }
 
     #[test]

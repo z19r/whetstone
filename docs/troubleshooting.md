@@ -1,8 +1,31 @@
 # Troubleshooting
 
+## `headroom proxy` exits immediately
+
+```bash
+whetstone doctor          # runs headroom and reports its actual startup error
+whetstone doctor --fix    # removes a rollout-blocked key from ~/.headroom/settings.json
+```
+
+Headroom turns keys in its own `~/.headroom/settings.json` into proxy flags. A
+feature that later moves behind a rollout channel (`headroom rollout status`
+shows `decision=blocked_by_channel`) then fails every start. Remove the key, or
+keep the feature with `HEADROOM_ROLLOUT_CHANNEL=beta` — for whetstone-spawned
+proxies, set that in the `headroom_env` map via `whetstone settings`.
+
+## A tool whetstone installed is suddenly gone
+
+```bash
+whetstone doctor           # says what's missing, offers to reinstall
+whetstone install-tools    # install/repair everything without the questions
+whetstone install-tools --force   # reinstall even what looks healthy
+```
+
 ## "headroom: command not found"
 
 ```bash
+whetstone install-tools
+# Or by hand:
 uv tool install "headroom-ai[proxy,code,mcp]"
 # If installed but not on PATH:
 python3 -m headroom proxy --port 8787
@@ -11,7 +34,8 @@ python3 -m headroom proxy --port 8787
 ## "rtk: command not found"
 
 ```bash
-# Install
+whetstone install-tools
+# Or by hand:
 curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
 # Add to PATH
 export PATH="$HOME/.local/bin:$PATH"

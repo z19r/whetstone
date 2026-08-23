@@ -241,41 +241,9 @@ pub(crate) fn current_icm_version() -> Option<String> {
 /// `integrations::run_all` after this returns.
 pub(crate) fn install_provider_binary(provider: MemoryProvider) -> Result<()> {
     match provider {
-        MemoryProvider::Icm => ensure_icm_installed(),
+        MemoryProvider::Icm => crate::icm::install(false),
         MemoryProvider::Skip => Ok(()),
     }
-}
-
-fn ensure_icm_installed() -> Result<()> {
-    if which::which("icm").is_ok() {
-        let output =
-            std::process::Command::new("icm").arg("--version").output();
-        if let Ok(o) = output {
-            if o.status.success() {
-                let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                ui::ok(&format!("icm already installed ({ver})"));
-                return Ok(());
-            }
-        }
-    }
-
-    ui::info("installing ICM...");
-    let status = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("curl -fsSL https://raw.githubusercontent.com/rtk-ai/icm/main/install.sh | sh")
-        .status()
-        .context("failed to run ICM install script")?;
-
-    if !status.success() {
-        bail!("ICM installation failed");
-    }
-
-    if which::which("icm").is_err() {
-        bail!("ICM binary not found after installation — check your PATH");
-    }
-
-    ui::ok("ICM installed");
-    Ok(())
 }
 
 fn write_manifest(provider: MemoryProvider) -> Result<()> {

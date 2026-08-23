@@ -11,6 +11,13 @@
 //!
 //! Anything else found in `settings.json` (custom user hooks, other MCP
 //! servers, model preferences, etc.) is left alone.
+//!
+//! Before touching settings at all, doctor now checks that the managed
+//! dependencies themselves still exist (`src/tools.rs`). A hook entry that
+//! points at a binary somebody uninstalled is not a settings problem, and
+//! reordering it would have reported "green" on a broken machine. Missing
+//! tools are offered for reinstall (interactive runs) or reported with a
+//! pointer to `whetstone install-tools`.
 
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -18,7 +25,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::headroom;
+use crate::tools::{self, RepairMode, ToolOutcome};
 use crate::ui;
+use crate::wrapper::{self, ProxyStartCheck};
 
 /// Status of a single check.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +62,12 @@ impl DoctorReport {
             .all(|f| !matches!(f.status, Status::Warning(_)))
     }
 
+    /// Fold another report's findings in, preserving `mutated`.
+    fn merge(&mut self, other: DoctorReport) {
+        self.mutated |= other.mutated;
+        self.findings.extend(other.findings);
+    }
+
     fn push(&mut self, label: &str, status: Status) {
         if matches!(status, Status::Normalized(_)) {
             self.mutated = true;
@@ -65,11 +81,167 @@ impl DoctorReport {
 
 /// Entry point for `whetstone doctor`. Returns the report so callers (setup,
 /// tests, future TUI) can examine it; also prints a human-readable summary.
+///
+/// Interactive runs prompt before reinstalling anything that went missing;
+/// non-interactive runs degrade to reporting (see [`RepairMode::effective`]).
 pub fn run() -> Result<DoctorReport> {
+    run_with(RepairMode::Prompt, "all")
+}
+
+/// `whetstone doctor --fix`: reinstall missing dependencies without asking.
+pub fn run_fix(extras: &str) -> Result<DoctorReport> {
+    run_with(RepairMode::Force, extras)
+}
+
+/// Shared body. Dependencies are checked (and optionally repaired) *first* so
+/// that a freshly reinstalled tool has already re-run its own `init` by the
+/// time we inspect `settings.json` — otherwise doctor would report a missing
+/// hook it had just caused to be rewritten.
+pub(crate) fn run_with(mode: RepairMode, extras: &str) -> Result<DoctorReport> {
+    let mut report = DoctorReport::default();
+    check_dependencies(&mut report, mode, extras);
+
     let settings_path = settings_path()?;
-    let report = inspect_and_normalize(&settings_path)?;
+    report.merge(inspect_and_normalize(&settings_path)?);
+
     print_report(&report);
     Ok(report)
+}
+
+/// Check every managed dependency and system prerequisite, repairing as the
+/// mode allows. Findings land in `report` so they print with everything else.
+fn check_dependencies(
+    report: &mut DoctorReport,
+    mode: RepairMode,
+    extras: &str,
+) {
+    for prereq in tools::repair_prereqs(mode) {
+        report.push(
+            prereq.name,
+            Status::Warning(format!("missing — {}", prereq.hint)),
+        );
+    }
+
+    let provider = tools::project_provider();
+    let reports = tools::repair(provider, mode, extras);
+    let headroom_ok = reports
+        .iter()
+        .any(|r| r.tool == tools::Tool::Headroom && r.is_healthy());
+
+    for tool_report in reports {
+        let label = tool_report.tool.label();
+        let (label, status) = match tool_report.outcome {
+            ToolOutcome::Ok(ver) => (format!("{label} {ver}"), Status::Ok),
+            ToolOutcome::Repaired { from, version } => (
+                label.to_string(),
+                Status::Normalized(format!(
+                    "was {}, reinstalled {version}",
+                    from.describe(),
+                )),
+            ),
+            ToolOutcome::Unrepaired(presence) => (
+                label.to_string(),
+                Status::Warning(format!(
+                    "{} — run `whetstone install-tools` to reinstall",
+                    presence.describe(),
+                )),
+            ),
+            ToolOutcome::Failed { presence, error } => (
+                label.to_string(),
+                Status::Warning(format!(
+                    "{} and reinstall failed: {error}",
+                    presence.describe(),
+                )),
+            ),
+        };
+        report.push(&label, status);
+    }
+
+    if headroom_ok {
+        check_proxy_starts(report, mode);
+    }
+}
+
+/// The check the earlier ones can't make: does headroom actually *run*?
+///
+/// A tool can be installed, current, and complete and still fail every start
+/// because of what's in its own `settings.json` — which is exactly how a dead
+/// proxy hid behind a green doctor. When the failure is a flag the rollout
+/// channel rejects, the offending key can be removed (with a backup), which is
+/// the only startup failure whetstone can honestly diagnose on its own.
+fn check_proxy_starts(report: &mut DoctorReport, mode: RepairMode) {
+    const LABEL: &str = "headroom proxy";
+
+    let detail = match wrapper::check_proxy_starts() {
+        ProxyStartCheck::AlreadyRunning => {
+            report.push(LABEL, Status::Ok);
+            return;
+        }
+        ProxyStartCheck::Starts => {
+            report.push(LABEL, Status::Ok);
+            return;
+        }
+        ProxyStartCheck::Failed { detail } => detail,
+    };
+
+    let Some(key) = headroom::blocked_setting_key(&detail) else {
+        report
+            .push(LABEL, Status::Warning(format!("does not start: {detail}")));
+        return;
+    };
+
+    let hint = format!(
+        "does not start: {detail} \
+         — `{key}` in ~/.headroom/settings.json asks for it"
+    );
+
+    let may_fix = match mode.effective() {
+        RepairMode::Report => false,
+        RepairMode::Force => true,
+        RepairMode::Prompt => ui::confirm(
+            &format!(
+                "headroom {hint}. Remove `{key}` from headroom's settings?"
+            ),
+            true,
+        ),
+    };
+
+    if !may_fix {
+        report.push(
+            LABEL,
+            Status::Warning(format!(
+                "{hint}; run `whetstone doctor --fix` to remove it"
+            )),
+        );
+        return;
+    }
+
+    match headroom::disable_setting(&key) {
+        Ok(true) => match wrapper::check_proxy_starts() {
+            ProxyStartCheck::Failed { detail } => report.push(
+                LABEL,
+                Status::Warning(format!(
+                    "removed `{key}` but headroom still does not start: {detail}"
+                )),
+            ),
+            _ => report.push(
+                LABEL,
+                Status::Normalized(format!(
+                    "removed `{key}` from headroom settings; proxy starts"
+                )),
+            ),
+        },
+        Ok(false) => report.push(
+            LABEL,
+            Status::Warning(format!(
+                "{hint}, but no such key is set — check headroom's own config"
+            )),
+        ),
+        Err(e) => report.push(
+            LABEL,
+            Status::Warning(format!("{hint}; could not remove it: {e:#}")),
+        ),
+    }
 }
 
 fn settings_path() -> Result<PathBuf> {
@@ -490,6 +662,37 @@ mod tests {
                 .unwrap();
         assert_eq!(rewritten["model"], "claude-opus-4-7");
         assert!(rewritten["mcpServers"].is_object());
+    }
+
+    #[test]
+    fn merge_preserves_findings_and_mutated_flag() {
+        // `run_with` folds the dependency pass and the settings pass into one
+        // report; a normalization in either half has to survive the merge or
+        // doctor would skip writing settings.json back.
+        let mut deps = DoctorReport::default();
+        deps.push("headroom", Status::Ok);
+
+        let mut settings = DoctorReport::default();
+        settings
+            .push("rtk PreToolUse hook", Status::Normalized("moved".into()));
+
+        deps.merge(settings);
+
+        assert!(deps.mutated);
+        assert_eq!(deps.findings.len(), 2);
+        assert_eq!(deps.findings[0].label, "headroom");
+        assert_eq!(deps.findings[1].label, "rtk PreToolUse hook");
+    }
+
+    #[test]
+    fn merge_of_clean_report_leaves_mutated_false() {
+        let mut a = DoctorReport::default();
+        a.push("headroom", Status::Ok);
+        let mut b = DoctorReport::default();
+        b.push("icm hooks", Status::Warning("nope".into()));
+        a.merge(b);
+        assert!(!a.mutated);
+        assert!(!a.green());
     }
 
     #[test]

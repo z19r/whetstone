@@ -79,8 +79,30 @@ pub enum Command {
     /// Modify project settings interactively
     Settings,
 
-    /// Inspect ~/.claude/settings.json and report problems (Phase 1 task 1.2)
-    Doctor,
+    /// Check dependencies + ~/.claude/settings.json and report problems
+    Doctor {
+        /// Reinstall missing dependencies without prompting
+        #[arg(long)]
+        fix: bool,
+
+        /// Headroom pip extras used when reinstalling: "all" (default),
+        /// "none", or comma-separated like "proxy,code"
+        #[arg(long, default_value = "all")]
+        headroom_extras: String,
+    },
+
+    /// Install or repair every managed dependency (headroom, rtk, claude
+    /// code, memory provider) and re-wire their hooks
+    InstallTools {
+        /// Reinstall/upgrade everything, not just what is missing
+        #[arg(long)]
+        force: bool,
+
+        /// Headroom pip extras: "all" (default), "none", or
+        /// comma-separated like "proxy,code"
+        #[arg(long, default_value = "all")]
+        headroom_extras: String,
+    },
 
     /// Migrate a v2 install to v3 (Phase 3)
     Migrate {

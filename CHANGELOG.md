@@ -4,6 +4,30 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `whetstone install-tools` — install or repair every managed dependency
+  (headroom, rtk, claude code, memory provider), re-run their `init` hooks,
+  and resync the project manifest; `--force` reinstalls everything
+- `whetstone doctor` now checks that the managed dependencies still exist
+  before inspecting `~/.claude/settings.json`, offers to reinstall the missing
+  ones (`--fix` skips the prompt), and reports missing system prerequisites
+- launching a managed tool that was uninstalled now offers to reinstall it
+  instead of failing with a bare `exec` error
+
+- `whetstone doctor` now verifies that headroom actually **starts**: it probes
+  the running proxy, or spawns a throwaway one on a free port with the same
+  args and env whetstone launches with, and reports headroom's own startup
+  error when it dies. A start blocked by a rollout-gated flag (e.g.
+  `read_maturation` in `~/.headroom/settings.json`) is offered for removal —
+  `--fix` removes it, with a backup, and re-checks
+
+### Fixed
+
+- whetstone now verifies headroom's *extras*, not just its version: an install
+  recorded by uv without `proxy`/`code`/`mcp` is reported by `doctor` and
+  reinstalled as `headroom-ai[proxy,code,mcp]` instead of passing as healthy
+
 ## [3.11.0] - 2026-08-20
 
 ### Added
