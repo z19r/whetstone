@@ -90,14 +90,14 @@ pub struct ProjectSettings {
 /// Valid Claude Code `--permission-mode` values, most-permissive-first for the
 /// settings TUI's cycle order (the first entry is the value a freshly-enabled
 /// setting seeds).
-pub const PERMISSION_MODES: &[&str] =
-    &["acceptEdits", "default", "plan", "bypassPermissions"];
+pub const PERMISSION_MODES: [&str; 4] =
+    ["acceptEdits", "default", "plan", "bypassPermissions"];
 
 /// Selectable Headroom savings profiles for the settings TUI's cycle order.
 /// The TUI's leading "Off" slot is the "None" option (no override; Headroom
 /// falls back to its own default, `agent-90`).
-pub const SAVINGS_PROFILES: &[&str] =
-    &["coding", "agent-90", "balanced", "general"];
+pub const SAVINGS_PROFILES: [&str; 4] =
+    ["coding", "agent-90", "balanced", "general"];
 
 const GLOBAL_DIR: &str = ".whetstone";
 const GLOBAL_SETTINGS_FILENAME: &str = "settings.json";
