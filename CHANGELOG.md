@@ -4,6 +4,34 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.14.1] - 2026-08-23
+
+### Added
+
+- add Headroom Savings Profile setting
+- kill registered proxies on global uninstall
+- per-config proxy selection; drop memory-conflict prompt
+- prune + reuse/spawn resolve orchestrator
+- launch-order 8787 port anchor
+- add lockfile guard for the registry
+- add proxy registry load/save
+- add ProxySpec config fingerprint
+- add install-tools command and doctor startup/extras verification (#89)
+- add HEADROOM_BEACON opt-out toggle to settings (#87)
+
+### Fixed
+
+- point wrap claude at the managed per-config proxy port (#95)
+- tolerate transient probe + surface registry save errors
+- remove dead test scaffolding struct
+- add PID ownership check to lockfile guard, fix deadline check, and remove unused imports
+
+### Changed
+
+- use fixed-size arrays for mode/profile consts
+- per-config proxy plan + launch-order anchor spec refinement
+- per-config headroom proxy reuse design
+
 ## [3.14.0] - 2026-08-23
 
 ### Added

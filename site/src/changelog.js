@@ -2,6 +2,38 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.14.1",
+    "date": "2026-08-23",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add Headroom Savings Profile setting",
+          "kill registered proxies on global uninstall",
+          "per-config proxy selection; drop memory-conflict prompt",
+          "prune + reuse/spawn resolve orchestrator"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "point wrap claude at the managed per-config proxy port (#95)",
+          "tolerate transient probe + surface registry save errors",
+          "remove dead test scaffolding struct",
+          "add PID ownership check to lockfile guard, fix deadline check, and remove unused imports"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "use fixed-size arrays for mode/profile consts",
+          "per-config proxy plan + launch-order anchor spec refinement",
+          "per-config headroom proxy reuse design"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.14.0",
     "date": "2026-08-23",
     "sections": [
@@ -153,19 +185,6 @@ window.WHETSTONE_CHANGELOG = [
           "add configurable Claude Code edit mode setting (#81)"
         ]
       },
-      {
-        "name": "fixed",
-        "bullets": [
-          "stop passing --no-rtk to headroom wrap (#79)",
-          "stop v3 slash commands from triggering false v2 migration (#78)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.8.1",
-    "date": "2026-08-06",
-    "sections": [
       {
         "name": "fixed",
         "bullets": [
