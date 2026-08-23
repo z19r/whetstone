@@ -237,6 +237,57 @@ pub fn choose_port(
     free_port()
 }
 
+/// The result of resolving a launch to a proxy port.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ProxyOutcome {
+    /// An already-running proxy matched the fingerprint.
+    Reused(u16),
+    /// A fresh proxy was spawned on this port.
+    Spawned(u16),
+    /// No proxy could be brought up; caller should soft-fall-back.
+    Failed,
+}
+
+/// Injected side effects so `resolve` is unit-testable without a real proxy.
+pub struct ResolveDeps<'a> {
+    /// Does a proxy answer `/health` on this port?
+    pub probe: &'a dyn Fn(u16) -> bool,
+    /// Can we bind this port right now?
+    pub port_free: &'a dyn Fn(u16) -> bool,
+    /// Ask the OS for an unused port.
+    pub free_port: &'a dyn Fn() -> Option<u16>,
+    /// Spawn a proxy for the current spec on this port; return its pid when it
+    /// comes up ready, else `None`.
+    pub spawn: &'a dyn Fn(u16) -> Option<u32>,
+}
+
+/// Prune dead entries, reuse a live matching proxy, or spawn a new one.
+/// Mutates `reg`; the caller persists it under the lock.
+#[allow(dead_code)]
+pub fn resolve(
+    reg: &mut Registry,
+    spec: &ProxySpec,
+    deps: &ResolveDeps,
+) -> ProxyOutcome {
+    reg.entries.retain(|e| (deps.probe)(e.port));
+
+    let fingerprint = proxy_fingerprint(spec);
+    if let Some(entry) = reg.find(&fingerprint) {
+        return ProxyOutcome::Reused(entry.port);
+    }
+
+    let Some(port) = choose_port(reg, deps.port_free, deps.free_port) else {
+        return ProxyOutcome::Failed;
+    };
+    match (deps.spawn)(port) {
+        Some(pid) => {
+            reg.entries.push(ProxyEntry { fingerprint, port, pid });
+            ProxyOutcome::Spawned(port)
+        }
+        None => ProxyOutcome::Failed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,5 +459,89 @@ mod tests {
         // Anchor reported busy by the OS even though no entry claims it.
         let port = choose_port(&reg, |p| p != ANCHOR_PORT, || Some(9003));
         assert_eq!(port, Some(9003));
+    }
+
+    struct Stub {
+        alive: std::cell::RefCell<Vec<u16>>, // ports that answer /health
+        spawned: std::cell::RefCell<Vec<u16>>,
+        next_free: u16,
+    }
+
+    fn deps_from<'a>(
+        probe: &'a dyn Fn(u16) -> bool,
+        port_free: &'a dyn Fn(u16) -> bool,
+        free_port: &'a dyn Fn() -> Option<u16>,
+        spawn: &'a dyn Fn(u16) -> Option<u32>,
+    ) -> ResolveDeps<'a> {
+        ResolveDeps { probe, port_free, free_port, spawn }
+    }
+
+    #[test]
+    fn resolve_reuses_a_live_matching_proxy() {
+        let spec = base();
+        let fp = proxy_fingerprint(&spec);
+        let mut reg = Registry { entries: vec![ProxyEntry { fingerprint: fp, port: 8801, pid: 7 }] };
+
+        let probe = |_p: u16| true; // 8801 answers
+        let port_free = |_p: u16| true;
+        let free_port = || Some(9100u16);
+        let spawn = |_p: u16| -> Option<u32> { panic!("must not spawn on reuse") };
+        let deps = deps_from(&probe, &port_free, &free_port, &spawn);
+
+        let outcome = resolve(&mut reg, &spec, &deps);
+        assert_eq!(outcome, ProxyOutcome::Reused(8801));
+        assert_eq!(reg.entries.len(), 1);
+    }
+
+    #[test]
+    fn resolve_prunes_dead_entry_and_spawns() {
+        let spec = base();
+        let fp = proxy_fingerprint(&spec);
+        let mut reg = Registry { entries: vec![ProxyEntry { fingerprint: fp.clone(), port: 8801, pid: 7 }] };
+
+        let probe = |_p: u16| false; // nothing answers → 8801 is dead
+        let port_free = |_p: u16| true;
+        let free_port = || Some(9100u16);
+        let spawned: std::cell::Cell<Option<u16>> = std::cell::Cell::new(None);
+        let spawn = |p: u16| -> Option<u32> { spawned.set(Some(p)); Some(555) };
+        let deps = deps_from(&probe, &port_free, &free_port, &spawn);
+
+        let outcome = resolve(&mut reg, &spec, &deps);
+        // Dead 8801 pruned; anchor free & unclaimed → spawns on 8787.
+        assert_eq!(outcome, ProxyOutcome::Spawned(ANCHOR_PORT));
+        assert_eq!(spawned.get(), Some(ANCHOR_PORT));
+        assert_eq!(reg.find(&fp).map(|e| (e.port, e.pid)), Some((ANCHOR_PORT, 555)));
+    }
+
+    #[test]
+    fn resolve_spawns_new_port_when_anchor_taken() {
+        let spec = base();
+        let fp = proxy_fingerprint(&spec);
+        // A different fingerprint holds a live anchor.
+        let mut reg = Registry { entries: vec![ProxyEntry { fingerprint: "other".into(), port: ANCHOR_PORT, pid: 1 }] };
+
+        let probe = |_p: u16| true; // anchor's holder is alive
+        let port_free = |_p: u16| true;
+        let free_port = || Some(9100u16);
+        let spawn = |_p: u16| -> Option<u32> { Some(556) };
+        let deps = deps_from(&probe, &port_free, &free_port, &spawn);
+
+        let outcome = resolve(&mut reg, &spec, &deps);
+        assert_eq!(outcome, ProxyOutcome::Spawned(9100));
+        assert_eq!(reg.find(&fp).map(|e| e.port), Some(9100));
+    }
+
+    #[test]
+    fn resolve_reports_failed_when_spawn_fails() {
+        let spec = base();
+        let mut reg = Registry::default();
+        let probe = |_p: u16| false;
+        let port_free = |_p: u16| true;
+        let free_port = || Some(9100u16);
+        let spawn = |_p: u16| -> Option<u32> { None };
+        let deps = deps_from(&probe, &port_free, &free_port, &spawn);
+
+        assert_eq!(resolve(&mut reg, &spec, &deps), ProxyOutcome::Failed);
+        assert!(reg.find(&proxy_fingerprint(&spec)).is_none());
     }
 }
