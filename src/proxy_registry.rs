@@ -296,6 +296,13 @@ pub fn resolve(
     }
 }
 
+/// Signal every recorded proxy pid via the injected killer.
+pub fn kill_all(reg: &Registry, kill: impl Fn(u32)) {
+    for entry in &reg.entries {
+        kill(entry.pid);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -583,5 +590,26 @@ mod tests {
 
         assert_eq!(resolve(&mut reg, &spec, &deps), ProxyOutcome::Failed);
         assert!(reg.find(&proxy_fingerprint(&spec)).is_none());
+    }
+
+    #[test]
+    fn kill_all_signals_every_recorded_pid() {
+        let reg = Registry {
+            entries: vec![
+                ProxyEntry {
+                    fingerprint: "a".into(),
+                    port: 8787,
+                    pid: 11,
+                },
+                ProxyEntry {
+                    fingerprint: "b".into(),
+                    port: 8801,
+                    pid: 22,
+                },
+            ],
+        };
+        let killed = std::cell::RefCell::new(Vec::new());
+        kill_all(&reg, |pid| killed.borrow_mut().push(pid));
+        assert_eq!(*killed.borrow(), vec![11, 22]);
     }
 }
