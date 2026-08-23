@@ -14,6 +14,7 @@ mod memory_consolidate;
 mod migrate;
 mod model_update;
 mod preflight;
+mod proxy_registry;
 mod release;
 mod rtk;
 mod settings;
