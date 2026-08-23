@@ -2,8 +2,8 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-08-23",
   releaseDateHuman: "AUG 23 2026",
-  sha: "929868a",
-  tagline: "add HEADROOM_BEACON opt-out toggle to settings (#87)",
+  sha: "39e0cec",
+  tagline: "add install-tools command and doctor startup/extras verification (#89)",
   assets: { commands: 2 },
   modules: [
     { id: "headroom", label: "HEADROOM PROXY", sub: "Context compression" },

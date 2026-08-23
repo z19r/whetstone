@@ -2,6 +2,36 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.13.0",
+    "date": "2026-08-23",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "kill registered proxies on global uninstall",
+          "per-config proxy selection; drop memory-conflict prompt",
+          "prune + reuse/spawn resolve orchestrator",
+          "launch-order 8787 port anchor"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "tolerate transient probe + surface registry save errors",
+          "remove dead test scaffolding struct",
+          "add PID ownership check to lockfile guard, fix deadline check, and remove unused imports"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "per-config proxy plan + launch-order anchor spec refinement",
+          "per-config headroom proxy reuse design"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.12.0",
     "date": "2026-08-23",
     "sections": [
@@ -145,24 +175,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "changed",
         "bullets": [
           "Split whetstone uninstall into whetstone project uninstall (removes per-project files) and whetstone global uninstall (removes the whetston…"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.7.0",
-    "date": "2026-07-02",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "add --memory flag and Headroom Memory setting (#67)"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "re-sync headroom MCP on update; prefer newest Sonnet as default model (#68)"
         ]
       }
     ]
