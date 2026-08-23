@@ -183,8 +183,9 @@ pub fn acquire_lock(
             Ok(mut file) => {
                 // Write our PID to the lockfile for ownership verification.
                 let pid_str = pid.to_string();
-                file.write_all(pid_str.as_bytes())
-                    .with_context(|| format!("writing pid to lock {}", path.display()))?;
+                file.write_all(pid_str.as_bytes()).with_context(|| {
+                    format!("writing pid to lock {}", path.display())
+                })?;
                 return Ok(LockGuard {
                     path: path.to_path_buf(),
                     pid,
@@ -213,7 +214,10 @@ fn lock_is_stale(path: &Path, stale_after: Duration) -> bool {
     let Ok(modified) = meta.modified() else {
         return false;
     };
-    modified.elapsed().map(|age| age >= stale_after).unwrap_or(false)
+    modified
+        .elapsed()
+        .map(|age| age >= stale_after)
+        .unwrap_or(false)
 }
 
 /// Backward-compat anchor port. Assigned best-effort to the first proxy
@@ -281,7 +285,11 @@ pub fn resolve(
     };
     match (deps.spawn)(port) {
         Some(pid) => {
-            reg.entries.push(ProxyEntry { fingerprint, port, pid });
+            reg.entries.push(ProxyEntry {
+                fingerprint,
+                port,
+                pid,
+            });
             ProxyOutcome::Spawned(port)
         }
         None => ProxyOutcome::Failed,
@@ -348,10 +356,12 @@ mod tests {
     fn fingerprint_is_order_independent_for_env() {
         let mut a = base();
         a.env.insert("HEADROOM_RPM".into(), "1".into());
-        a.env.insert("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into());
+        a.env
+            .insert("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into());
         // BTreeMap canonicalizes order; inserting in the other order matches.
         let mut b = base();
-        b.env.insert("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into());
+        b.env
+            .insert("HEADROOM_CODE_AWARE_ENABLED".into(), "1".into());
         b.env.insert("HEADROOM_RPM".into(), "1".into());
         assert_eq!(proxy_fingerprint(&a), proxy_fingerprint(&b));
     }
@@ -436,7 +446,11 @@ mod tests {
     }
 
     fn entry(fp: &str, port: u16) -> ProxyEntry {
-        ProxyEntry { fingerprint: fp.into(), port, pid: 1 }
+        ProxyEntry {
+            fingerprint: fp.into(),
+            port,
+            pid: 1,
+        }
     }
 
     #[test]
@@ -448,7 +462,9 @@ mod tests {
 
     #[test]
     fn choose_port_skips_anchor_when_claimed_by_a_live_entry() {
-        let reg = Registry { entries: vec![entry("x", ANCHOR_PORT)] };
+        let reg = Registry {
+            entries: vec![entry("x", ANCHOR_PORT)],
+        };
         let port = choose_port(&reg, |_| true, || Some(9002));
         assert_eq!(port, Some(9002));
     }
@@ -461,31 +477,37 @@ mod tests {
         assert_eq!(port, Some(9003));
     }
 
-    struct Stub {
-        alive: std::cell::RefCell<Vec<u16>>, // ports that answer /health
-        spawned: std::cell::RefCell<Vec<u16>>,
-        next_free: u16,
-    }
-
     fn deps_from<'a>(
         probe: &'a dyn Fn(u16) -> bool,
         port_free: &'a dyn Fn(u16) -> bool,
         free_port: &'a dyn Fn() -> Option<u16>,
         spawn: &'a dyn Fn(u16) -> Option<u32>,
     ) -> ResolveDeps<'a> {
-        ResolveDeps { probe, port_free, free_port, spawn }
+        ResolveDeps {
+            probe,
+            port_free,
+            free_port,
+            spawn,
+        }
     }
 
     #[test]
     fn resolve_reuses_a_live_matching_proxy() {
         let spec = base();
         let fp = proxy_fingerprint(&spec);
-        let mut reg = Registry { entries: vec![ProxyEntry { fingerprint: fp, port: 8801, pid: 7 }] };
+        let mut reg = Registry {
+            entries: vec![ProxyEntry {
+                fingerprint: fp,
+                port: 8801,
+                pid: 7,
+            }],
+        };
 
         let probe = |_p: u16| true; // 8801 answers
         let port_free = |_p: u16| true;
         let free_port = || Some(9100u16);
-        let spawn = |_p: u16| -> Option<u32> { panic!("must not spawn on reuse") };
+        let spawn =
+            |_p: u16| -> Option<u32> { panic!("must not spawn on reuse") };
         let deps = deps_from(&probe, &port_free, &free_port, &spawn);
 
         let outcome = resolve(&mut reg, &spec, &deps);
@@ -497,20 +519,32 @@ mod tests {
     fn resolve_prunes_dead_entry_and_spawns() {
         let spec = base();
         let fp = proxy_fingerprint(&spec);
-        let mut reg = Registry { entries: vec![ProxyEntry { fingerprint: fp.clone(), port: 8801, pid: 7 }] };
+        let mut reg = Registry {
+            entries: vec![ProxyEntry {
+                fingerprint: fp.clone(),
+                port: 8801,
+                pid: 7,
+            }],
+        };
 
         let probe = |_p: u16| false; // nothing answers → 8801 is dead
         let port_free = |_p: u16| true;
         let free_port = || Some(9100u16);
         let spawned: std::cell::Cell<Option<u16>> = std::cell::Cell::new(None);
-        let spawn = |p: u16| -> Option<u32> { spawned.set(Some(p)); Some(555) };
+        let spawn = |p: u16| -> Option<u32> {
+            spawned.set(Some(p));
+            Some(555)
+        };
         let deps = deps_from(&probe, &port_free, &free_port, &spawn);
 
         let outcome = resolve(&mut reg, &spec, &deps);
         // Dead 8801 pruned; anchor free & unclaimed → spawns on 8787.
         assert_eq!(outcome, ProxyOutcome::Spawned(ANCHOR_PORT));
         assert_eq!(spawned.get(), Some(ANCHOR_PORT));
-        assert_eq!(reg.find(&fp).map(|e| (e.port, e.pid)), Some((ANCHOR_PORT, 555)));
+        assert_eq!(
+            reg.find(&fp).map(|e| (e.port, e.pid)),
+            Some((ANCHOR_PORT, 555))
+        );
     }
 
     #[test]
@@ -518,7 +552,13 @@ mod tests {
         let spec = base();
         let fp = proxy_fingerprint(&spec);
         // A different fingerprint holds a live anchor.
-        let mut reg = Registry { entries: vec![ProxyEntry { fingerprint: "other".into(), port: ANCHOR_PORT, pid: 1 }] };
+        let mut reg = Registry {
+            entries: vec![ProxyEntry {
+                fingerprint: "other".into(),
+                port: ANCHOR_PORT,
+                pid: 1,
+            }],
+        };
 
         let probe = |_p: u16| true; // anchor's holder is alive
         let port_free = |_p: u16| true;
