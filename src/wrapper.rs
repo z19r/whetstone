@@ -163,7 +163,11 @@ fn select_proxy_port(spec: &crate::proxy_registry::ProxySpec) -> Option<u16> {
     };
 
     let outcome = reg::resolve(&mut registry, spec, &deps);
-    let _ = registry.save(&path);
+    if let Err(e) = registry.save(&path) {
+        crate::ui::warn(&format!(
+            "could not persist proxy registry ({e}); a spawned proxy may be untracked"
+        ));
+    }
     match outcome {
         reg::ProxyOutcome::Reused(p) | reg::ProxyOutcome::Spawned(p) => Some(p),
         reg::ProxyOutcome::Failed => None,

@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 /// Everything that varies a spawned Headroom proxy's behavior. Two specs with
 /// the same fingerprint may share one proxy.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
 pub struct ProxySpec {
     /// Resolved `HEADROOM_SAVINGS_PROFILE`.
     pub savings_profile: String,
@@ -26,7 +25,6 @@ pub struct ProxySpec {
     pub env: BTreeMap<String, String>,
 }
 
-#[allow(dead_code)]
 fn canonical(spec: &ProxySpec) -> String {
     let mut s = String::new();
     s.push_str("sp=");
@@ -51,7 +49,6 @@ fn canonical(spec: &ProxySpec) -> String {
     s
 }
 
-#[allow(dead_code)]
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {
@@ -62,7 +59,6 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 }
 
 /// FNV-1a 64-bit over a canonical rendering of the spec.
-#[allow(dead_code)]
 pub fn proxy_fingerprint(spec: &ProxySpec) -> String {
     format!("{:016x}", fnv1a(canonical(spec).as_bytes()))
 }
@@ -81,14 +77,12 @@ pub struct ProxyEntry {
 /// The set of live whetstone-spawned proxies. Persisted to
 /// `~/.whetstone/proxies.json`.
 #[derive(Debug, Default, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct Registry {
     #[serde(default)]
     pub entries: Vec<ProxyEntry>,
 }
 
 /// `~/.whetstone/proxies.json`, or `None` if the home dir can't be found.
-#[allow(dead_code)]
 pub fn registry_path() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(GLOBAL_DIR).join(REGISTRY_FILENAME))
 }
@@ -96,7 +90,6 @@ pub fn registry_path() -> Option<PathBuf> {
 impl Registry {
     /// Load the registry, treating a missing or corrupt file as empty — a
     /// stale registry must never block a launch.
-    #[allow(dead_code)]
     pub fn load(path: &Path) -> Self {
         let Ok(raw) = std::fs::read_to_string(path) else {
             return Self::default();
@@ -104,7 +97,6 @@ impl Registry {
         serde_json::from_str(&raw).unwrap_or_default()
     }
 
-    #[allow(dead_code)]
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -116,7 +108,6 @@ impl Registry {
             .with_context(|| format!("writing {}", path.display()))
     }
 
-    #[allow(dead_code)]
     pub fn find(&self, fingerprint: &str) -> Option<&ProxyEntry> {
         self.entries.iter().find(|e| e.fingerprint == fingerprint)
     }
@@ -124,7 +115,6 @@ impl Registry {
 
 /// Advisory lockfile guard. Holds an `O_EXCL`-created file for the duration of
 /// a registry critical section; removes it on drop.
-#[allow(dead_code)]
 pub struct LockGuard {
     path: PathBuf,
     pid: u32,
@@ -154,7 +144,6 @@ impl Drop for LockGuard {
 
 /// Acquire the registry lock, spinning until it's free or `timeout` elapses. A
 /// lockfile older than `stale_after` (a crashed holder) is stolen.
-#[allow(dead_code)]
 pub fn acquire_lock(
     path: &Path,
     timeout: Duration,
@@ -223,12 +212,10 @@ fn lock_is_stale(path: &Path, stale_after: Duration) -> bool {
 /// Backward-compat anchor port. Assigned best-effort to the first proxy
 /// whetstone spawns so a bare `claude` launch and doctor's fast-path still
 /// find a proxy at `127.0.0.1:8787`.
-#[allow(dead_code)]
 pub const ANCHOR_PORT: u16 = 8787;
 
 /// Pick a port for a new proxy: the anchor when it's free and unclaimed,
 /// otherwise a fresh OS-assigned free port.
-#[allow(dead_code)]
 pub fn choose_port(
     reg: &Registry,
     port_free: impl Fn(u16) -> bool,
@@ -267,15 +254,23 @@ pub struct ResolveDeps<'a> {
 
 /// Prune dead entries, reuse a live matching proxy, or spawn a new one.
 /// Mutates `reg`; the caller persists it under the lock.
-#[allow(dead_code)]
 pub fn resolve(
     reg: &mut Registry,
     spec: &ProxySpec,
     deps: &ResolveDeps,
 ) -> ProxyOutcome {
-    reg.entries.retain(|e| (deps.probe)(e.port));
-
     let fingerprint = proxy_fingerprint(spec);
+    // Give the entry matching our config a second-chance probe before pruning:
+    // a live-but-transiently-busy proxy must not be dropped and duplicate-spawned.
+    let matched_port = reg.find(&fingerprint).map(|e| e.port);
+    reg.entries.retain(|e| {
+        if Some(e.port) == matched_port {
+            (deps.probe)(e.port) || (deps.probe)(e.port)
+        } else {
+            (deps.probe)(e.port)
+        }
+    });
+
     if let Some(entry) = reg.find(&fingerprint) {
         return ProxyOutcome::Reused(entry.port);
     }
@@ -520,6 +515,39 @@ mod tests {
         let outcome = resolve(&mut reg, &spec, &deps);
         assert_eq!(outcome, ProxyOutcome::Reused(8801));
         assert_eq!(reg.entries.len(), 1);
+    }
+
+    #[test]
+    fn resolve_reuses_transiently_busy_matching_proxy() {
+        let spec = base();
+        let fp = proxy_fingerprint(&spec);
+        let mut reg = Registry {
+            entries: vec![ProxyEntry {
+                fingerprint: fp,
+                port: 8801,
+                pid: 7,
+            }],
+        };
+
+        // First probe of the matching port says dead; second says alive.
+        // Must still be reused, not pruned + duplicate-spawned.
+        let call_count = std::cell::Cell::new(0u32);
+        let probe = |_p: u16| {
+            let n = call_count.get();
+            call_count.set(n + 1);
+            n >= 1 // false on the first call, true from then on
+        };
+        let port_free = |_p: u16| true;
+        let free_port = || Some(9100u16);
+        let spawn = |_p: u16| -> Option<u32> {
+            panic!("must not spawn a duplicate for a transiently-busy match")
+        };
+        let deps = deps_from(&probe, &port_free, &free_port, &spawn);
+
+        let outcome = resolve(&mut reg, &spec, &deps);
+        assert_eq!(outcome, ProxyOutcome::Reused(8801));
+        assert_eq!(reg.entries.len(), 1);
+        assert_eq!(call_count.get(), 2);
     }
 
     #[test]
