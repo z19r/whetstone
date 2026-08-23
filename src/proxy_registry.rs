@@ -5,6 +5,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -123,18 +124,37 @@ impl Registry {
 
 /// Advisory lockfile guard. Holds an `O_EXCL`-created file for the duration of
 /// a registry critical section; removes it on drop.
+#[allow(dead_code)]
 pub struct LockGuard {
     path: PathBuf,
+    pid: u32,
 }
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        // Only delete if the file contents match our PID (confirms we still own it).
+        let should_delete = std::fs::read_to_string(&self.path)
+            .ok()
+            .and_then(|contents| {
+                contents.trim().parse::<u32>().ok().and_then(|file_pid| {
+                    if file_pid == self.pid {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or(false);
+
+        if should_delete {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 
 /// Acquire the registry lock, spinning until it's free or `timeout` elapses. A
 /// lockfile older than `stale_after` (a crashed holder) is stolen.
+#[allow(dead_code)]
 pub fn acquire_lock(
     path: &Path,
     timeout: Duration,
@@ -145,23 +165,35 @@ pub fn acquire_lock(
             .with_context(|| format!("creating {}", parent.display()))?;
     }
     let deadline = Instant::now() + timeout;
+    let pid = std::process::id();
     loop {
+        // Check deadline at the top of each iteration to honor timeout in all paths.
+        if Instant::now() >= deadline {
+            anyhow::bail!(
+                "timed out acquiring proxy registry lock at {}",
+                path.display()
+            );
+        }
+
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(path)
         {
-            Ok(_) => return Ok(LockGuard { path: path.to_path_buf() }),
+            Ok(mut file) => {
+                // Write our PID to the lockfile for ownership verification.
+                let pid_str = pid.to_string();
+                file.write_all(pid_str.as_bytes())
+                    .with_context(|| format!("writing pid to lock {}", path.display()))?;
+                return Ok(LockGuard {
+                    path: path.to_path_buf(),
+                    pid,
+                });
+            }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 if lock_is_stale(path, stale_after) {
                     let _ = std::fs::remove_file(path);
                     continue;
-                }
-                if Instant::now() >= deadline {
-                    anyhow::bail!(
-                        "timed out acquiring proxy registry lock at {}",
-                        path.display()
-                    );
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
@@ -187,7 +219,6 @@ fn lock_is_stale(path: &Path, stale_after: Duration) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn load_missing_file_is_empty() {
@@ -305,5 +336,30 @@ mod tests {
             std::time::Duration::from_secs(0),
         );
         assert!(g.is_ok());
+    }
+
+    #[test]
+    fn guard_does_not_delete_foreign_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("proxies.lock");
+        let short = std::time::Duration::from_millis(200);
+        let stale = std::time::Duration::from_secs(60);
+
+        // Acquire a lock and get the guard.
+        let g = acquire_lock(&lock, short, stale).unwrap();
+        let our_pid = g.pid;
+
+        // Simulate another process stealing and recreating the lock with a different PID.
+        let other_pid = our_pid.wrapping_add(1);
+        std::fs::write(&lock, other_pid.to_string()).unwrap();
+
+        // Drop our guard; it should NOT delete the foreign lock.
+        drop(g);
+
+        // Verify the lockfile still exists.
+        assert!(lock.exists());
+        // Verify it contains the other PID, not our guard's.
+        let contents = std::fs::read_to_string(&lock).unwrap();
+        assert_eq!(contents, other_pid.to_string());
     }
 }
