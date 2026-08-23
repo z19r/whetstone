@@ -1,16 +1,17 @@
-use serde_json::Value;
 use std::env;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
-const PROXY_PORT: &str = "8787";
-const PROXY_HEALTH_URL: &str = "http://127.0.0.1:8787/health";
 const PROXY_READY_TIMEOUT: Duration = Duration::from_secs(15);
-const PROXY_KILL_TIMEOUT: Duration = Duration::from_secs(10);
 const PROXY_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const PROXY_PROBE_TIMEOUT: Duration = Duration::from_millis(800);
 
+/// Seed a default `ANTHROPIC_BASE_URL` pointing at the anchor port, so a bare
+/// `whetstone proxy` / `whetstone rtk` launch (which never calls
+/// `select_proxy_port`) still has something sane to inherit. `wrap_claude`
+/// overrides this per-session once it knows the actual port the registry
+/// resolved to.
 fn set_proxy_env() {
     if std::env::var("ANTHROPIC_BASE_URL").is_err() {
         std::env::set_var("ANTHROPIC_BASE_URL", DEFAULT_PROXY);
@@ -67,7 +68,13 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     }
 
     let want_memory = memory_flag || resolved.headroom_memory;
-    let decision = resolve_proxy(want_memory);
+    let spec = build_proxy_spec(&resolved, &hr_plan, want_memory);
+    let selected = select_proxy_port(&spec);
+    if let Some(port) = selected {
+        env::set_var("ANTHROPIC_BASE_URL", format!("http://127.0.0.1:{port}"));
+    }
+    let proxy_ready = selected.is_some();
+    let wrap_memory = if proxy_ready { false } else { want_memory };
 
     // An explicit `--model` suppresses the launch-time update prompt entirely;
     // otherwise offer any newer/new-family model and honor the user's choice.
@@ -81,8 +88,8 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     let model = choose_model(user_set, model_decision, &fallback);
     let cmd_args = build_claude_args(
         args,
-        decision.proxy_ready,
-        decision.wrap_memory,
+        proxy_ready,
+        wrap_memory,
         &model,
         resolved.permission_mode.as_deref(),
     );
@@ -90,112 +97,82 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
     exec("headroom", &cmd_args);
 }
 
-/// How whetstone should hand the proxy off to `headroom wrap claude`.
-struct ProxyDecision {
-    /// A live proxy already serves :8787 — pass `--no-proxy` so wrap reuses it.
-    proxy_ready: bool,
-    /// Let `headroom wrap` own a session-bound proxy started with `--memory`.
-    wrap_memory: bool,
-}
-
-/// Reconcile the running proxy (if any) with whether this session wants
-/// persistent memory. When a proxy is already up *without* memory but memory
-/// is wanted, prompt the user before replacing it.
-fn resolve_proxy(want_memory: bool) -> ProxyDecision {
-    match probe_proxy_health() {
-        Some(health) => {
-            if want_memory && !health.memory {
-                resolve_memory_conflict(want_memory, health.pid)
-            } else {
-                // A live proxy already satisfies this session.
-                ProxyDecision {
-                    proxy_ready: true,
-                    wrap_memory: false,
-                }
-            }
-        }
-        None => start_detached_decision(want_memory),
+/// Testable core: assemble a `ProxySpec` from resolved inputs + the apply set.
+fn build_proxy_spec_from(
+    savings_profile: String,
+    telemetry: bool,
+    memory: bool,
+    anthropic_api_url: Option<String>,
+    apply: &[(String, String)],
+) -> crate::proxy_registry::ProxySpec {
+    let env = apply
+        .iter()
+        .filter(|(k, _)| k != "HEADROOM_MEMORY_DB_PATH")
+        .cloned()
+        .collect();
+    crate::proxy_registry::ProxySpec {
+        savings_profile,
+        telemetry,
+        memory,
+        anthropic_api_url: anthropic_api_url.filter(|s| !s.trim().is_empty()),
+        env,
     }
 }
 
-/// Spawn a detached proxy (optionally with memory) and wait for it to answer.
-/// If it never comes up, fall back to letting `headroom wrap` start its own
-/// session-bound proxy — carrying the memory preference across.
-fn start_detached_decision(want_memory: bool) -> ProxyDecision {
-    let ready = start_proxy_detached_ready(want_memory);
-    ProxyDecision {
-        proxy_ready: ready,
-        wrap_memory: if ready { false } else { want_memory },
+/// Production wrapper: reads live settings, the applied env plan, and the
+/// effective upstream URL.
+fn build_proxy_spec(
+    resolved: &crate::config::ResolvedSettings,
+    hr_plan: &crate::headroom_env::HeadroomEnvPlan,
+    memory: bool,
+) -> crate::proxy_registry::ProxySpec {
+    build_proxy_spec_from(
+        required_savings_profile(),
+        resolved.headroom_telemetry,
+        memory,
+        env::var(ANTHROPIC_TARGET_API_URL).ok(),
+        &hr_plan.apply,
+    )
+}
+
+/// Lock the registry, reconcile it against the running proxies, and return the
+/// port this session should use (spawning one if needed). Falls back to `None`
+/// so the caller can let `headroom wrap` try its own proxy.
+fn select_proxy_port(spec: &crate::proxy_registry::ProxySpec) -> Option<u16> {
+    use crate::proxy_registry as reg;
+    let path = reg::registry_path()?;
+    let lock_path = path.with_extension("lock");
+    // Lock window must outlast a full readiness wait.
+    let _guard = reg::acquire_lock(
+        &lock_path,
+        Duration::from_secs(25),
+        Duration::from_secs(45),
+    )
+    .ok()?;
+
+    let mut registry = reg::Registry::load(&path);
+    let probe = |p: u16| probe_port(p);
+    let port_free = |p: u16| free_port_is_bindable(p);
+    let free = || free_port();
+    let spawn = |p: u16| spawn_proxy_ready(p, spec.memory);
+    let deps = reg::ResolveDeps {
+        probe: &probe,
+        port_free: &port_free,
+        free_port: &free,
+        spawn: &spawn,
+    };
+
+    let outcome = reg::resolve(&mut registry, spec, &deps);
+    let _ = registry.save(&path);
+    match outcome {
+        reg::ProxyOutcome::Reused(p) | reg::ProxyOutcome::Spawned(p) => Some(p),
+        reg::ProxyOutcome::Failed => None,
     }
 }
 
-/// The running proxy lacks memory but this session wants it. Ask what to do.
-fn resolve_memory_conflict(
-    want_memory: bool,
-    pid: Option<u32>,
-) -> ProxyDecision {
-    // Non-interactive: never kill a proxy other sessions may be sharing.
-    if !crate::ui::is_interactive() {
-        eprintln!(
-            "[WARN] whetstone: a proxy is already running without --memory; \
-             continuing without memory (run interactively to replace it)"
-        );
-        return ProxyDecision {
-            proxy_ready: true,
-            wrap_memory: false,
-        };
-    }
-
-    let choices = [
-        "Restart the proxy with memory (replaces it for all sessions)",
-        "Start a memory proxy for this session only",
-        "Cancel and abort launch",
-    ];
-    let prompt =
-        "A Headroom proxy is already running without --memory. What now?";
-    match crate::ui::select(prompt, &choices, 0) {
-        0 => {
-            kill_proxy(pid);
-            start_detached_decision(want_memory)
-        }
-        1 => {
-            kill_proxy(pid);
-            // `headroom wrap claude --memory` brings up its own session proxy.
-            ProxyDecision {
-                proxy_ready: false,
-                wrap_memory: true,
-            }
-        }
-        _ => {
-            crate::ui::info("aborted; proxy left untouched");
-            std::process::exit(0);
-        }
-    }
-}
-
-/// SIGTERM the running proxy by PID and wait for the port to free up, so a
-/// replacement can bind :8787 without an [Errno 98] address-in-use race.
-fn kill_proxy(pid: Option<u32>) {
-    match pid {
-        Some(pid) => {
-            let _ = Command::new("kill").arg(pid.to_string()).status();
-        }
-        None => {
-            eprintln!("[WARN] whetstone: running proxy did not report a pid; cannot kill it");
-            return;
-        }
-    }
-
-    let deadline = Instant::now() + PROXY_KILL_TIMEOUT;
-    while Instant::now() < deadline {
-        if !probe_proxy() {
-            return;
-        }
-        std::thread::sleep(PROXY_POLL_INTERVAL);
-    }
-    eprintln!(
-        "[WARN] whetstone: proxy at {DEFAULT_PROXY} did not shut down in time"
-    );
+/// Can we bind this specific port right now?
+fn free_port_is_bindable(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
 fn resolved_settings() -> crate::config::ResolvedSettings {
@@ -256,82 +233,38 @@ fn warn_ignored_headroom_env(ignored: &[String]) {
     }
 }
 
-/// Phase 6.3: claude's first API call must hit a live proxy. The SessionStart
-/// hook auto-starts headroom, but it fires after claude has already launched —
-/// so the proxy may still be down by the time claude makes its first request.
-/// Spawn `headroom proxy` (optionally with `--memory`) detached and poll until
-/// it answers or we hit `PROXY_READY_TIMEOUT`. Returns whether a proxy is up,
-/// so the caller can pass `--no-proxy` to `headroom wrap` — whetstone owns the
-/// proxy lifecycle, and letting wrap manage it risks a hot-restart crash. On
-/// failure we soft-warn and return false so wrap may still try its own proxy
-/// startup as a last-resort fallback (e.g. a custom upstream).
-fn start_proxy_detached_ready(memory: bool) -> bool {
-    let spawned = spawn_proxy_detached(memory).is_ok();
-
-    let deadline = Instant::now() + PROXY_READY_TIMEOUT;
-    while Instant::now() < deadline {
-        if probe_proxy() {
-            return true;
-        }
-        std::thread::sleep(PROXY_POLL_INTERVAL);
-    }
-
-    let tail = if spawned {
-        "(spawned a background headroom proxy, but it did not respond in time)"
-    } else {
-        "(could not spawn `headroom proxy` — is headroom installed?)"
-    };
-    eprintln!(
-        "[WARN] whetstone: proxy at {DEFAULT_PROXY} is not responding {tail}"
-    );
-    false
+fn probe_port(port: u16) -> bool {
+    let url = format!("http://127.0.0.1:{port}/health");
+    ureq::get(&url).timeout(PROXY_PROBE_TIMEOUT).call().is_ok()
 }
 
 fn probe_proxy() -> bool {
-    ureq::get(PROXY_HEALTH_URL)
-        .timeout(PROXY_PROBE_TIMEOUT)
-        .call()
-        .is_ok()
+    probe_port(crate::proxy_registry::ANCHOR_PORT)
 }
 
-/// A live proxy's relevant state, read from `/health` `config`.
-struct ProxyHealth {
-    /// Whether the running proxy was started with persistent memory enabled.
-    memory: bool,
-    /// The proxy's process id, used to replace it cleanly. `None` if absent.
-    pid: Option<u32>,
+/// Spawn a proxy on `port` and poll until it answers or times out. Returns the
+/// child pid on success (read back from the port's own report is unnecessary —
+/// we return the spawned pid), else `None`.
+fn spawn_proxy_ready(port: u16, memory: bool) -> Option<u32> {
+    let pid = spawn_proxy_detached_pid(&port.to_string(), memory)?;
+    let deadline = Instant::now() + PROXY_READY_TIMEOUT;
+    while Instant::now() < deadline {
+        if probe_port(port) {
+            return Some(pid);
+        }
+        std::thread::sleep(PROXY_POLL_INTERVAL);
+    }
+    eprintln!(
+        "[WARN] whetstone: proxy on 127.0.0.1:{port} did not respond in time"
+    );
+    None
 }
 
-/// Probe `/health` and parse memory state + pid. `None` when no proxy answers.
-fn probe_proxy_health() -> Option<ProxyHealth> {
-    let body = ureq::get(PROXY_HEALTH_URL)
-        .timeout(PROXY_PROBE_TIMEOUT)
-        .call()
-        .ok()?
-        .into_string()
-        .ok()?;
-    parse_proxy_health(&body)
-}
-
-fn parse_proxy_health(body: &str) -> Option<ProxyHealth> {
-    let json: Value = serde_json::from_str(body).ok()?;
-    let config = json.get("config");
-    let memory = config
-        .and_then(|c| c.get("memory"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let pid = config
-        .and_then(|c| c.get("pid"))
-        .and_then(Value::as_u64)
-        .map(|p| p as u32);
-    Some(ProxyHealth { memory, pid })
-}
-
-fn spawn_proxy_detached(memory: bool) -> std::io::Result<()> {
+fn spawn_proxy_detached_pid(port: &str, memory: bool) -> Option<u32> {
     use std::process::Stdio;
     let telemetry_disabled = !headroom_telemetry_enabled();
     let args = build_proxy_args(
-        PROXY_PORT,
+        port,
         headroom_proxy_supports_savings_profile(),
         telemetry_disabled,
         memory,
@@ -357,7 +290,8 @@ fn spawn_proxy_detached(memory: bool) -> std::io::Result<()> {
         cmd.env(key, value);
     }
 
-    cmd.spawn().map(|_| ())
+    let child = cmd.spawn().ok()?;
+    Some(child.id())
 }
 
 /// Verdict from [`check_proxy_starts`].
@@ -763,6 +697,34 @@ mod tests {
     }
 
     #[test]
+    fn build_proxy_spec_excludes_memory_db_path() {
+        use std::collections::BTreeMap;
+        let mut apply = vec![
+            ("HEADROOM_CODE_AWARE_ENABLED".to_string(), "1".to_string()),
+            (
+                "HEADROOM_MEMORY_DB_PATH".to_string(),
+                "/home/u/.headroom/memory.db".to_string(),
+            ),
+        ];
+        // Sorted apply set is fine; the helper filters by key.
+        apply.sort();
+        let spec = build_proxy_spec_from(
+            "agent-90".to_string(),
+            true, // telemetry
+            true, // memory
+            Some("https://up.test".to_string()),
+            &apply,
+        );
+        assert_eq!(spec.savings_profile, "agent-90");
+        assert!(spec.telemetry);
+        assert!(spec.memory);
+        assert_eq!(spec.anthropic_api_url.as_deref(), Some("https://up.test"));
+        assert!(spec.env.contains_key("HEADROOM_CODE_AWARE_ENABLED"));
+        assert!(!spec.env.contains_key("HEADROOM_MEMORY_DB_PATH"));
+        let _ = BTreeMap::<String, String>::new();
+    }
+
+    #[test]
     fn resolve_api_url_uses_setting_when_env_unset() {
         assert_eq!(
             resolve_anthropic_api_url(Some("https://proxy.example"), None),
@@ -1163,35 +1125,6 @@ mod tests {
     fn build_claude_args_omits_memory_by_default() {
         let args = build_claude_args(&[], true, false, DEFAULT_MODEL, None);
         assert!(!args.contains(&"--memory".to_string()));
-    }
-
-    #[test]
-    fn parse_proxy_health_reads_memory_and_pid() {
-        let body = r#"{"config":{"memory":true,"pid":4242}}"#;
-        let health = parse_proxy_health(body).unwrap();
-        assert!(health.memory);
-        assert_eq!(health.pid, Some(4242));
-    }
-
-    #[test]
-    fn parse_proxy_health_defaults_memory_false_when_absent() {
-        let body = r#"{"config":{"pid":7}}"#;
-        let health = parse_proxy_health(body).unwrap();
-        assert!(!health.memory);
-        assert_eq!(health.pid, Some(7));
-    }
-
-    #[test]
-    fn parse_proxy_health_handles_missing_config() {
-        let body = r#"{"status":"healthy"}"#;
-        let health = parse_proxy_health(body).unwrap();
-        assert!(!health.memory);
-        assert_eq!(health.pid, None);
-    }
-
-    #[test]
-    fn parse_proxy_health_rejects_garbage() {
-        assert!(parse_proxy_health("not json").is_none());
     }
 
     #[test]
