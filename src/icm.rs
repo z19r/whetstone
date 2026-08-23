@@ -34,6 +34,39 @@ pub fn installed_version() -> Option<String> {
     version::extract_semver(&raw)
 }
 
+const INSTALL_URL: &str =
+    "https://raw.githubusercontent.com/rtk-ai/icm/main/install.sh";
+
+/// Install ICM via its own install script. `force` reinstalls even when a
+/// working binary is already on `PATH` (used by `whetstone install-tools
+/// --force` and `setup --full`).
+pub fn install(force: bool) -> Result<()> {
+    if !force {
+        if let Some(ver) = installed_version() {
+            ui::ok(&format!("icm already installed ({ver})"));
+            return Ok(());
+        }
+    }
+
+    ui::info("installing ICM...");
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(format!("curl -fsSL {INSTALL_URL} | sh"))
+        .status()
+        .context("failed to run ICM install script")?;
+
+    if !status.success() {
+        bail!("ICM installation failed");
+    }
+
+    if which::which("icm").is_err() {
+        bail!("ICM binary not found after installation — check your PATH");
+    }
+
+    ui::ok("ICM installed");
+    Ok(())
+}
+
 /// Upgrade ICM via its own self-updater (`icm upgrade --apply`). ICM owns its
 /// install/upgrade path, so we delegate rather than re-run the install script.
 pub fn update() -> Result<ui::ComponentStatus> {

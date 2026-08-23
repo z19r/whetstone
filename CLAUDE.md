@@ -54,7 +54,8 @@ whetstone rtk [args...]
 whetstone version
 whetstone dashboard                    # TUI: installed tool versions vs pinned floors
 whetstone settings                     # Interactive layered settings (global/project)
-whetstone doctor                       # Inspect ~/.claude/settings.json + manifest, report drift
+whetstone doctor [--fix]               # Check dependencies + ~/.claude/settings.json, report drift
+whetstone install-tools [--force]      # Install/repair headroom, rtk, claude code, memory provider
 whetstone migrate [--dry-run] [-y] [--rollback ID]   # v2 → v3 migration (reversible)
 whetstone stats                        # Token savings across RTK + Headroom
 whetstone update [--full]
@@ -69,6 +70,37 @@ whetstone memory consolidate [--dry-run]   # drain stray project-local .headroom
 `--headroom-extras` accepts: `all` (default = `proxy,code,mcp`), `none`, or comma-separated like `proxy,code`.
 
 `--memory` is a global flag (e.g. `whetstone --memory`, `whetstone --memory claude`). It enables Headroom persistent cross-session memory by passing `--memory` to the proxy whetstone spawns. If a proxy is already running *without* memory, whetstone prompts: restart it with memory (replaces the global proxy), start a memory proxy for this session only, or cancel. It can also be set persistently per-project or globally via `whetstone settings` (Headroom Memory).
+
+`whetstone doctor` checks the managed dependencies (headroom, rtk, claude
+code, and the project's memory provider) before it looks at hooks: a tool that
+is missing or no longer runnable is offered for reinstall in interactive runs,
+reported with a pointer to `whetstone install-tools` otherwise, and reinstalled
+without prompting under `--fix`. A repaired tool's own `init` is re-run so its
+hooks come back before the settings checks look for them.
+`whetstone install-tools` drives the same repair path directly, also installing
+`uv` if it went missing, restoring the `~/.local/bin/whetstone` symlink, and
+resyncing `tool_versions` in the project manifest.
+
+Doctor also runs a **startup check**: if a proxy is already answering on
+`127.0.0.1:8787` that counts as proof, otherwise whetstone spawns a throwaway
+`headroom proxy` on a free port (same args/env as a real launch, killed after a
+6s grace window) and reports headroom's own error if it exits. This catches the
+case every other check misses — headroom installed, current, and complete, but
+dead on arrival because its own `~/.headroom/settings.json` asks for a flag the
+current rollout channel rejects. When the error names such a flag, doctor maps
+it back to the settings key and offers to remove it (prompt when interactive,
+automatic under `--fix`, backing the file up first), then re-runs the check.
+Note the fast path's blind spot: a proxy still running from before a settings
+change reports OK even though the next start would fail.
+
+Headroom is checked by *extras* as well as version: whetstone reads uv's
+receipt (`$UV_TOOL_DIR`/`~/.local/share/uv/tools/headroom-ai/uv-receipt.toml`)
+and treats an install missing any requested extra as needing repair, so a bare
+`headroom-ai` can't pass as healthy while `headroom proxy`/`headroom mcp` are
+absent. Both commands default to `--headroom-extras all`
+(`headroom-ai[proxy,code,mcp]`); pass the same value you set up with if you
+deliberately installed a smaller set. An install uv didn't record (e.g. pip)
+reports unknown extras and is left alone.
 
 `whetstone settings` also exposes **Anthropic API URL** — a custom upstream Anthropic API URL for the Headroom proxy. When set (per-project or globally), whetstone exports it as `ANTHROPIC_TARGET_API_URL` before launching Headroom, so the whetstone-spawned proxy targets that upstream (mirrors Headroom's `proxy --anthropic-api-url` flag). An externally-set `ANTHROPIC_TARGET_API_URL` env var takes precedence over the stored setting.
 
@@ -120,10 +152,11 @@ src/
 ├── claude_code.rs   # Claude Code launch/detection helpers
 ├── integrations.rs  # Delegates to `rtk init` / `icm init` (tool-managed hooks)
 ├── migrate.rs       # v2 → v3 migration + reversible rollback
-├── doctor.rs        # Inspect settings.json + manifest, report drift
+├── doctor.rs        # Check dependencies + settings.json, repair/report drift
 ├── dashboard.rs     # TUI: installed tool versions vs pinned floors
 ├── settings.rs      # Interactive layered global/project settings TUI
 ├── stats.rs         # Token-savings summary (RTK + Headroom)
+├── tools.rs         # Managed-dependency inventory: presence checks, repair, install-tools
 ├── update.rs        # 12h-cached remote version check + self-update
 ├── release.rs       # Release preflight, version bump, and PR creation
 ├── changelog.rs     # CHANGELOG.md parsing / site changelog sync

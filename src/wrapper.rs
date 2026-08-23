@@ -4,6 +4,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
+const PROXY_PORT: &str = "8787";
 const PROXY_HEALTH_URL: &str = "http://127.0.0.1:8787/health";
 const PROXY_READY_TIMEOUT: Duration = Duration::from_secs(15);
 const PROXY_KILL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -330,6 +331,7 @@ fn spawn_proxy_detached(memory: bool) -> std::io::Result<()> {
     use std::process::Stdio;
     let telemetry_disabled = !headroom_telemetry_enabled();
     let args = build_proxy_args(
+        PROXY_PORT,
         headroom_proxy_supports_savings_profile(),
         telemetry_disabled,
         memory,
@@ -358,12 +360,163 @@ fn spawn_proxy_detached(memory: bool) -> std::io::Result<()> {
     cmd.spawn().map(|_| ())
 }
 
+/// Verdict from [`check_proxy_starts`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProxyStartCheck {
+    /// A proxy is already answering on the whetstone port — the strongest
+    /// possible evidence that headroom starts.
+    AlreadyRunning,
+    /// A throwaway proxy got past startup validation.
+    Starts,
+    /// The proxy exited during startup. `detail` is headroom's own complaint.
+    Failed { detail: String },
+}
+
+/// How long a smoke-test proxy gets to prove it survives startup. Startup
+/// *validation* failures (a rejected flag, a missing dependency, a bad config)
+/// are immediate; a healthy proxy takes longer than this to serve traffic, so
+/// "still running at the deadline" is the pass condition, not "/health said
+/// yes".
+const PROXY_SMOKE_TIMEOUT: Duration = Duration::from_secs(6);
+
+/// Actually try to start headroom.
+///
+/// Installed, right version, right extras — and still dead on arrival, because
+/// something in headroom's own `settings.json` asks for a flag the current
+/// rollout channel rejects. Nothing whetstone inspected could see that; only
+/// running the thing can. Uses the same args and env whetstone launches the
+/// real proxy with, on a throwaway port so a live proxy is never disturbed.
+pub(crate) fn check_proxy_starts() -> ProxyStartCheck {
+    if probe_proxy() {
+        return ProxyStartCheck::AlreadyRunning;
+    }
+    smoke_start_proxy("headroom", PROXY_SMOKE_TIMEOUT)
+}
+
+/// Spawn half of [`check_proxy_starts`], with the program and grace window
+/// passed in so the observe logic can be tested against a stub instead of a
+/// real headroom (and without depending on whether a proxy happens to be up).
+fn smoke_start_proxy(program: &str, grace: Duration) -> ProxyStartCheck {
+    use std::process::Stdio;
+
+    let port = match free_port() {
+        Some(port) => port.to_string(),
+        None => {
+            return ProxyStartCheck::Failed {
+                detail: "could not reserve a local port for the smoke test"
+                    .into(),
+            }
+        }
+    };
+
+    let telemetry_disabled = !headroom_telemetry_enabled();
+    let args = build_proxy_args(
+        &port,
+        headroom_proxy_supports_savings_profile(),
+        telemetry_disabled,
+        false,
+    );
+
+    let mut cmd = Command::new(program);
+    cmd.args(&args)
+        .env("HEADROOM_SAVINGS_PROFILE", required_savings_profile())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if telemetry_disabled {
+        cmd.env("HEADROOM_TELEMETRY", "off");
+    }
+    for (key, value) in &headroom_env_plan().apply {
+        cmd.env(key, value);
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            return ProxyStartCheck::Failed {
+                detail: format!("could not spawn `headroom proxy`: {e}"),
+            }
+        }
+    };
+
+    let deadline = Instant::now() + grace;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let output = child.wait_with_output().ok();
+                let (stdout, stderr) = output
+                    .map(|o| {
+                        (
+                            String::from_utf8_lossy(&o.stdout).to_string(),
+                            String::from_utf8_lossy(&o.stderr).to_string(),
+                        )
+                    })
+                    .unwrap_or_default();
+                return ProxyStartCheck::Failed {
+                    detail: summarize_startup_failure(&stdout, &stderr),
+                };
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return ProxyStartCheck::Starts;
+            }
+            Ok(None) => std::thread::sleep(PROXY_POLL_INTERVAL),
+            Err(e) => {
+                let _ = child.kill();
+                return ProxyStartCheck::Failed {
+                    detail: format!("could not wait on `headroom proxy`: {e}"),
+                };
+            }
+        }
+    }
+}
+
+/// Ask the OS for an unused local port, then let go of it. The window between
+/// releasing and headroom binding is a theoretical race; losing it just makes
+/// one doctor run report a bind failure.
+fn free_port() -> Option<u16> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").ok()?;
+    let port = listener.local_addr().ok()?.port();
+    drop(listener);
+    Some(port)
+}
+
+/// Boil headroom's startup output down to the line that explains the failure.
+/// Prefers an explicit error line; falls back to the last thing it said.
+/// Library chatter on stderr (the transformers/PyTorch notice) is dropped —
+/// it is present on healthy runs too and would bury the real message.
+fn summarize_startup_failure(stdout: &str, stderr: &str) -> String {
+    let lines: Vec<&str> = stderr
+        .lines()
+        .chain(stdout.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| !is_startup_noise(line))
+        .collect();
+
+    lines
+        .iter()
+        .find(|line| {
+            let lower = line.to_lowercase();
+            lower.starts_with("error") || lower.contains("error:")
+        })
+        .or_else(|| lines.last())
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "exited during startup with no output".into())
+}
+
+fn is_startup_noise(line: &str) -> bool {
+    line.starts_with("[transformers]") || line.contains("PyTorch was not found")
+}
+
 fn build_proxy_args(
+    port: &str,
     savings_profile: bool,
     no_telemetry: bool,
     memory: bool,
-) -> Vec<&'static str> {
-    let mut args = vec!["proxy", "--port", "8787"];
+) -> Vec<&str> {
+    let mut args = vec!["proxy", "--port", port];
     if savings_profile {
         args.push("--savings-profile");
     }
@@ -538,6 +691,7 @@ pub fn wrap_rtk(args: &[String]) -> ! {
 #[cfg(unix)]
 fn exec(program: &str, args: &[String]) -> ! {
     use std::os::unix::process::CommandExt;
+    crate::tools::ensure_available(program);
     let err = Command::new(program).args(args).exec();
     eprintln!("[FAIL] failed to exec {program}: {err}");
     std::process::exit(127);
@@ -545,6 +699,7 @@ fn exec(program: &str, args: &[String]) -> ! {
 
 #[cfg(not(unix))]
 fn exec(program: &str, args: &[String]) -> ! {
+    crate::tools::ensure_available(program);
     let status =
         Command::new(program)
             .args(args)
@@ -843,33 +998,153 @@ mod tests {
         assert!(!args.contains(&"acceptEdits".to_string()));
     }
 
+    /// Write an executable stub that stands in for `headroom proxy`.
+    #[cfg(unix)]
+    fn stub_binary(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("fake-headroom");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn smoke_reports_failure_when_the_proxy_exits_during_startup() {
+        // The read-maturation case: headroom rejects its own flag and dies
+        // before serving anything.
+        let dir = tempfile::tempdir().unwrap();
+        let stub = stub_binary(
+            dir.path(),
+            "echo '[transformers] PyTorch was not found.' >&2\n             echo 'error: --read-maturation is not available in the current              rollout channel (stable).' >&2\n             exit 1",
+        );
+
+        let result =
+            smoke_start_proxy(stub.to_str().unwrap(), Duration::from_secs(5));
+
+        match result {
+            ProxyStartCheck::Failed { detail } => {
+                assert!(
+                    detail.contains("--read-maturation"),
+                    "expected headroom's own error, got: {detail}"
+                );
+                assert!(
+                    !detail.contains("transformers"),
+                    "library chatter should be filtered, got: {detail}"
+                );
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn smoke_passes_when_the_proxy_survives_startup() {
+        let dir = tempfile::tempdir().unwrap();
+        let stub = stub_binary(dir.path(), "sleep 30");
+
+        assert_eq!(
+            smoke_start_proxy(
+                stub.to_str().unwrap(),
+                Duration::from_millis(600)
+            ),
+            ProxyStartCheck::Starts,
+        );
+    }
+
+    #[test]
+    fn smoke_reports_failure_when_the_binary_cannot_be_spawned() {
+        let result = smoke_start_proxy(
+            "/nonexistent/definitely-not-headroom",
+            Duration::from_millis(200),
+        );
+        match result {
+            ProxyStartCheck::Failed { detail } => {
+                assert!(detail.contains("could not spawn"), "got: {detail}")
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn startup_failure_prefers_the_error_line() {
+        let stderr = "[transformers] PyTorch was not found. Models won't be \
+                      available.\nerror: --read-maturation is not available in \
+                      the current rollout channel (stable).\n";
+        assert_eq!(
+            summarize_startup_failure("", stderr),
+            "error: --read-maturation is not available in the current rollout \
+             channel (stable).",
+        );
+    }
+
+    #[test]
+    fn startup_failure_ignores_library_chatter() {
+        // The transformers notice appears on healthy runs too; reporting it as
+        // the failure would send the user chasing the wrong thing.
+        let stderr = "[transformers] PyTorch was not found.\n\
+                      Error: Proxy dependencies not installed. Run: pip \
+                      install headroom-ai[proxy]\n";
+        assert_eq!(
+            summarize_startup_failure("", stderr),
+            "Error: Proxy dependencies not installed. Run: pip install \
+             headroom-ai[proxy]",
+        );
+    }
+
+    #[test]
+    fn startup_failure_falls_back_to_the_last_line() {
+        assert_eq!(
+            summarize_startup_failure("starting up\nbind failed\n", ""),
+            "bind failed",
+        );
+    }
+
+    #[test]
+    fn startup_failure_with_no_output_still_says_something() {
+        assert_eq!(
+            summarize_startup_failure(
+                "",
+                "[transformers] PyTorch was not found.\n"
+            ),
+            "exited during startup with no output",
+        );
+    }
+
+    #[test]
+    fn free_port_returns_a_usable_port() {
+        let port = free_port().expect("OS should hand out an ephemeral port");
+        assert!(port > 0);
+    }
+
     #[test]
     fn build_proxy_args_without_savings_profile() {
-        let args = build_proxy_args(false, false, false);
+        let args = build_proxy_args("8787", false, false, false);
         assert_eq!(args, vec!["proxy", "--port", "8787"]);
     }
 
     #[test]
     fn build_proxy_args_with_savings_profile() {
-        let args = build_proxy_args(true, false, false);
+        let args = build_proxy_args("8787", true, false, false);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--savings-profile"]);
     }
 
     #[test]
     fn build_proxy_args_with_no_telemetry() {
-        let args = build_proxy_args(false, true, false);
+        let args = build_proxy_args("8787", false, true, false);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--no-telemetry"]);
     }
 
     #[test]
     fn build_proxy_args_with_memory() {
-        let args = build_proxy_args(false, false, true);
+        let args = build_proxy_args("8787", false, false, true);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--memory"]);
     }
 
     #[test]
     fn build_proxy_args_with_savings_profile_and_memory() {
-        let args = build_proxy_args(true, false, true);
+        let args = build_proxy_args("8787", true, false, true);
         assert_eq!(
             args,
             vec!["proxy", "--port", "8787", "--savings-profile", "--memory"]
@@ -921,7 +1196,7 @@ mod tests {
 
     #[test]
     fn build_proxy_args_with_savings_profile_and_no_telemetry() {
-        let args = build_proxy_args(true, true, false);
+        let args = build_proxy_args("8787", true, true, false);
         assert_eq!(
             args,
             vec![

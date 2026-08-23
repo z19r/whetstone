@@ -647,6 +647,27 @@ pub fn run(full: bool) -> Result<()> {
         timestamp: now_epoch(),
     });
 
+    // A component that vanished between runs is not an update problem —
+    // point at the command that puts it back rather than silently printing
+    // "not installed" forever.
+    let missing: Vec<&str> = [
+        ("rtk", &rtk_status),
+        ("headroom", &headroom_status),
+        ("claude code", &claude_code_status),
+        ("memory (ICM)", &memory_status),
+    ]
+    .into_iter()
+    .filter(|(_, status)| matches!(status, ui::ComponentStatus::NotInstalled))
+    .map(|(name, _)| name)
+    .collect();
+
+    if !missing.is_empty() {
+        ui::warn(&format!(
+            "{} not installed — run `whetstone install-tools` to reinstall",
+            missing.join(", "),
+        ));
+    }
+
     if updated_count > 0 {
         ui::summary_ok(&format!("Updated {updated_count} component(s)"));
         if matches!(&whetstone_status, ui::ComponentStatus::Updated(_, _)) {

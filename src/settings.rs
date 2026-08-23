@@ -203,6 +203,10 @@ pub fn preferred_default_model() -> Option<String> {
     newest_sonnet(&live_available_models()?)
 }
 
+/// Where a setting's value is stored. This is a *separate axis* from the
+/// value itself: a setting is `Off` (unset / default behaviour), or active at
+/// `Global` scope (`~/.whetstone/settings.json`, all projects) or `Project`
+/// scope (`.claude/whetstone.json`, this project only, wins over global).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Scope {
     Off,
@@ -210,14 +214,11 @@ enum Scope {
     Project,
 }
 
-impl Scope {
-    fn cycle(self) -> Self {
-        match self {
-            Self::Off => Self::Global,
-            Self::Global => Self::Project,
-            Self::Project => Self::Off,
-        }
-    }
+/// Direction a value control moves when the user presses ←/→.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Dir {
+    Prev,
+    Next,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,17 +246,56 @@ const SETTINGS: &[SettingId] = &[
     SettingId::AnthropicApiUrl,
 ];
 
-/// How a `headroom_env` map-backed setting behaves in the TUI: a free-text
-/// `Value` the user types, or a `Toggle` that writes a fixed value when active.
+/// The shape of a setting's *value* control, independent of its scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Control {
+    /// A plain On/Off switch (←/→ toggles).
+    Bool,
+    /// A pick from a fixed list (←/→ cycles through Off + each choice).
+    Choice,
+    /// A free-text value the user types (enter to edit).
+    Text,
+}
+
+fn control_kind(id: SettingId) -> Control {
+    match id {
+        SettingId::HeadroomTelemetry
+        | SettingId::HeadroomBeacon
+        | SettingId::HeadroomMemory
+        | SettingId::HeadroomLogMessages => Control::Bool,
+        SettingId::ApiModel | SettingId::PermissionMode => Control::Choice,
+        SettingId::HeadroomTargetRatio
+        | SettingId::HeadroomBudget
+        | SettingId::AnthropicApiUrl => Control::Text,
+    }
+}
+
+/// Display name shown next to the value control.
+fn label(id: SettingId) -> &'static str {
+    match id {
+        SettingId::HeadroomTelemetry => "Headroom Telemetry",
+        SettingId::HeadroomBeacon => "Headroom Beacon",
+        SettingId::HeadroomMemory => "Headroom Memory",
+        SettingId::HeadroomTargetRatio => "Headroom Target Ratio",
+        SettingId::HeadroomBudget => "Headroom Budget",
+        SettingId::HeadroomLogMessages => "Headroom Log Messages",
+        SettingId::ApiModel => "API Model",
+        SettingId::PermissionMode => "Edit Mode",
+        SettingId::AnthropicApiUrl => "Anthropic API URL",
+    }
+}
+
+/// How a `headroom_env` map-backed setting behaves: a free-text `Value` the
+/// user types, or a `Toggle` that writes a fixed value when active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EnvKind {
     Value,
     Toggle(&'static str),
 }
 
-/// The `HEADROOM_*` map key and behaviour for the settings that are backed by
-/// the `headroom_env` passthrough map. `None` for the settings that live in
-/// their own dedicated fields (telemetry, memory, model, API URL).
+/// The `HEADROOM_*` map key and behaviour for the settings backed by the
+/// `headroom_env` passthrough map. `None` for settings that live in their own
+/// dedicated fields (telemetry, memory, model, edit mode, API URL).
 fn env_knob(id: SettingId) -> Option<(&'static str, EnvKind)> {
     match id {
         SettingId::HeadroomTargetRatio => {
@@ -272,12 +312,9 @@ fn env_knob(id: SettingId) -> Option<(&'static str, EnvKind)> {
     }
 }
 
-/// Whether a setting accepts a typed free-text value (enter to edit): the
-/// Anthropic API URL and any `EnvKind::Value` map knob. Toggle knobs and the
-/// on/off/model settings are excluded.
+/// Whether a setting accepts a typed free-text value (enter to edit).
 fn is_value_editable(id: SettingId) -> bool {
-    id == SettingId::AnthropicApiUrl
-        || matches!(env_knob(id), Some((_, EnvKind::Value)))
+    control_kind(id) == Control::Text
 }
 
 struct SettingsState {
@@ -287,20 +324,18 @@ struct SettingsState {
     original_project: ProjectSettings,
     selected: usize,
     models: Vec<String>,
-    /// `Some(buffer)` while the user is typing a free-text value (the Anthropic
-    /// API URL); `None` in normal navigation mode.
+    /// `Some(buffer)` while the user is typing a free-text value; `None` in
+    /// normal navigation mode.
     editing: Option<String>,
 }
 
 impl SettingsState {
+    /// Where the given setting is currently stored (or `Off` when unset).
     fn scope(&self, id: SettingId) -> Scope {
+        if let Some((key, _)) = env_knob(id) {
+            return self.env_scope(key);
+        }
         match id {
-            SettingId::HeadroomTargetRatio
-            | SettingId::HeadroomBudget
-            | SettingId::HeadroomLogMessages
-            | SettingId::HeadroomBeacon => {
-                self.env_scope(env_knob(id).unwrap().0)
-            }
             SettingId::HeadroomTelemetry => {
                 match self.project.headroom_telemetry {
                     Some(true) => Scope::Project,
@@ -342,24 +377,28 @@ impl SettingsState {
                     Scope::Off
                 }
             }
-        }
-    }
-
-    fn cycle_scope(&mut self, id: SettingId) {
-        if let Some((key, kind)) = env_knob(id) {
-            match kind {
-                EnvKind::Toggle(on) => self.env_cycle_toggle(key, on),
-                EnvKind::Value => self.env_cycle_value(key),
-            }
-            return;
-        }
-        let next = self.scope(id).cycle();
-        match id {
+            // env-backed settings handled above
             SettingId::HeadroomTargetRatio
             | SettingId::HeadroomBudget
             | SettingId::HeadroomLogMessages
             | SettingId::HeadroomBeacon => unreachable!(),
-            SettingId::HeadroomTelemetry => match next {
+        }
+    }
+
+    /// Move a setting to a specific scope, preserving its value where possible.
+    /// This is the single writer that both the value controls and the scope
+    /// toggle drive.
+    fn set_scope(&mut self, id: SettingId, target: Scope) {
+        if let Some((key, kind)) = env_knob(id) {
+            let default_val = match kind {
+                EnvKind::Toggle(v) => v,
+                EnvKind::Value => "",
+            };
+            self.set_env_scope(key, default_val, target);
+            return;
+        }
+        match id {
+            SettingId::HeadroomTelemetry => match target {
                 Scope::Off => {
                     self.global.headroom_telemetry = false;
                     self.project.headroom_telemetry = None;
@@ -372,7 +411,7 @@ impl SettingsState {
                     self.project.headroom_telemetry = Some(true);
                 }
             },
-            SettingId::HeadroomMemory => match next {
+            SettingId::HeadroomMemory => match target {
                 Scope::Off => {
                     self.global.headroom_memory = false;
                     self.project.headroom_memory = None;
@@ -385,7 +424,7 @@ impl SettingsState {
                     self.project.headroom_memory = Some(true);
                 }
             },
-            SettingId::ApiModel => match next {
+            SettingId::ApiModel => match target {
                 Scope::Off => {
                     self.global.api_model = None;
                     self.project.api_model = None;
@@ -405,7 +444,7 @@ impl SettingsState {
                     self.project.api_model = Some(base);
                 }
             },
-            SettingId::PermissionMode => match next {
+            SettingId::PermissionMode => match target {
                 Scope::Off => {
                     self.global.permission_mode = None;
                     self.project.permission_mode = None;
@@ -426,7 +465,7 @@ impl SettingsState {
                     self.project.permission_mode = Some(base);
                 }
             },
-            SettingId::AnthropicApiUrl => match next {
+            SettingId::AnthropicApiUrl => match target {
                 Scope::Off => {
                     self.global.anthropic_api_url = None;
                     self.project.anthropic_api_url = None;
@@ -446,6 +485,10 @@ impl SettingsState {
                     self.project.anthropic_api_url = Some(base);
                 }
             },
+            SettingId::HeadroomTargetRatio
+            | SettingId::HeadroomBudget
+            | SettingId::HeadroomLogMessages
+            | SettingId::HeadroomBeacon => unreachable!(),
         }
     }
 
@@ -474,99 +517,131 @@ impl SettingsState {
         }
     }
 
-    /// Advance a toggle-style key through Off → Global → Project, writing
-    /// `on_value` when it becomes active.
-    fn env_cycle_toggle(&mut self, key: &str, on_value: &str) {
-        match self.env_scope(key).cycle() {
+    /// Move a `headroom_env` key to `target`, keeping any value the user has
+    /// already typed and falling back to `default_val` when there is none.
+    fn set_env_scope(&mut self, key: &str, default_val: &str, target: Scope) {
+        let cur = self.env_value(key).map(str::to_string);
+        match target {
             Scope::Off => {
                 self.global.headroom_env.remove(key);
                 self.project.headroom_env.remove(key);
             }
             Scope::Global => {
-                self.global
-                    .headroom_env
-                    .insert(key.to_string(), on_value.to_string());
+                let v = cur.unwrap_or_else(|| default_val.to_string());
+                self.global.headroom_env.insert(key.to_string(), v);
                 self.project.headroom_env.remove(key);
             }
             Scope::Project => {
-                let val = self
-                    .global
-                    .headroom_env
-                    .get(key)
-                    .cloned()
-                    .unwrap_or_else(|| on_value.to_string());
-                self.project.headroom_env.insert(key.to_string(), val);
+                let v = cur.unwrap_or_else(|| default_val.to_string());
+                self.project.headroom_env.insert(key.to_string(), v);
             }
         }
     }
 
-    /// Advance a value-style key through Off → Global → Project. When it
-    /// becomes active it holds an empty string until the user edits it, mirror-
-    /// ing the Anthropic API URL flow (a blank value is dropped on save).
-    fn env_cycle_value(&mut self, key: &str) {
-        match self.env_scope(key).cycle() {
-            Scope::Off => {
-                self.global.headroom_env.remove(key);
-                self.project.headroom_env.remove(key);
-            }
-            Scope::Global => {
-                self.global.headroom_env.entry(key.to_string()).or_default();
-                self.project.headroom_env.remove(key);
-            }
-            Scope::Project => {
-                let base = self
-                    .global
-                    .headroom_env
-                    .get(key)
-                    .cloned()
-                    .unwrap_or_default();
-                self.project.headroom_env.insert(key.to_string(), base);
-            }
+    /// Whether the setting reads as "On" to the user. For most booleans that is
+    /// simply "stored somewhere". Beacon is inverted (opt-out): being *unset*
+    /// leaves the beacon on, and storing `HEADROOM_BEACON=off` turns it off.
+    fn value_on(&self, id: SettingId) -> bool {
+        let active = self.scope(id) != Scope::Off;
+        if id == SettingId::HeadroomBeacon {
+            !active
+        } else {
+            active
         }
     }
 
-    fn cycle_model_value(&mut self) {
-        let id = SETTINGS[self.selected];
-        if id != SettingId::ApiModel {
+    /// Toggle a boolean setting on/off. Turning on lands at `Global` scope; the
+    /// user moves it to `Project` afterwards with the scope key.
+    fn toggle_bool(&mut self, id: SettingId) {
+        if self.scope(id) == Scope::Off {
+            self.set_scope(id, Scope::Global);
+        } else {
+            self.set_scope(id, Scope::Off);
+        }
+    }
+
+    /// Advance the value control in the given direction. Booleans flip; choice
+    /// lists cycle through `Off` + each option; text opens the editor.
+    fn cycle_value(&mut self, id: SettingId, dir: Dir) {
+        match control_kind(id) {
+            Control::Bool => self.toggle_bool(id),
+            Control::Choice => self.cycle_choice(id, dir),
+            Control::Text => self.begin_edit(),
+        }
+    }
+
+    /// The choices for a `Control::Choice` setting (excluding the leading Off).
+    fn choices(&self, id: SettingId) -> Vec<String> {
+        match id {
+            SettingId::ApiModel => self.models.clone(),
+            SettingId::PermissionMode => {
+                PERMISSION_MODES.iter().map(|s| s.to_string()).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Cycle a choice setting through `[Off, choice_0, choice_1, ...]`, writing
+    /// the selected value into the active scope (defaulting to `Global` when it
+    /// was previously `Off`).
+    fn cycle_choice(&mut self, id: SettingId, dir: Dir) {
+        let list = self.choices(id);
+        if list.is_empty() {
             return;
         }
-        let scope = self.scope(id);
-        let target = match scope {
-            Scope::Global => &mut self.global.api_model,
-            Scope::Project => &mut self.project.api_model,
-            Scope::Off => return,
+        let ring = list.len() + 1; // slot 0 == Off
+        let cur = if self.scope(id) == Scope::Off {
+            0
+        } else {
+            let value = self.current_value_display(id).unwrap_or_default();
+            list.iter().position(|m| m == value).map_or(0, |i| i + 1)
         };
-        let current = target.as_deref().unwrap_or(&self.models[0]);
-        let idx = self
-            .models
-            .iter()
-            .position(|m| m == current)
-            .map(|i| (i + 1) % self.models.len())
-            .unwrap_or(0);
-        *target = Some(self.models[idx].clone());
-    }
-
-    fn cycle_permission_mode_value(&mut self) {
-        let id = SETTINGS[self.selected];
-        if id != SettingId::PermissionMode {
-            return;
+        let next = match dir {
+            Dir::Next => (cur + 1) % ring,
+            Dir::Prev => (cur + ring - 1) % ring,
+        };
+        if next == 0 {
+            self.set_scope(id, Scope::Off);
+        } else {
+            if self.scope(id) == Scope::Off {
+                self.set_scope(id, Scope::Global);
+            }
+            self.set_choice_value(id, list[next - 1].clone());
         }
-        let target = match self.scope(id) {
-            Scope::Global => &mut self.global.permission_mode,
-            Scope::Project => &mut self.project.permission_mode,
-            Scope::Off => return,
-        };
-        let current = target.as_deref().unwrap_or(PERMISSION_MODES[0]);
-        let idx = PERMISSION_MODES
-            .iter()
-            .position(|m| *m == current)
-            .map(|i| (i + 1) % PERMISSION_MODES.len())
-            .unwrap_or(0);
-        *target = Some(PERMISSION_MODES[idx].to_string());
     }
 
-    /// The stored value shown next to a value-bearing setting (model id or API
-    /// URL), or `None` for toggle settings and `Scope::Off`.
+    /// Write a choice value into whichever scope is currently active.
+    fn set_choice_value(&mut self, id: SettingId, value: String) {
+        match (id, self.scope(id)) {
+            (SettingId::ApiModel, Scope::Global) => {
+                self.global.api_model = Some(value)
+            }
+            (SettingId::ApiModel, Scope::Project) => {
+                self.project.api_model = Some(value)
+            }
+            (SettingId::PermissionMode, Scope::Global) => {
+                self.global.permission_mode = Some(value)
+            }
+            (SettingId::PermissionMode, Scope::Project) => {
+                self.project.permission_mode = Some(value)
+            }
+            _ => {}
+        }
+    }
+
+    /// Flip an active setting between `Global` and `Project`. No-op when the
+    /// setting is `Off` (scope is meaningless with no stored value).
+    fn toggle_scope(&mut self, id: SettingId) {
+        let other = match self.scope(id) {
+            Scope::Global => Scope::Project,
+            Scope::Project => Scope::Global,
+            Scope::Off => return,
+        };
+        self.set_scope(id, other);
+    }
+
+    /// The stored value shown next to a value-bearing setting (model id, edit
+    /// mode, or text), or `None` for `Scope::Off`.
     fn current_value_display(&self, id: SettingId) -> Option<&str> {
         if let Some((key, EnvKind::Value)) = env_knob(id) {
             return self.env_value(key);
@@ -591,12 +666,94 @@ impl SettingsState {
         }
     }
 
-    /// Enter text-editing mode for the currently selected URL setting, seeding
-    /// the buffer with the active value. No-op unless the selection is the
-    /// Anthropic API URL and its scope is active.
+    /// The short label shown in the value chip: `On`/`Off`, a chosen value, or
+    /// the typed text.
+    fn value_label(&self, id: SettingId) -> String {
+        match control_kind(id) {
+            Control::Bool => {
+                if self.value_on(id) { "On" } else { "Off" }.to_string()
+            }
+            Control::Choice | Control::Text => {
+                match self.current_value_display(id) {
+                    Some(v) if !v.trim().is_empty() => v.to_string(),
+                    _ => "Off".to_string(),
+                }
+            }
+        }
+    }
+
+    /// Helper text describing what the setting does *in its current state*. This
+    /// updates as the user cycles the value, so the meaning of the selected
+    /// option is always spelled out.
+    fn helper(&self, id: SettingId) -> String {
+        match id {
+            SettingId::HeadroomTelemetry => if self.value_on(id) {
+                "On — Headroom sends anonymous usage data back to Headroom for service improvement."
+            } else {
+                "Off — no usage data is sent to Headroom."
+            }
+            .to_string(),
+            SettingId::HeadroomBeacon => if self.value_on(id) {
+                "On — Headroom uploads its anonymous telemetry beacon (Headroom default)."
+            } else {
+                "Off — opts out of the telemetry upload beacon (writes HEADROOM_BEACON=off)."
+            }
+            .to_string(),
+            SettingId::HeadroomMemory => if self.value_on(id) {
+                "On — Headroom keeps persistent cross-session memory (proxy --memory)."
+            } else {
+                "Off — each session starts fresh; no cross-session memory."
+            }
+            .to_string(),
+            SettingId::HeadroomLogMessages => if self.value_on(id) {
+                "On — Headroom logs full message content for debugging (HEADROOM_LOG_MESSAGES=1)."
+            } else {
+                "Off — message content is not logged."
+            }
+            .to_string(),
+            SettingId::ApiModel => match self.current_value_display(id) {
+                Some(m) => format!("Claude Code sessions use {m}."),
+                None => {
+                    "Off — Claude Code uses its own default model.".to_string()
+                }
+            },
+            SettingId::PermissionMode => match self.current_value_display(id) {
+                Some(m) => {
+                    format!("Claude Code runs with --permission-mode {m}.")
+                }
+                None => "Off — Claude Code uses its own default permission mode."
+                    .to_string(),
+            },
+            SettingId::AnthropicApiUrl => match self.current_value_display(id) {
+                Some(u) if !u.trim().is_empty() => {
+                    format!("Headroom proxies to {u} instead of the default Anthropic API.")
+                }
+                _ => "Off — Headroom uses the default Anthropic API endpoint."
+                    .to_string(),
+            },
+            SettingId::HeadroomTargetRatio => {
+                match self.current_value_display(id) {
+                    Some(v) if !v.trim().is_empty() => format!(
+                        "Headroom keeps ~{v} of the context window (HEADROOM_TARGET_RATIO)."
+                    ),
+                    _ => "Off — Headroom uses its default context keep-ratio."
+                        .to_string(),
+                }
+            }
+            SettingId::HeadroomBudget => match self.current_value_display(id) {
+                Some(v) if !v.trim().is_empty() => {
+                    format!("Headroom stops after ${v} of proxy spend (HEADROOM_BUDGET).")
+                }
+                _ => "Off — no spend cap on the Headroom proxy.".to_string(),
+            },
+        }
+    }
+
+    /// Enter text-editing mode for the selected text setting, seeding the buffer
+    /// with the active value. No-op unless the selection is a text control.
     fn begin_edit(&mut self) {
         let id = SETTINGS[self.selected];
-        if !is_value_editable(id) || self.scope(id) == Scope::Off {
+        if !is_value_editable(id) {
             return;
         }
         let current = self
@@ -606,8 +763,9 @@ impl SettingsState {
         self.editing = Some(current);
     }
 
-    /// Commit the in-progress edit buffer into the active scope, then leave edit
-    /// mode. A blank buffer clears the value (which drops the scope to `Off`).
+    /// Commit the in-progress edit buffer into the active scope (defaulting to
+    /// `Global` when the setting was `Off`), then leave edit mode. A blank
+    /// buffer clears the value (dropping the scope to `Off`).
     fn commit_edit(&mut self) {
         let Some(buffer) = self.editing.take() else {
             return;
@@ -786,6 +944,7 @@ fn run_loop(
                     handle_edit_key(&mut state, key.code);
                     continue;
                 }
+                let id = SETTINGS[state.selected];
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => {
                         if state.dirty() {
@@ -796,18 +955,23 @@ fn run_loop(
                         }
                         return Ok(None);
                     }
-                    KeyCode::Char(' ') => {
-                        state.cycle_scope(SETTINGS[state.selected]);
+                    KeyCode::Left | KeyCode::Char('h') => {
+                        state.cycle_value(id, Dir::Prev);
                     }
-                    KeyCode::Tab | KeyCode::Enter => {
-                        let id = SETTINGS[state.selected];
-                        if id == SettingId::ApiModel {
-                            state.cycle_model_value();
-                        } else if id == SettingId::PermissionMode {
-                            state.cycle_permission_mode_value();
-                        } else if is_value_editable(id) {
+                    KeyCode::Right
+                    | KeyCode::Char('l')
+                    | KeyCode::Char(' ') => {
+                        state.cycle_value(id, Dir::Next);
+                    }
+                    KeyCode::Enter => {
+                        if control_kind(id) == Control::Text {
                             state.begin_edit();
+                        } else {
+                            state.cycle_value(id, Dir::Next);
                         }
+                    }
+                    KeyCode::Char('g') | KeyCode::Char('G') => {
+                        state.toggle_scope(id);
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
                         state.selected = state.selected.saturating_sub(1);
@@ -830,8 +994,8 @@ fn run_loop(
     }
 }
 
-/// Route a keypress while the URL text buffer is open. Enter commits, Esc
-/// cancels, and printable characters / Backspace edit the buffer in place.
+/// Route a keypress while a text buffer is open. Enter commits, Esc cancels, and
+/// printable characters / Backspace edit the buffer in place.
 fn handle_edit_key(state: &mut SettingsState, code: KeyCode) {
     match code {
         KeyCode::Enter => state.commit_edit(),
@@ -892,34 +1056,32 @@ fn draw_header(frame: &mut Frame, area: Rect, dirty: bool) {
     frame.render_widget(paragraph, area);
 }
 
-fn scope_spans(scope: Scope) -> Vec<Span<'static>> {
-    let dim = Style::default().fg(Color::DarkGray);
-    let active = Style::default()
-        .fg(Color::Green)
-        .add_modifier(Modifier::BOLD);
+/// The `[ … ]` value chip. Green for On, dim for Off, yellow for a set value.
+fn value_chip(state: &SettingsState, id: SettingId) -> Span<'static> {
+    let text = state.value_label(id);
+    let is_off = text == "Off";
+    let style = if is_off {
+        Style::default().fg(Color::DarkGray)
+    } else if control_kind(id) == Control::Bool {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Yellow)
+    };
+    Span::styled(format!("[ {text} ]"), style)
+}
 
+/// The `· Global` / `· Project` badge shown only when the value is stored
+/// somewhere (i.e. not Off).
+fn scope_badge(scope: Scope) -> Option<Span<'static>> {
+    let style = Style::default()
+        .fg(Color::Magenta)
+        .add_modifier(Modifier::BOLD);
     match scope {
-        Scope::Off => vec![
-            Span::styled("off", active),
-            Span::styled(" | ", dim),
-            Span::styled("g", dim),
-            Span::styled(" | ", dim),
-            Span::styled("p", dim),
-        ],
-        Scope::Global => vec![
-            Span::styled("off", dim),
-            Span::styled(" | ", dim),
-            Span::styled("g", active),
-            Span::styled(" | ", dim),
-            Span::styled("p", dim),
-        ],
-        Scope::Project => vec![
-            Span::styled("off", dim),
-            Span::styled(" | ", dim),
-            Span::styled("g", dim),
-            Span::styled(" | ", dim),
-            Span::styled("p", active),
-        ],
+        Scope::Off => None,
+        Scope::Global => Some(Span::styled("· Global", style)),
+        Scope::Project => Some(Span::styled("· Project", style)),
     }
 }
 
@@ -934,61 +1096,23 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
         } else {
             Style::default()
         };
-
-        let (label, desc) = match id {
-            SettingId::HeadroomTelemetry => (
-                "Headroom Telemetry",
-                "Send anonymous usage data to Headroom",
-            ),
-            SettingId::HeadroomBeacon => (
-                "Headroom Beacon",
-                "Opt out of the anonymous telemetry upload beacon (HEADROOM_BEACON=off)",
-            ),
-            SettingId::HeadroomMemory => (
-                "Headroom Memory",
-                "Enable Headroom persistent cross-session memory (proxy --memory)",
-            ),
-            SettingId::HeadroomTargetRatio => (
-                "Headroom Target Ratio",
-                "Pin the context keep-ratio (HEADROOM_TARGET_RATIO, e.g. 0.5)",
-            ),
-            SettingId::HeadroomBudget => (
-                "Headroom Budget",
-                "Spend cap in USD for the proxy (HEADROOM_BUDGET)",
-            ),
-            SettingId::HeadroomLogMessages => (
-                "Headroom Log Messages",
-                "Log message content for debugging (HEADROOM_LOG_MESSAGES)",
-            ),
-            SettingId::ApiModel => ("API Model", "Model used for Claude Code sessions"),
-            SettingId::PermissionMode => (
-                "Edit Mode",
-                "Claude Code --permission-mode (acceptEdits/default/plan/bypassPermissions)",
-            ),
-            SettingId::AnthropicApiUrl => (
-                "Anthropic API URL",
-                "Custom upstream Anthropic API URL for the Headroom proxy",
-            ),
-        };
-
-        let scope = state.scope(id);
         let is_editing =
             is_selected && is_value_editable(id) && state.editing.is_some();
 
-        let mut row = vec![Span::styled(
-            cursor,
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )];
-        row.extend(scope_spans(scope));
-        row.push(Span::raw("  "));
-        row.push(Span::styled(label.to_string(), label_style));
+        let mut row = vec![
+            Span::styled(
+                cursor,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!("{:<22}", label(id)), label_style),
+        ];
 
         if is_editing {
             let buffer = state.editing.as_deref().unwrap_or_default();
             row.push(Span::styled(
-                format!("  {buffer}"),
+                format!("[ {buffer}"),
                 Style::default().fg(Color::Yellow),
             ));
             row.push(Span::styled(
@@ -997,36 +1121,29 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::DIM),
             ));
-        } else if let Some(value) = state.current_value_display(id) {
-            let shown = if value.is_empty() { "(unset)" } else { value };
-            row.push(Span::styled(
-                format!("  {shown}"),
-                Style::default().fg(Color::Yellow),
-            ));
+            row.push(Span::styled(" ]", Style::default().fg(Color::Yellow)));
+        } else {
+            row.push(value_chip(state, id));
+        }
+
+        if let Some(badge) = scope_badge(state.scope(id)) {
+            row.push(Span::raw("  "));
+            row.push(badge);
         }
 
         lines.push(Line::from(row));
 
-        let desc_line = if id == SettingId::ApiModel && scope != Scope::Off {
-            format!("{desc}  (tab to cycle model)")
-        } else if id == SettingId::PermissionMode && scope != Scope::Off {
-            format!("{desc}  (tab to cycle mode)")
-        } else if is_value_editable(id) && scope != Scope::Off {
-            if is_editing {
-                format!("{desc}  (enter to save, esc to cancel)")
-            } else {
-                format!("{desc}  (enter to edit)")
-            }
-        } else {
-            desc.to_string()
-        };
+        // Helper text reflects the *current* value and updates as it changes.
+        let mut helper = state.helper(id);
+        if is_editing {
+            helper = format!("{helper}  (enter to save, esc to cancel)");
+        } else if is_selected && control_kind(id) == Control::Text {
+            helper = format!("{helper}  (enter to edit)");
+        }
 
         lines.push(Line::from(vec![
-            Span::raw("                  "),
-            Span::styled(
-                desc_line,
-                Style::default().add_modifier(Modifier::DIM),
-            ),
+            Span::raw("     "),
+            Span::styled(helper, Style::default().add_modifier(Modifier::DIM)),
         ]));
 
         lines.push(Line::from(""));
@@ -1038,42 +1155,28 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect) {
+    let key = |s: &'static str| {
+        Span::styled(
+            s,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+    };
     let help = Line::from(vec![
-        Span::styled(
-            " space",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(":scope "),
-        Span::styled(
-            "tab",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(":value "),
-        Span::styled(
-            "s",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::raw(" "),
+        key("←/→"),
+        Span::raw(":change "),
+        key("g"),
+        Span::raw(":global/project "),
+        key("enter"),
+        Span::raw(":edit "),
+        key("s"),
         Span::raw(":save "),
-        Span::styled(
-            "q",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
+        key("q"),
         Span::raw(":quit "),
-        Span::styled(
-            "↑↓",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(":navigate"),
+        key("↑↓"),
+        Span::raw(":move"),
     ]);
 
     let block = Block::default().borders(Borders::ALL);
@@ -1101,12 +1204,204 @@ mod tests {
         }
     }
 
-    fn url_index() -> usize {
-        SETTINGS
-            .iter()
-            .position(|&s| s == SettingId::AnthropicApiUrl)
-            .unwrap()
+    fn index_of(id: SettingId) -> usize {
+        SETTINGS.iter().position(|&s| s == id).unwrap()
     }
+
+    fn url_index() -> usize {
+        index_of(SettingId::AnthropicApiUrl)
+    }
+
+    // ---- boolean value + scope ------------------------------------------
+
+    #[test]
+    fn telemetry_toggle_on_off() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomTelemetry;
+        assert!(!s.value_on(id));
+        assert_eq!(s.scope(id), Scope::Off);
+
+        s.toggle_bool(id);
+        assert!(s.value_on(id));
+        assert_eq!(s.scope(id), Scope::Global);
+        assert!(s.global.headroom_telemetry);
+
+        s.toggle_bool(id);
+        assert!(!s.value_on(id));
+        assert_eq!(s.scope(id), Scope::Off);
+    }
+
+    #[test]
+    fn telemetry_scope_toggle_moves_global_project() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomTelemetry;
+        s.toggle_bool(id); // On @ Global
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(s.project.headroom_telemetry, Some(true));
+
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Global);
+        assert!(s.global.headroom_telemetry);
+    }
+
+    #[test]
+    fn scope_toggle_noop_when_off() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomTelemetry;
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Off);
+    }
+
+    #[test]
+    fn memory_toggle_on_off() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomMemory;
+        s.toggle_bool(id);
+        assert!(s.value_on(id));
+        assert!(s.global.headroom_memory);
+        s.toggle_bool(id);
+        assert!(!s.value_on(id));
+        assert!(!s.global.headroom_memory);
+    }
+
+    #[test]
+    fn beacon_is_inverted_opt_out() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomBeacon;
+        // Unset => beacon On (Headroom default).
+        assert!(s.value_on(id));
+        assert_eq!(s.scope(id), Scope::Off);
+
+        // Toggling Off writes HEADROOM_BEACON=off at global scope.
+        s.toggle_bool(id);
+        assert!(!s.value_on(id));
+        assert_eq!(s.scope(id), Scope::Global);
+        assert_eq!(
+            s.global
+                .headroom_env
+                .get("HEADROOM_BEACON")
+                .map(String::as_str),
+            Some("off")
+        );
+
+        // Move the opt-out to project scope.
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(
+            s.project
+                .headroom_env
+                .get("HEADROOM_BEACON")
+                .map(String::as_str),
+            Some("off")
+        );
+
+        // Toggling back On removes the key entirely.
+        s.toggle_bool(id);
+        assert!(s.value_on(id));
+        assert!(s.global.headroom_env.is_empty());
+        assert!(s.project.headroom_env.is_empty());
+    }
+
+    #[test]
+    fn log_messages_toggle_writes_fixed_value() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomLogMessages;
+        s.toggle_bool(id);
+        assert_eq!(
+            s.global
+                .headroom_env
+                .get("HEADROOM_LOG_MESSAGES")
+                .map(String::as_str),
+            Some("1")
+        );
+        s.toggle_scope(id);
+        assert_eq!(
+            s.project
+                .headroom_env
+                .get("HEADROOM_LOG_MESSAGES")
+                .map(String::as_str),
+            Some("1")
+        );
+        s.toggle_bool(id);
+        assert!(s.global.headroom_env.is_empty());
+        assert!(s.project.headroom_env.is_empty());
+    }
+
+    // ---- choice value + scope -------------------------------------------
+
+    #[test]
+    fn model_cycles_off_through_list_and_back() {
+        let mut s = default_state();
+        let id = SettingId::ApiModel;
+        assert_eq!(s.scope(id), Scope::Off);
+
+        s.cycle_choice(id, Dir::Next);
+        assert_eq!(s.scope(id), Scope::Global);
+        assert_eq!(s.global.api_model.as_deref(), Some(FALLBACK_MODELS[0]));
+
+        s.cycle_choice(id, Dir::Next);
+        assert_eq!(s.global.api_model.as_deref(), Some(FALLBACK_MODELS[1]));
+
+        // Advance to the last model, then one more lands on Off.
+        for _ in 2..FALLBACK_MODELS.len() {
+            s.cycle_choice(id, Dir::Next);
+        }
+        assert_eq!(
+            s.global.api_model.as_deref(),
+            Some(FALLBACK_MODELS[FALLBACK_MODELS.len() - 1])
+        );
+        s.cycle_choice(id, Dir::Next);
+        assert_eq!(s.scope(id), Scope::Off);
+        assert!(s.global.api_model.is_none());
+    }
+
+    #[test]
+    fn model_cycle_prev_from_off_selects_last() {
+        let mut s = default_state();
+        let id = SettingId::ApiModel;
+        s.cycle_choice(id, Dir::Prev);
+        assert_eq!(
+            s.global.api_model.as_deref(),
+            Some(FALLBACK_MODELS[FALLBACK_MODELS.len() - 1])
+        );
+    }
+
+    #[test]
+    fn model_scope_toggle_preserves_value() {
+        let mut s = default_state();
+        let id = SettingId::ApiModel;
+        s.cycle_choice(id, Dir::Next); // Global, models[0]
+        s.set_choice_value(id, "claude-sonnet-5".to_string());
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(s.project.api_model.as_deref(), Some("claude-sonnet-5"));
+    }
+
+    #[test]
+    fn edit_mode_cycles_off_through_modes() {
+        let mut s = default_state();
+        let id = SettingId::PermissionMode;
+        assert_eq!(s.scope(id), Scope::Off);
+
+        s.cycle_choice(id, Dir::Next);
+        assert_eq!(
+            s.global.permission_mode.as_deref(),
+            Some(PERMISSION_MODES[0])
+        );
+
+        for _ in 1..PERMISSION_MODES.len() {
+            s.cycle_choice(id, Dir::Next);
+        }
+        assert_eq!(
+            s.global.permission_mode.as_deref(),
+            Some(PERMISSION_MODES[PERMISSION_MODES.len() - 1])
+        );
+        s.cycle_choice(id, Dir::Next);
+        assert_eq!(s.scope(id), Scope::Off);
+    }
+
+    // ---- text value + scope ---------------------------------------------
 
     #[test]
     fn api_url_scope_detection() {
@@ -1121,29 +1416,12 @@ mod tests {
     }
 
     #[test]
-    fn api_url_cycle_through_scopes() {
-        let mut s = default_state();
-
-        s.cycle_scope(SettingId::AnthropicApiUrl);
-        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Global);
-        assert_eq!(s.global.anthropic_api_url.as_deref(), Some(""));
-
-        s.cycle_scope(SettingId::AnthropicApiUrl);
-        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Project);
-        assert_eq!(s.project.anthropic_api_url.as_deref(), Some(""));
-
-        s.cycle_scope(SettingId::AnthropicApiUrl);
-        assert_eq!(s.scope(SettingId::AnthropicApiUrl), Scope::Off);
-        assert!(s.global.anthropic_api_url.is_none());
-        assert!(s.project.anthropic_api_url.is_none());
-    }
-
-    #[test]
-    fn begin_edit_noop_when_scope_off() {
+    fn cycle_value_on_text_opens_editor() {
         let mut s = default_state();
         s.selected = url_index();
-        s.begin_edit();
-        assert!(s.editing.is_none());
+        s.global.anthropic_api_url = Some("https://seed.example".into());
+        s.cycle_value(SettingId::AnthropicApiUrl, Dir::Next);
+        assert_eq!(s.editing.as_deref(), Some("https://seed.example"));
     }
 
     #[test]
@@ -1159,7 +1437,6 @@ mod tests {
     fn commit_edit_writes_global_value() {
         let mut s = default_state();
         s.selected = url_index();
-        s.global.anthropic_api_url = Some(String::new());
         s.editing = Some("https://typed.example".into());
         s.commit_edit();
         assert!(s.editing.is_none());
@@ -1194,6 +1471,39 @@ mod tests {
     }
 
     #[test]
+    fn commit_edit_writes_env_value_knob() {
+        let mut s = default_state();
+        s.selected = index_of(SettingId::HeadroomTargetRatio);
+        s.editing = Some("0.6".into());
+        s.commit_edit();
+        assert_eq!(
+            s.global
+                .headroom_env
+                .get("HEADROOM_TARGET_RATIO")
+                .map(String::as_str),
+            Some("0.6")
+        );
+    }
+
+    #[test]
+    fn ratio_scope_toggle_preserves_typed_value() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomTargetRatio;
+        s.global
+            .headroom_env
+            .insert("HEADROOM_TARGET_RATIO".into(), "0.6".into());
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(
+            s.project
+                .headroom_env
+                .get("HEADROOM_TARGET_RATIO")
+                .map(String::as_str),
+            Some("0.6")
+        );
+    }
+
+    #[test]
     fn edit_key_typing_and_backspace() {
         let mut s = default_state();
         s.selected = url_index();
@@ -1203,6 +1513,61 @@ mod tests {
         handle_edit_key(&mut s, KeyCode::Backspace);
         assert_eq!(s.editing.as_deref(), Some("h"));
     }
+
+    #[test]
+    fn edit_key_esc_cancels_without_writing() {
+        let mut s = default_state();
+        s.selected = url_index();
+        s.global.anthropic_api_url = Some("https://keep.example".into());
+        s.editing = Some("https://discard.example".into());
+        handle_edit_key(&mut s, KeyCode::Esc);
+        assert!(s.editing.is_none());
+        assert_eq!(
+            s.global.anthropic_api_url.as_deref(),
+            Some("https://keep.example")
+        );
+    }
+
+    // ---- display helpers -------------------------------------------------
+
+    #[test]
+    fn value_label_reflects_state() {
+        let mut s = default_state();
+        assert_eq!(s.value_label(SettingId::HeadroomTelemetry), "Off");
+        s.toggle_bool(SettingId::HeadroomTelemetry);
+        assert_eq!(s.value_label(SettingId::HeadroomTelemetry), "On");
+
+        // Beacon reads On while unset (opt-out default).
+        assert_eq!(s.value_label(SettingId::HeadroomBeacon), "On");
+
+        s.global.api_model = Some("claude-sonnet-5".into());
+        assert_eq!(s.value_label(SettingId::ApiModel), "claude-sonnet-5");
+    }
+
+    #[test]
+    fn helper_text_changes_with_value() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomTelemetry;
+        let off = s.helper(id);
+        s.toggle_bool(id);
+        let on = s.helper(id);
+        assert_ne!(off, on);
+        assert!(on.starts_with("On"));
+        assert!(off.starts_with("Off"));
+    }
+
+    #[test]
+    fn is_value_editable_only_text_controls() {
+        assert!(is_value_editable(SettingId::AnthropicApiUrl));
+        assert!(is_value_editable(SettingId::HeadroomTargetRatio));
+        assert!(is_value_editable(SettingId::HeadroomBudget));
+        assert!(!is_value_editable(SettingId::HeadroomLogMessages));
+        assert!(!is_value_editable(SettingId::HeadroomBeacon));
+        assert!(!is_value_editable(SettingId::HeadroomTelemetry));
+        assert!(!is_value_editable(SettingId::ApiModel));
+    }
+
+    // ---- persistence -----------------------------------------------------
 
     #[test]
     fn normalize_saved_drops_blank_urls() {
@@ -1222,134 +1587,6 @@ mod tests {
             saved.project.anthropic_api_url.as_deref(),
             Some("https://keep.example")
         );
-    }
-
-    fn index_of(id: SettingId) -> usize {
-        SETTINGS.iter().position(|&s| s == id).unwrap()
-    }
-
-    #[test]
-    fn target_ratio_cycle_through_scopes() {
-        let mut s = default_state();
-        let id = SettingId::HeadroomTargetRatio;
-        assert_eq!(s.scope(id), Scope::Off);
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Global);
-        assert_eq!(
-            s.global
-                .headroom_env
-                .get("HEADROOM_TARGET_RATIO")
-                .map(String::as_str),
-            Some("")
-        );
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Project);
-        assert!(s.project.headroom_env.contains_key("HEADROOM_TARGET_RATIO"));
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Off);
-        assert!(!s.global.headroom_env.contains_key("HEADROOM_TARGET_RATIO"));
-        assert!(!s.project.headroom_env.contains_key("HEADROOM_TARGET_RATIO"));
-    }
-
-    #[test]
-    fn log_messages_toggle_cycle_writes_fixed_value() {
-        let mut s = default_state();
-        let id = SettingId::HeadroomLogMessages;
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Global);
-        assert_eq!(
-            s.global
-                .headroom_env
-                .get("HEADROOM_LOG_MESSAGES")
-                .map(String::as_str),
-            Some("1")
-        );
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Project);
-        assert_eq!(
-            s.project
-                .headroom_env
-                .get("HEADROOM_LOG_MESSAGES")
-                .map(String::as_str),
-            Some("1")
-        );
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Off);
-        assert!(s.global.headroom_env.is_empty());
-        assert!(s.project.headroom_env.is_empty());
-    }
-
-    #[test]
-    fn beacon_toggle_cycle_writes_opt_out_value() {
-        let mut s = default_state();
-        let id = SettingId::HeadroomBeacon;
-        assert_eq!(s.scope(id), Scope::Off);
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Global);
-        assert_eq!(
-            s.global
-                .headroom_env
-                .get("HEADROOM_BEACON")
-                .map(String::as_str),
-            Some("off")
-        );
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Project);
-        assert_eq!(
-            s.project
-                .headroom_env
-                .get("HEADROOM_BEACON")
-                .map(String::as_str),
-            Some("off")
-        );
-
-        s.cycle_scope(id);
-        assert_eq!(s.scope(id), Scope::Off);
-        assert!(s.global.headroom_env.is_empty());
-        assert!(s.project.headroom_env.is_empty());
-    }
-
-    #[test]
-    fn beacon_is_not_free_text_editable() {
-        assert!(!is_value_editable(SettingId::HeadroomBeacon));
-    }
-
-    #[test]
-    fn commit_edit_writes_env_value_knob() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::HeadroomTargetRatio);
-        s.cycle_scope(SettingId::HeadroomTargetRatio); // -> Global, blank
-        s.editing = Some("0.6".into());
-        s.commit_edit();
-        assert!(s.editing.is_none());
-        assert_eq!(
-            s.global
-                .headroom_env
-                .get("HEADROOM_TARGET_RATIO")
-                .map(String::as_str),
-            Some("0.6")
-        );
-    }
-
-    #[test]
-    fn commit_edit_blank_clears_env_value_knob() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::HeadroomTargetRatio);
-        s.global
-            .headroom_env
-            .insert("HEADROOM_TARGET_RATIO".into(), "0.6".into());
-        s.editing = Some("   ".into());
-        s.commit_edit();
-        assert!(!s.global.headroom_env.contains_key("HEADROOM_TARGET_RATIO"));
-        assert_eq!(s.scope(SettingId::HeadroomTargetRatio), Scope::Off);
     }
 
     #[test]
@@ -1379,28 +1616,14 @@ mod tests {
     }
 
     #[test]
-    fn is_value_editable_covers_url_and_value_knobs() {
-        assert!(is_value_editable(SettingId::AnthropicApiUrl));
-        assert!(is_value_editable(SettingId::HeadroomTargetRatio));
-        assert!(is_value_editable(SettingId::HeadroomBudget));
-        assert!(!is_value_editable(SettingId::HeadroomLogMessages));
-        assert!(!is_value_editable(SettingId::HeadroomTelemetry));
-        assert!(!is_value_editable(SettingId::ApiModel));
+    fn dirty_detection() {
+        let mut s = default_state();
+        assert!(!s.dirty());
+        s.toggle_bool(SettingId::HeadroomTelemetry);
+        assert!(s.dirty());
     }
 
-    #[test]
-    fn edit_key_esc_cancels_without_writing() {
-        let mut s = default_state();
-        s.selected = url_index();
-        s.global.anthropic_api_url = Some("https://keep.example".into());
-        s.editing = Some("https://discard.example".into());
-        handle_edit_key(&mut s, KeyCode::Esc);
-        assert!(s.editing.is_none());
-        assert_eq!(
-            s.global.anthropic_api_url.as_deref(),
-            Some("https://keep.example")
-        );
-    }
+    // ---- model list helpers ---------------------------------------------
 
     #[test]
     fn newest_sonnet_picks_highest_version() {
@@ -1409,15 +1632,6 @@ mod tests {
             "claude-sonnet-4-6".to_string(),
             "claude-sonnet-5".to_string(),
             "claude-haiku-4-5".to_string(),
-        ];
-        assert_eq!(newest_sonnet(&models).as_deref(), Some("claude-sonnet-5"));
-    }
-
-    #[test]
-    fn newest_sonnet_ignores_input_order() {
-        let models = vec![
-            "claude-sonnet-5".to_string(),
-            "claude-sonnet-4-6".to_string(),
         ];
         assert_eq!(newest_sonnet(&models).as_deref(), Some("claude-sonnet-5"));
     }
@@ -1432,258 +1646,8 @@ mod tests {
     }
 
     #[test]
-    fn scope_cycle_order() {
-        assert_eq!(Scope::Off.cycle(), Scope::Global);
-        assert_eq!(Scope::Global.cycle(), Scope::Project);
-        assert_eq!(Scope::Project.cycle(), Scope::Off);
-    }
-
-    #[test]
-    fn telemetry_scope_from_project_override() {
-        let mut s = default_state();
-        s.project.headroom_telemetry = Some(true);
-        assert_eq!(s.scope(SettingId::HeadroomTelemetry), Scope::Project);
-
-        s.project.headroom_telemetry = Some(false);
-        assert_eq!(s.scope(SettingId::HeadroomTelemetry), Scope::Off);
-    }
-
-    #[test]
-    fn telemetry_scope_from_global() {
-        let mut s = default_state();
-        s.global.headroom_telemetry = true;
-        assert_eq!(s.scope(SettingId::HeadroomTelemetry), Scope::Global);
-    }
-
-    #[test]
-    fn telemetry_cycle_through_all_scopes() {
-        let mut s = default_state();
-        assert_eq!(s.scope(SettingId::HeadroomTelemetry), Scope::Off);
-
-        s.cycle_scope(SettingId::HeadroomTelemetry);
-        assert_eq!(s.scope(SettingId::HeadroomTelemetry), Scope::Global);
-        assert!(s.global.headroom_telemetry);
-
-        s.cycle_scope(SettingId::HeadroomTelemetry);
-        assert_eq!(s.scope(SettingId::HeadroomTelemetry), Scope::Project);
-        assert_eq!(s.project.headroom_telemetry, Some(true));
-
-        s.cycle_scope(SettingId::HeadroomTelemetry);
-        assert_eq!(s.scope(SettingId::HeadroomTelemetry), Scope::Off);
-    }
-
-    #[test]
-    fn memory_cycle_through_all_scopes() {
-        let mut s = default_state();
-        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Off);
-
-        s.cycle_scope(SettingId::HeadroomMemory);
-        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Global);
-        assert!(s.global.headroom_memory);
-
-        s.cycle_scope(SettingId::HeadroomMemory);
-        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Project);
-        assert_eq!(s.project.headroom_memory, Some(true));
-
-        s.cycle_scope(SettingId::HeadroomMemory);
-        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Off);
-        assert!(!s.global.headroom_memory);
-        assert!(s.project.headroom_memory.is_none());
-    }
-
-    #[test]
-    fn memory_scope_from_project_override() {
-        let mut s = default_state();
-        s.project.headroom_memory = Some(false);
-        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Off);
-
-        s.project.headroom_memory = Some(true);
-        assert_eq!(s.scope(SettingId::HeadroomMemory), Scope::Project);
-    }
-
-    #[test]
-    fn model_scope_detection() {
-        let mut s = default_state();
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Off);
-
-        s.global.api_model = Some("claude-opus-4-6".into());
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Global);
-
-        s.project.api_model = Some("claude-sonnet-4-6".into());
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Project);
-    }
-
-    #[test]
-    fn model_cycle_through_scopes() {
-        let mut s = default_state();
-
-        s.cycle_scope(SettingId::ApiModel);
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Global);
-        assert_eq!(s.global.api_model.as_deref(), Some(FALLBACK_MODELS[0]));
-
-        s.cycle_scope(SettingId::ApiModel);
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Project);
-        assert_eq!(s.project.api_model.as_deref(), Some(FALLBACK_MODELS[0]));
-
-        s.cycle_scope(SettingId::ApiModel);
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Off);
-        assert!(s.global.api_model.is_none());
-        assert!(s.project.api_model.is_none());
-    }
-
-    #[test]
-    fn model_value_cycling() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::ApiModel);
-        s.global.api_model = Some(FALLBACK_MODELS[0].to_string());
-
-        s.cycle_model_value();
-        assert_eq!(s.global.api_model.as_deref(), Some(FALLBACK_MODELS[1]));
-
-        s.cycle_model_value();
-        assert_eq!(s.global.api_model.as_deref(), Some(FALLBACK_MODELS[2]));
-    }
-
-    #[test]
-    fn model_value_cycling_wraps() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::ApiModel);
-        s.global.api_model =
-            Some(FALLBACK_MODELS[FALLBACK_MODELS.len() - 1].to_string());
-
-        s.cycle_model_value();
-        assert_eq!(s.global.api_model.as_deref(), Some(FALLBACK_MODELS[0]));
-    }
-
-    #[test]
-    fn model_value_cycle_noop_when_off() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::ApiModel);
-        s.cycle_model_value();
-        assert!(s.global.api_model.is_none());
-        assert!(s.project.api_model.is_none());
-    }
-
-    #[test]
-    fn model_value_cycle_noop_for_non_model_setting() {
-        let mut s = default_state();
-        s.selected = 0;
-        s.cycle_model_value();
-        assert!(s.global.api_model.is_none());
-    }
-
-    #[test]
-    fn permission_mode_scope_detection() {
-        let mut s = default_state();
-        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Off);
-
-        s.global.permission_mode = Some("plan".into());
-        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Global);
-
-        s.project.permission_mode = Some("acceptEdits".into());
-        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Project);
-    }
-
-    #[test]
-    fn permission_mode_cycle_through_scopes() {
-        let mut s = default_state();
-
-        s.cycle_scope(SettingId::PermissionMode);
-        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Global);
-        assert_eq!(
-            s.global.permission_mode.as_deref(),
-            Some(PERMISSION_MODES[0])
-        );
-
-        s.cycle_scope(SettingId::PermissionMode);
-        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Project);
-        assert_eq!(
-            s.project.permission_mode.as_deref(),
-            Some(PERMISSION_MODES[0])
-        );
-
-        s.cycle_scope(SettingId::PermissionMode);
-        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Off);
-        assert!(s.global.permission_mode.is_none());
-        assert!(s.project.permission_mode.is_none());
-    }
-
-    #[test]
-    fn permission_mode_value_cycling_wraps() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::PermissionMode);
-        s.global.permission_mode =
-            Some(PERMISSION_MODES[PERMISSION_MODES.len() - 1].to_string());
-
-        s.cycle_permission_mode_value();
-        assert_eq!(
-            s.global.permission_mode.as_deref(),
-            Some(PERMISSION_MODES[0])
-        );
-    }
-
-    #[test]
-    fn permission_mode_value_cycles_forward() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::PermissionMode);
-        s.global.permission_mode = Some(PERMISSION_MODES[0].to_string());
-
-        s.cycle_permission_mode_value();
-        assert_eq!(
-            s.global.permission_mode.as_deref(),
-            Some(PERMISSION_MODES[1])
-        );
-    }
-
-    #[test]
-    fn permission_mode_value_cycle_noop_when_off() {
-        let mut s = default_state();
-        s.selected = index_of(SettingId::PermissionMode);
-        s.cycle_permission_mode_value();
-        assert!(s.global.permission_mode.is_none());
-        assert!(s.project.permission_mode.is_none());
-    }
-
-    #[test]
-    fn permission_mode_inherits_global_on_promote() {
-        let mut s = default_state();
-        s.cycle_scope(SettingId::PermissionMode);
-        s.global.permission_mode = Some("bypassPermissions".into());
-
-        s.cycle_scope(SettingId::PermissionMode);
-        assert_eq!(s.scope(SettingId::PermissionMode), Scope::Project);
-        assert_eq!(
-            s.project.permission_mode.as_deref(),
-            Some("bypassPermissions")
-        );
-    }
-
-    #[test]
-    fn dirty_detection() {
-        let mut s = default_state();
-        assert!(!s.dirty());
-        s.cycle_scope(SettingId::HeadroomTelemetry);
-        assert!(s.dirty());
-    }
-
-    #[test]
-    fn project_model_inherits_global_on_promote() {
-        let mut s = default_state();
-
-        s.cycle_scope(SettingId::ApiModel);
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Global);
-
-        s.global.api_model = Some("claude-sonnet-4-6".into());
-
-        s.cycle_scope(SettingId::ApiModel);
-        assert_eq!(s.scope(SettingId::ApiModel), Scope::Project);
-        assert_eq!(s.project.api_model.as_deref(), Some("claude-sonnet-4-6"));
-    }
-
-    #[test]
     fn is_current_gen_accepts_latest_families() {
         assert!(is_current_gen("claude-opus-4-8"));
-        assert!(is_current_gen("claude-opus-4-6"));
         assert!(is_current_gen("claude-sonnet-4-6"));
         assert!(is_current_gen("claude-haiku-4-5-20251001"));
         assert!(is_current_gen("claude-fable-5"));
@@ -1692,7 +1656,6 @@ mod tests {
     #[test]
     fn is_current_gen_rejects_older_families() {
         assert!(!is_current_gen("claude-3-5-sonnet-20241022"));
-        assert!(!is_current_gen("claude-3-opus-20240229"));
         assert!(!is_current_gen("gpt-4o"));
     }
 
@@ -1702,16 +1665,11 @@ mod tests {
             strip_date_suffix("claude-opus-4-8-20260501"),
             Some("claude-opus-4-8")
         );
-        assert_eq!(
-            strip_date_suffix("claude-sonnet-4-6-20250514"),
-            Some("claude-sonnet-4-6")
-        );
     }
 
     #[test]
     fn strip_date_suffix_returns_none_for_short_ids() {
         assert_eq!(strip_date_suffix("claude-opus-4-8"), None);
-        assert_eq!(strip_date_suffix("claude-fable-5"), None);
     }
 
     #[test]
@@ -1721,11 +1679,10 @@ mod tests {
         );
         assert!(
             family_order("claude-sonnet-4-6")
-                < family_order("claude-haiku-4-5-20251001")
+                < family_order("claude-haiku-4-5")
         );
         assert!(
-            family_order("claude-haiku-4-5-20251001")
-                < family_order("claude-fable-5")
+            family_order("claude-haiku-4-5") < family_order("claude-fable-5")
         );
     }
 }
