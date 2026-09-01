@@ -578,7 +578,7 @@ pub fn run(full: bool) -> Result<()> {
                 &format!("Claude Code update available ({cur} → {latest}). Update now?"),
                 true,
             ) {
-                match claude_code::update() {
+                match claude_code::update(claude_code_remote.as_deref()) {
                     Ok(status) => {
                         if matches!(&status, ui::ComponentStatus::Updated(_, _)) {
                             updated_count += 1;

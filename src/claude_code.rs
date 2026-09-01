@@ -14,6 +14,7 @@ const NPM_REGISTRY_URL: &str =
 pub enum InstallMethod {
     NativeBinary,
     Npm,
+    Mise,
     Unknown,
 }
 
@@ -76,6 +77,16 @@ fn detect_install_method_from_path(
         return InstallMethod::NativeBinary;
     }
 
+    // mise manages `claude` as its own tool (not via a mise-installed node),
+    // so `npm install -g` is a no-op here: mise's install dir sits earlier on
+    // PATH than npm's global bin, and `claude` keeps resolving to the
+    // mise-pinned version regardless of what npm just installed.
+    if path_str.contains("/mise/installs/claude/")
+        || path_str.contains("/mise/shims/claude")
+    {
+        return InstallMethod::Mise;
+    }
+
     if path_str.contains("node_modules")
         || path_str.contains("/node/")
         || path_str.contains("/nodejs/")
@@ -120,7 +131,13 @@ pub fn install() -> Result<()> {
     }
 }
 
-pub fn update() -> Result<ui::ComponentStatus> {
+/// `target_version` is whetstone's own npm-registry lookup of the latest
+/// release (see `latest_npm_version`). The mise `claude` backend resolves
+/// its own "latest" via a separately cached GitHub releases lookup that can
+/// get stuck stale (observed surviving even `mise cache clear`), so the mise
+/// path pins to this known-good version directly instead of trusting mise's
+/// own upgrade/latest resolution.
+pub fn update(target_version: Option<&str>) -> Result<ui::ComponentStatus> {
     let Some(old_ver) = installed_version() else {
         return Ok(ui::ComponentStatus::NotInstalled);
     };
@@ -129,10 +146,16 @@ pub fn update() -> Result<ui::ComponentStatus> {
 
     let result = match method {
         InstallMethod::NativeBinary => update_from_native(&old_ver),
+        InstallMethod::Mise => update_via_mise(&old_ver, target_version),
         InstallMethod::Npm | InstallMethod::Unknown => update_via_npm(&old_ver),
     };
 
-    ensure_config_install_method_is_npm();
+    // Only true for methods that actually installed via npm — forcing this
+    // for a mise-managed install would mislabel it and has no bearing on
+    // what `claude` resolves to.
+    if method != InstallMethod::Mise {
+        ensure_config_install_method_is_npm();
+    }
 
     result
 }
@@ -160,6 +183,56 @@ fn update_via_npm(old_ver: &str) -> Result<ui::ComponentStatus> {
     } else {
         Ok(ui::ComponentStatus::UpToDate(old_ver.to_string()))
     }
+}
+
+fn update_via_mise(
+    old_ver: &str,
+    target_version: Option<&str>,
+) -> Result<ui::ComponentStatus> {
+    match target_version {
+        Some(version) => run_mise_use(version)?,
+        None => run_mise_upgrade()?,
+    }
+
+    let new_ver = installed_version().unwrap_or_else(|| old_ver.to_string());
+    if new_ver != old_ver {
+        Ok(ui::ComponentStatus::Updated(old_ver.to_string(), new_ver))
+    } else {
+        Ok(ui::ComponentStatus::UpToDate(old_ver.to_string()))
+    }
+}
+
+/// Pins mise's `claude` tool to an exact known-good version, bypassing
+/// mise's own (unreliable) "latest" resolution entirely.
+fn run_mise_use(version: &str) -> Result<()> {
+    let output = Command::new("mise")
+        .args(["use", "-g", &format!("claude@{version}")])
+        .output()
+        .context("failed to run mise use -g claude@<version>")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("mise use -g claude@{version} failed: {stderr}");
+    }
+
+    Ok(())
+}
+
+/// Fallback when whetstone couldn't determine the target version itself
+/// (e.g. the npm registry lookup failed) — best effort via mise's own
+/// resolution, which may itself be stale.
+fn run_mise_upgrade() -> Result<()> {
+    let output = Command::new("mise")
+        .args(["upgrade", "claude"])
+        .output()
+        .context("failed to run mise upgrade claude")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("mise upgrade claude failed: {stderr}");
+    }
+
+    Ok(())
 }
 
 fn run_npm_install() -> Result<()> {
@@ -306,6 +379,21 @@ mod tests {
             "/home/user/.local/share/mise/installs/node/24.11.1/bin/claude",
         ));
         assert_eq!(detect_install_method_from_path(path), InstallMethod::Npm);
+    }
+
+    #[test]
+    fn detect_mise_native_tool_install() {
+        let path = Some(PathBuf::from(
+            "/home/user/.local/share/mise/installs/claude/latest/claude",
+        ));
+        assert_eq!(detect_install_method_from_path(path), InstallMethod::Mise);
+    }
+
+    #[test]
+    fn detect_mise_shim() {
+        let path =
+            Some(PathBuf::from("/home/user/.local/share/mise/shims/claude"));
+        assert_eq!(detect_install_method_from_path(path), InstallMethod::Mise);
     }
 
     #[test]
