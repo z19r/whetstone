@@ -1715,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "whetstone-cli"
-version = "3.14.1"
+version = "3.14.2"
 dependencies = [
  "anyhow",
  "chrono",

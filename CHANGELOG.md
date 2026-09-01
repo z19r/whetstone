@@ -4,6 +4,16 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.14.2] - 2026-09-01
+
+### Added
+
+- add Tool Search toggle and Headroom rollout/shaper knobs (#97)
+
+### Fixed
+
+- correctly update mise-managed Claude Code installs (#98)
+
 ## [3.14.1] - 2026-08-23
 
 ### Added

@@ -2,6 +2,24 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.14.2",
+    "date": "2026-09-01",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add Tool Search toggle and Headroom rollout/shaper knobs (#97)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "correctly update mise-managed Claude Code installs (#98)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.14.1",
     "date": "2026-08-23",
     "sections": [
@@ -169,25 +187,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "pin Headroom memory to a global root, stop cross-project litter (#83)",
-          "stop passing --no-rtk to headroom wrap (#79)",
-          "stop v3 slash commands from triggering false v2 migration (#78)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.9.0",
-    "date": "2026-08-06",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "add configurable Claude Code edit mode setting (#81)"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
           "stop passing --no-rtk to headroom wrap (#79)",
           "stop v3 slash commands from triggering false v2 migration (#78)"
         ]
