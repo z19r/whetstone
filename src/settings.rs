@@ -119,6 +119,320 @@ pub(crate) fn family_order(id: &str) -> u8 {
         3
     } else {
         4
+fn fetch_models_from_api() -> Option<Vec<String>> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY").ok()?;
+
+    let body_str = ureq::get(MODELS_API_URL)
+        .config()
+        .timeout_global(Some(Duration::from_secs(5)))
+        .build()
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .call()
+        .ok()?
+        .into_body()
+        .read_to_string()
+        .ok()?;
+
+    let body: ModelsApiResponse = serde_json::from_str(&body_str).ok()?;
+++ b/src/claude_code.rs
+
+pub fn latest_npm_version() -> Option<String> {
+    let resp = ureq::get(NPM_REGISTRY_URL)
+        .header("Accept", "application/json")
+        .call()
+        .ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
+    parse_npm_response(&body)
+}
+
+++ b/src/headroom.rs
+
+pub fn latest_remote_version() -> Option<String> {
+    let resp = ureq::get(PYPI_URL).call().ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
+    let parsed: PypiResponse = serde_json::from_str(&body).ok()?;
+    Some(parsed.info.version)
+}
+++ b/src/icm.rs
+
+pub fn latest_remote_version() -> Option<String> {
+    let resp = ureq::get(GITHUB_LATEST_URL)
+        .header("User-Agent", "whetstone")
+        .call()
+        .ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
+    let release: GithubRelease = serde_json::from_str(&body).ok()?;
+    version::extract_semver(&release.tag_name)
+}
+++ b/src/rtk.rs
+
+pub fn latest_remote_version() -> Option<String> {
+    let resp = ureq::get(GITHUB_LATEST_URL)
+        .header("User-Agent", "whetstone")
+        .call()
+        .ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
+    let release: GithubRelease = serde_json::from_str(&body).ok()?;
+    let tag = release.tag_name.trim_start_matches('v');
+    version::extract_semver(tag)
+++ b/src/stats.rs
+#[derive(Deserialize)]
+struct ModelsApiResponse {
+    data: Vec<ModelEntry>,
+}
+
+#[derive(Deserialize)]
+struct ModelEntry {
+    id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ModelsCache {
+    models: Vec<String>,
+    timestamp: u64,
+}
+
+fn models_cache_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let dir = home.join(".cache").join("whetstone");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("models-cache.json"))
+}
+
+fn now_epoch() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn read_models_cache() -> Option<Vec<String>> {
+    let path = models_cache_path()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    let cache: ModelsCache = serde_json::from_str(&content).ok()?;
+    if now_epoch().saturating_sub(cache.timestamp) > MODELS_CACHE_TTL_SECS {
+        return None;
+    }
+    if cache.models.is_empty() {
+        return None;
+    }
+    Some(cache.models)
+}
+
+fn write_models_cache(models: &[String]) {
+    if let Some(path) = models_cache_path() {
+        let cache = ModelsCache {
+            models: models.to_vec(),
+            timestamp: now_epoch(),
+        };
+        if let Ok(json) = serde_json::to_string(&cache) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+}
+
+fn is_current_gen(id: &str) -> bool {
+    let Some(rest) = id.strip_prefix("claude-") else {
+        return false;
+    };
+    rest.starts_with("opus-4-")
+        || rest.starts_with("sonnet-4-")
+        || rest.starts_with("haiku-4-")
+        || rest.starts_with("fable-")
+}
+
+fn strip_date_suffix(id: &str) -> Option<&str> {
+    if id.len() > 9 {
+        let (base, suffix) = id.split_at(id.len() - 9);
+        if suffix.starts_with('-')
+            && suffix[1..].bytes().all(|b| b.is_ascii_digit())
+
+fn fetch_stats() -> Result<HeadroomStats> {
+    let body = ureq::get(HEADROOM_STATS_URL)
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(3)))
+        .build()
+        .call()
+        .context("headroom proxy not reachable at localhost:8787")?
+        .into_body()
+        .read_to_string()
+        .context("failed to read headroom stats")?;
+
+    serde_json::from_str(&body).context("failed to parse headroom stats JSON")
+    } else if id.contains("-sonnet-") {
+        1
+    } else if id.contains("-haiku-") {
+        2
+    } else if id.contains("-fable-") {
+        3
+    } else {
+        4
+    }
+}
+
+fn fetch_models_from_api() -> Option<Vec<String>> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY").ok()?;
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(5))
+        .build();
+
+    let body_str = agent
+        .get(MODELS_API_URL)
+        .set("x-api-key", &api_key)
+        .set("anthropic-version", "2023-06-01")
+        .call()
+        .ok()?
+        .into_string()
+        .ok()?;
+
+    let body: ModelsApiResponse = serde_json::from_str(&body_str).ok()?;
+
+    let mut models: Vec<String> = body
+        .data
+        .into_iter()
+        .map(|m| m.id)
+        .filter(|id| is_current_gen(id))
+        .collect();
+
+    let all_ids: HashSet<String> = models.iter().cloned().collect();
+    models.retain(|id| match strip_date_suffix(id) {
+        Some(base) => !all_ids.contains(base),
+        None => true,
+    });
+
+    models.sort_by(|a, b| family_order(a).cmp(&family_order(b)).then(b.cmp(a)));
+
+fn proxy_is_running() -> bool {
+    ureq::get(HEADROOM_HEALTH_URL)
+        .config()
+        .timeout_global(Some(Duration::from_secs(2)))
+        .build()
+        .call()
+        .is_ok()
+}
+++ b/src/update.rs
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+    DefaultTerminal, Frame,
+};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use crate::config::{
+    GlobalSettings, ProjectSettings, WhetstoneManifest, PERMISSION_MODES,
+    SAVINGS_PROFILES,
+};
+use crate::memory::MemoryProvider;
+use crate::ui;
+
+const FALLBACK_MODELS: &[&str] = &[
+    "claude-opus-4-8",
+    "claude-opus-4-6",
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+    "claude-fable-5",
+];
+
+const MODELS_CACHE_TTL_SECS: u64 = 12 * 60 * 60;
+const MODELS_API_URL: &str = "https://api.anthropic.com/v1/models";
+
+#[derive(Deserialize)]
+struct ModelsApiResponse {
+    data: Vec<ModelEntry>,
+}
+
+#[derive(Deserialize)]
+struct ModelEntry {
+    id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ModelsCache {
+    models: Vec<String>,
+    timestamp: u64,
+}
+
+fn models_cache_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let dir = home.join(".cache").join("whetstone");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("models-cache.json"))
+}
+
+fn now_epoch() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn read_models_cache() -> Option<Vec<String>> {
+    let path = models_cache_path()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    let cache: ModelsCache = serde_json::from_str(&content).ok()?;
+    if now_epoch().saturating_sub(cache.timestamp) > MODELS_CACHE_TTL_SECS {
+        return None;
+    }
+    if cache.models.is_empty() {
+        return None;
+    }
+    Some(cache.models)
+}
+
+fn write_models_cache(models: &[String]) {
+    if let Some(path) = models_cache_path() {
+        let cache = ModelsCache {
+            models: models.to_vec(),
+            timestamp: now_epoch(),
+        };
+        if let Ok(json) = serde_json::to_string(&cache) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+}
+
+fn is_current_gen(id: &str) -> bool {
+    let Some(rest) = id.strip_prefix("claude-") else {
+        return false;
+    };
+    rest.starts_with("opus-4-")
+        || rest.starts_with("sonnet-4-")
+        || rest.starts_with("haiku-4-")
+        || rest.starts_with("fable-")
+}
+
+fn strip_date_suffix(id: &str) -> Option<&str> {
+    if id.len() > 9 {
+        let (base, suffix) = id.split_at(id.len() - 9);
+        if suffix.starts_with('-')
+            && suffix[1..].bytes().all(|b| b.is_ascii_digit())
+        {
+            return Some(base);
+        }
+    }
+    let body = ureq::get(REMOTE_VERSION_URL)
+        .call()
+        .context("fetching remote VERSION")?
+        .into_body()
+        .read_to_string()
+        .context("reading remote VERSION body")?;
+
+    version::extract_semver(body.trim())
+        1
+    } else if id.contains("-haiku-") {
+        2
+    } else if id.contains("-fable-") {
+        3
+    } else {
+        4
     }
 }
 
@@ -210,16 +524,16 @@ pub fn preferred_default_model() -> Option<String> {
 /// scope (`.claude/whetstone.json`, this project only, wins over global).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Scope {
-    Off,
-    Global,
-    Project,
-}
+        .call()
+        .with_context(|| format!("downloading {url}"))?;
 
-/// Direction a value control moves when the user presses ←/→.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Dir {
-    Prev,
-    Next,
+    let compressed = resp
+        .into_body()
+        .read_to_vec()
+        .context("reading release tarball")?;
+
+    sp.finish_and_clear();
+++ b/src/wrapper.rs
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -280,14 +594,19 @@ fn control_kind(id: SettingId) -> Control {
         | SettingId::HeadroomBudget
         | SettingId::HeadroomRolloutChannel
         | SettingId::HeadroomOutputShaper
-        | SettingId::AnthropicApiUrl => Control::Text,
-    }
+
+fn probe_port(port: u16) -> bool {
+    let url = format!("http://127.0.0.1:{port}/health");
+    ureq::get(&url)
+        .config()
+        .timeout_global(Some(PROXY_PROBE_TIMEOUT))
+        .build()
+        .call()
+        .is_ok()
 }
 
-/// Display name shown next to the value control.
-fn label(id: SettingId) -> &'static str {
-    match id {
-        SettingId::HeadroomTelemetry => "Headroom Telemetry",
+fn probe_proxy() -> bool {
+++ b/src/migrate.rs
         SettingId::HeadroomBeacon => "Headroom Beacon",
         SettingId::HeadroomMemory => "Headroom Memory",
         SettingId::HeadroomTargetRatio => "Headroom Target Ratio",
@@ -675,25 +994,26 @@ impl SettingsState {
         let cur = if self.scope(id) == Scope::Off {
             0
         } else {
-            let value = self.current_value_display(id).unwrap_or_default();
-            list.iter().position(|m| m == value).map_or(0, |i| i + 1)
-        };
-        let next = match dir {
-            Dir::Next => (cur + 1) % ring,
-            Dir::Prev => (cur + ring - 1) % ring,
-        };
-        if next == 0 {
+    let url =
+        format!("{}/recall?q=&limit=1000", endpoint.trim_end_matches('/'));
+    let resp = match ureq::get(&url)
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(10)))
+        .build()
+        .header("Authorization", &format!("Bearer {api_key}"))
+        .call()
+    {
+        Ok(r) => r,
             self.set_scope(id, Scope::Off);
         } else {
             if self.scope(id) == Scope::Off {
-                self.set_scope(id, Scope::Global);
-            }
-            self.set_choice_value(id, list[next - 1].clone());
         }
-    }
+    };
 
-    /// Write a choice value into whichever scope is currently active.
-    fn set_choice_value(&mut self, id: SettingId, value: String) {
+    let body = match resp.into_body().read_to_string() {
+        Ok(b) => b,
+        Err(e) => {
+            ui::warn(&format!("AutoMem export skipped: {e}"));    fn set_choice_value(&mut self, id: SettingId, value: String) {
         match (id, self.scope(id)) {
             (SettingId::ApiModel, Scope::Global) => {
                 self.global.api_model = Some(value)
