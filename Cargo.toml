@@ -18,7 +18,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 semver = "1"
 ureq = "2"
 which = "6"
-dirs = "5"
+dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 flate2 = "1"
