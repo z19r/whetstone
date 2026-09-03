@@ -118,7 +118,7 @@ jobs:
           cd ../../..
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: whetstone-${{ matrix.target }}
           path: whetstone-${{ matrix.target }}.tar.gz
@@ -134,7 +134,7 @@ jobs:
         run: tar czf whetstone-assets.tar.gz -C assets .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: whetstone-assets
           path: whetstone-assets.tar.gz
