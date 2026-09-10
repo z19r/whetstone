@@ -17,22 +17,28 @@ struct GithubRelease {
 
 pub fn latest_remote_version() -> Option<String> {
     let resp = ureq::get(GITHUB_LATEST_URL)
-        .set("User-Agent", "whetstone")
+
+pub fn latest_remote_version() -> Option<String> {
+    let resp = ureq::get(GITHUB_LATEST_URL)
+        .header("User-Agent", "whetstone")
         .call()
         .ok()?;
-    let body = resp.into_string().ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
     let release: GithubRelease = serde_json::from_str(&body).ok()?;
     version::extract_semver(&release.tag_name)
 }
+++ b/src/rtk.rs
 
-pub fn installed_version() -> Option<String> {
-    let output = Command::new("icm").arg("--version").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    version::extract_semver(&raw)
-}
+pub fn latest_remote_version() -> Option<String> {
+    let resp = ureq::get(GITHUB_LATEST_URL)
+        .header("User-Agent", "whetstone")
+        .call()
+        .ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
+    let release: GithubRelease = serde_json::from_str(&body).ok()?;
+    let tag = release.tag_name.trim_start_matches('v');
+    version::extract_semver(tag)
+++ b/src/migrate.rs
 
 const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/rtk-ai/icm/main/install.sh";
@@ -110,3 +116,73 @@ mod tests {
         );
     }
 }
+    let url =
+        format!("{}/recall?q=&limit=1000", endpoint.trim_end_matches('/'));
+    let resp = match ureq::get(&url)
+        .header("Authorization", &format!("Bearer {api_key}"))
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(10)))
+        .build()
+        .call()
+    {
+        Ok(r) => r,
+        }
+    };
+
+    let body = match resp.into_body().read_to_string() {
+        Ok(b) => b,
+        Err(e) => {
+            ui::warn(&format!("AutoMem export skipped: {e}"));
+++ b/src/stats.rs
+
+fn fetch_stats() -> Result<HeadroomStats> {
+    let body = ureq::get(HEADROOM_STATS_URL)
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(3)))
+        .build()
+        .call()
+        .context("headroom proxy not reachable at localhost:8787")?
+        .into_body()
+        .read_to_string()
+        .context("failed to read headroom stats")?;
+
+    serde_json::from_str(&body).context("failed to parse headroom stats JSON")
+
+fn proxy_is_running() -> bool {
+    ureq::get(HEADROOM_HEALTH_URL)
+        .config()
+        .timeout_global(Some(Duration::from_secs(2)))
+        .build()
+        .call()
+        .is_ok()
+}
+++ b/src/update.rs
+    let body = ureq::get(REMOTE_VERSION_URL)
+        .call()
+        .context("fetching remote VERSION")?
+        .into_body()
+        .read_to_string()
+        .context("reading remote VERSION body")?;
+
+    version::extract_semver(body.trim())
+        .with_context(|| format!("downloading {url}"))?;
+
+    let mut compressed = Vec::new();
+    resp.into_body()
+        .into_reader()
+        .read_to_end(&mut compressed)
+        .context("reading release tarball")?;
+
+++ b/src/wrapper.rs
+
+fn probe_port(port: u16) -> bool {
+    let url = format!("http://127.0.0.1:{port}/health");
+    ureq::get(&url)
+        .config()
+        .timeout_global(Some(PROXY_PROBE_TIMEOUT))
+        .build()
+        .call()
+        .is_ok()
+}
+
+fn probe_proxy() -> bool {
