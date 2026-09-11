@@ -283,7 +283,12 @@ fn warn_ignored_headroom_env(ignored: &[String]) {
 
 fn probe_port(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{port}/health");
-    ureq::get(&url).timeout(PROXY_PROBE_TIMEOUT).call().is_ok()
+    ureq::get(&url)
+        .config()
+        .timeout_global(Some(PROXY_PROBE_TIMEOUT))
+        .build()
+        .call()
+        .is_ok()
 }
 
 fn probe_proxy() -> bool {

@@ -106,10 +106,13 @@ struct Requests {
 
 fn fetch_stats() -> Result<HeadroomStats> {
     let body = ureq::get(HEADROOM_STATS_URL)
-        .timeout(std::time::Duration::from_secs(3))
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(3)))
+        .build()
         .call()
         .context("headroom proxy not reachable at localhost:8787")?
-        .into_string()
+        .into_body()
+        .read_to_string()
         .context("failed to read headroom stats")?;
 
     serde_json::from_str(&body).context("failed to parse headroom stats JSON")
@@ -165,7 +168,9 @@ fn section_header(title: &str) -> Line<'_> {
 
 fn proxy_is_running() -> bool {
     ureq::get(HEADROOM_HEALTH_URL)
-        .timeout(Duration::from_secs(2))
+        .config()
+        .timeout_global(Some(Duration::from_secs(2)))
+        .build()
         .call()
         .is_ok()
 }

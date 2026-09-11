@@ -22,7 +22,7 @@ struct PypiInfo {
 
 pub fn latest_remote_version() -> Option<String> {
     let resp = ureq::get(PYPI_URL).call().ok()?;
-    let body = resp.into_string().ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
     let parsed: PypiResponse = serde_json::from_str(&body).ok()?;
     Some(parsed.info.version)
 }
