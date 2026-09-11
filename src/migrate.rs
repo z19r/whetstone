@@ -857,8 +857,10 @@ fn export_automem(det: &Detection, archive: &Path) -> Result<()> {
     let url =
         format!("{}/recall?q=&limit=1000", endpoint.trim_end_matches('/'));
     let resp = match ureq::get(&url)
-        .set("Authorization", &format!("Bearer {api_key}"))
-        .timeout(std::time::Duration::from_secs(10))
+        .header("Authorization", &format!("Bearer {api_key}"))
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(10)))
+        .build()
         .call()
     {
         Ok(r) => r,
@@ -868,7 +870,7 @@ fn export_automem(det: &Detection, archive: &Path) -> Result<()> {
         }
     };
 
-    let body = match resp.into_string() {
+    let body = match resp.into_body().read_to_string() {
         Ok(b) => b,
         Err(e) => {
             ui::warn(&format!("AutoMem export skipped: {e}"));

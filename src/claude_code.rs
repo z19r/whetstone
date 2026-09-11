@@ -39,10 +39,10 @@ fn parse_claude_version(raw: &str) -> Option<String> {
 
 pub fn latest_npm_version() -> Option<String> {
     let resp = ureq::get(NPM_REGISTRY_URL)
-        .set("Accept", "application/json")
+        .header("Accept", "application/json")
         .call()
         .ok()?;
-    let body = resp.into_string().ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
     parse_npm_response(&body)
 }
 

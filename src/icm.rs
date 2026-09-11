@@ -17,10 +17,10 @@ struct GithubRelease {
 
 pub fn latest_remote_version() -> Option<String> {
     let resp = ureq::get(GITHUB_LATEST_URL)
-        .set("User-Agent", "whetstone")
+        .header("User-Agent", "whetstone")
         .call()
         .ok()?;
-    let body = resp.into_string().ok()?;
+    let body = resp.into_body().read_to_string().ok()?;
     let release: GithubRelease = serde_json::from_str(&body).ok()?;
     version::extract_semver(&release.tag_name)
 }

@@ -125,17 +125,19 @@ pub(crate) fn family_order(id: &str) -> u8 {
 fn fetch_models_from_api() -> Option<Vec<String>> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").ok()?;
 
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(5))
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(5)))
         .build();
+    let agent: ureq::Agent = config.into();
 
     let body_str = agent
         .get(MODELS_API_URL)
-        .set("x-api-key", &api_key)
-        .set("anthropic-version", "2023-06-01")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
         .call()
         .ok()?
-        .into_string()
+        .into_body()
+        .read_to_string()
         .ok()?;
 
     let body: ModelsApiResponse = serde_json::from_str(&body_str).ok()?;

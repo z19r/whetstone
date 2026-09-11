@@ -108,7 +108,8 @@ pub(crate) fn fetch_remote_version() -> Result<String> {
     let body = ureq::get(REMOTE_VERSION_URL)
         .call()
         .context("fetching remote VERSION")?
-        .into_string()
+        .into_body()
+        .read_to_string()
         .context("reading remote VERSION body")?;
 
     version::extract_semver(body.trim())
@@ -216,7 +217,8 @@ pub(crate) fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
         .with_context(|| format!("downloading {url}"))?;
 
     let mut compressed = Vec::new();
-    resp.into_reader()
+    resp.into_body()
+        .into_reader()
         .read_to_end(&mut compressed)
         .context("reading release tarball")?;
 
