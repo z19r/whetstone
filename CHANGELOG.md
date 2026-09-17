@@ -4,6 +4,39 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.15.2] - 2026-09-17
+
+### Added
+
+- add Tool Search toggle and Headroom rollout/shaper knobs (#97)
+
+### Fixed
+
+- add scroll support and update model defaults to Opus (#125)
+- correctly update mise-managed Claude Code installs (#98)
+
+### Changed
+
+- bump ureq from 3.4.1 to 3.4.2 (#124)
+- bump ureq from 2.12.1 to 3.4.1 (#119)
+- bump dirs from 6.0.0 to 7.0.0 (#118)
+- bump serde_json from 1.0.149 to 1.0.151 (#116)
+- bump tar from 0.4.45 to 0.4.46 (#117)
+- bump rusqlite from 0.31.0 to 0.40.2 (#115)
+- bump actions/checkout from 4 to 7 (#101)
+- bump actions/upload-artifact from 4 to 7 (#102)
+- bump softprops/action-gh-release from 2 to 3 (#103)
+- bump which from 6.0.3 to 8.0.6 (#113)
+- bump clap from 4.6.1 to 4.6.6 (#108)
+- bump crossterm from 0.28.1 to 0.29.0 (#110)
+- bump serde from 1.0.228 to 1.0.229 (#107)
+- bump ratatui from 0.30.0 to 0.30.2 (#111)
+- bump actions/download-artifact from 4 to 8 (#104)
+- bump anyhow from 1.0.102 to 1.0.104 (#106)
+- bump chrono from 0.4.44 to 0.4.45 (#109)
+- bump flate2 from 1.1.9 to 1.1.10 (#112)
+- bump dirs from 5.0.1 to 6.0.0 (#114)
+
 ## [3.15.1] - 2026-09-17
 
 ### Added

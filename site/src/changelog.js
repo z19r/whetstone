@@ -2,6 +2,34 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.15.2",
+    "date": "2026-09-17",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add Tool Search toggle and Headroom rollout/shaper knobs (#97)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "add scroll support and update model defaults to Opus (#125)",
+          "correctly update mise-managed Claude Code installs (#98)"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "bump ureq from 3.4.1 to 3.4.2 (#124)",
+          "bump ureq from 2.12.1 to 3.4.1 (#119)",
+          "bump dirs from 6.0.0 to 7.0.0 (#118)",
+          "bump serde_json from 1.0.149 to 1.0.151 (#116)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.15.1",
     "date": "2026-09-17",
     "sections": [
@@ -192,18 +220,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "whetstone now verifies headroom's extras, not just its version: an install recorded by uv without proxy/code/mcp is reported by doctor and …"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.11.0",
-    "date": "2026-08-20",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "add HEADROOM_BEACON opt-out toggle to settings (#87)"
         ]
       }
     ]
