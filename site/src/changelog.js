@@ -2,6 +2,34 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.15.1",
+    "date": "2026-09-17",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "add Tool Search toggle and Headroom rollout/shaper knobs (#97)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "add scroll support and update model defaults to Opus (#125)",
+          "correctly update mise-managed Claude Code installs (#98)"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "bump ureq from 3.4.1 to 3.4.2 (#124)",
+          "bump ureq from 2.12.1 to 3.4.1 (#119)",
+          "bump dirs from 6.0.0 to 7.0.0 (#118)",
+          "bump serde_json from 1.0.149 to 1.0.151 (#116)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.15.0",
     "date": "2026-09-17",
     "sections": [
@@ -176,27 +204,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "added",
         "bullets": [
           "add HEADROOM_BEACON opt-out toggle to settings (#87)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.10.1",
-    "date": "2026-08-10",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "add configurable Claude Code edit mode setting (#81)"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "actually check and upgrade ICM in whetstone update (#85)",
-          "pin Headroom memory to a global root, stop cross-project litter (#83)",
-          "stop passing --no-rtk to headroom wrap (#79)",
-          "stop v3 slash commands from triggering false v2 migration (#78)"
         ]
       }
     ]
