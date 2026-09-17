@@ -189,7 +189,10 @@ fn load_available_models() -> Vec<String> {
 /// Newest model in `family` by lexical id (matching the descending sort the
 /// picker uses: `claude-opus-5` > `claude-opus-4-6`). `None` when the list
 /// has no match. Independent of input ordering so it's safe to unit-test.
-pub(crate) fn newest_in_family(models: &[String], family: &str) -> Option<String> {
+pub(crate) fn newest_in_family(
+    models: &[String],
+    family: &str,
+) -> Option<String> {
     models
         .iter()
         .filter(|id| id.contains(family))
@@ -945,7 +948,8 @@ impl SettingsState {
         if entry_top < self.scroll_offset {
             self.scroll_offset = entry_top.saturating_sub(1);
         } else if entry_bottom >= self.scroll_offset + visible_height {
-            self.scroll_offset = entry_bottom.saturating_sub(visible_height) + 1;
+            self.scroll_offset =
+                entry_bottom.saturating_sub(visible_height) + 1;
         }
     }
 }
@@ -1884,10 +1888,8 @@ mod tests {
 
     #[test]
     fn newest_in_family_none_when_absent() {
-        let models = vec![
-            "claude-opus-5".to_string(),
-            "claude-haiku-4-5".to_string(),
-        ];
+        let models =
+            vec!["claude-opus-5".to_string(), "claude-haiku-4-5".to_string()];
         assert_eq!(newest_in_family(&models, "-sonnet-"), None);
     }
 
