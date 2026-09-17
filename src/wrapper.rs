@@ -573,11 +573,11 @@ fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
 // can't reach the models API to detect a newer Sonnet (offline / no
 // ANTHROPIC_API_KEY). If the user (or a wrapping CLI layer) already passes
 // `--model`, we leave it alone.
-pub(crate) const DEFAULT_MODEL: &str = "claude-opus-4-6";
+pub(crate) const DEFAULT_MODEL: &str = "claude-opus-5";
 
 // Resolve the model to launch with, in priority order:
 //   1. an explicit selection stored in whetstone settings (`api_model`)
-//   2. the newest available Sonnet, per the 12h-cached models API
+//   2. the newest available Opus, per the 12h-cached models API
 //   3. the pinned `DEFAULT_MODEL` fallback
 fn resolve_model(explicit: Option<String>) -> String {
     explicit

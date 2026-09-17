@@ -20,11 +20,12 @@ use crate::memory::MemoryProvider;
 use crate::ui;
 
 const FALLBACK_MODELS: &[&str] = &[
-    "claude-opus-4-8",
+    "claude-opus-5",
     "claude-opus-4-6",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
+    "claude-fable-5-1",
     "claude-fable-5",
 ];
 
@@ -90,9 +91,9 @@ fn is_current_gen(id: &str) -> bool {
     let Some(rest) = id.strip_prefix("claude-") else {
         return false;
     };
-    rest.starts_with("opus-4-")
-        || rest.starts_with("sonnet-4-")
-        || rest.starts_with("haiku-4-")
+    rest.starts_with("opus-")
+        || rest.starts_with("sonnet-")
+        || rest.starts_with("haiku-")
         || rest.starts_with("fable-")
 }
 
@@ -187,23 +188,26 @@ fn load_available_models() -> Vec<String> {
     })
 }
 
-/// Newest Sonnet in `models`, by lexical id (matching the descending sort the
-/// picker uses: `claude-sonnet-5` > `claude-sonnet-4-6`). `None` when the list
-/// has no Sonnet. Independent of input ordering so it's safe to unit-test.
-pub(crate) fn newest_sonnet(models: &[String]) -> Option<String> {
+/// Newest model in `family` by lexical id (matching the descending sort the
+/// picker uses: `claude-opus-5` > `claude-opus-4-6`). `None` when the list
+/// has no match. Independent of input ordering so it's safe to unit-test.
+pub(crate) fn newest_in_family(
+    models: &[String],
+    family: &str,
+) -> Option<String> {
     models
         .iter()
-        .filter(|id| id.contains("-sonnet-"))
+        .filter(|id| id.contains(family))
         .max_by(|a, b| a.as_str().cmp(b.as_str()))
         .cloned()
 }
 
 /// The model whetstone uses when the user hasn't pinned one: the newest
-/// available Sonnet per the live/cached models list. Returns `None` when
+/// available Opus per the live/cached models list. Returns `None` when
 /// availability can't be determined (offline / no `ANTHROPIC_API_KEY`) so the
 /// caller falls back to its own pinned default rather than guessing.
 pub fn preferred_default_model() -> Option<String> {
-    newest_sonnet(&live_available_models()?)
+    newest_in_family(&live_available_models()?, "-opus-")
 }
 
 /// Where a setting's value is stored. This is a *separate axis* from the
@@ -353,6 +357,8 @@ struct SettingsState {
     /// `Some(buffer)` while the user is typing a free-text value; `None` in
     /// normal navigation mode.
     editing: Option<String>,
+    /// Vertical scroll offset (in lines) for the entries panel.
+    scroll_offset: u16,
 }
 
 impl SettingsState {
@@ -936,6 +942,18 @@ impl SettingsState {
         self.global != self.original_global
             || self.project != self.original_project
     }
+
+    fn ensure_visible(&mut self, visible_height: u16) {
+        // Each entry is 3 lines (row + helper + blank), preceded by 1 blank.
+        let entry_top = (1 + self.selected * 3) as u16;
+        let entry_bottom = entry_top + 2;
+        if entry_top < self.scroll_offset {
+            self.scroll_offset = entry_top.saturating_sub(1);
+        } else if entry_bottom >= self.scroll_offset + visible_height {
+            self.scroll_offset =
+                entry_bottom.saturating_sub(visible_height) + 1;
+        }
+    }
 }
 
 pub fn run() -> Result<()> {
@@ -1058,10 +1076,11 @@ fn run_loop(
         selected: 0,
         models,
         editing: None,
+        scroll_offset: 0,
     };
 
     loop {
-        terminal.draw(|frame| draw(frame, &state))?;
+        terminal.draw(|frame| draw(frame, &mut state))?;
 
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
@@ -1144,7 +1163,7 @@ fn handle_edit_key(state: &mut SettingsState, code: KeyCode) {
     }
 }
 
-fn draw(frame: &mut Frame, state: &SettingsState) {
+fn draw(frame: &mut Frame, state: &mut SettingsState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1153,6 +1172,9 @@ fn draw(frame: &mut Frame, state: &SettingsState) {
             Constraint::Length(3),
         ])
         .split(frame.area());
+
+    let visible_height = chunks[1].height.saturating_sub(2);
+    state.ensure_visible(visible_height);
 
     draw_header(frame, chunks[0], state.dirty());
     draw_entries(frame, chunks[1], state);
@@ -1278,7 +1300,9 @@ fn draw_entries(frame: &mut Frame, area: Rect, state: &SettingsState) {
     }
 
     let block = Block::default().borders(Borders::ALL);
-    let paragraph = Paragraph::new(lines).block(block);
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .scroll((state.scroll_offset, 0));
     frame.render_widget(paragraph, area);
 }
 
@@ -1329,6 +1353,7 @@ mod tests {
             selected: 0,
             models: test_models(),
             editing: None,
+            scroll_offset: 0,
         }
     }
 
@@ -1845,30 +1870,39 @@ mod tests {
     // ---- model list helpers ---------------------------------------------
 
     #[test]
-    fn newest_sonnet_picks_highest_version() {
+    fn newest_in_family_picks_highest_version() {
         let models = vec![
-            "claude-opus-4-8".to_string(),
+            "claude-opus-5".to_string(),
+            "claude-opus-4-6".to_string(),
             "claude-sonnet-4-6".to_string(),
             "claude-sonnet-5".to_string(),
             "claude-haiku-4-5".to_string(),
         ];
-        assert_eq!(newest_sonnet(&models).as_deref(), Some("claude-sonnet-5"));
+        assert_eq!(
+            newest_in_family(&models, "-opus-").as_deref(),
+            Some("claude-opus-5")
+        );
+        assert_eq!(
+            newest_in_family(&models, "-sonnet-").as_deref(),
+            Some("claude-sonnet-5")
+        );
     }
 
     #[test]
-    fn newest_sonnet_none_when_absent() {
-        let models = vec![
-            "claude-opus-4-8".to_string(),
-            "claude-haiku-4-5".to_string(),
-        ];
-        assert_eq!(newest_sonnet(&models), None);
+    fn newest_in_family_none_when_absent() {
+        let models =
+            vec!["claude-opus-5".to_string(), "claude-haiku-4-5".to_string()];
+        assert_eq!(newest_in_family(&models, "-sonnet-"), None);
     }
 
     #[test]
     fn is_current_gen_accepts_latest_families() {
-        assert!(is_current_gen("claude-opus-4-8"));
+        assert!(is_current_gen("claude-opus-5"));
+        assert!(is_current_gen("claude-opus-4-6"));
+        assert!(is_current_gen("claude-sonnet-5"));
         assert!(is_current_gen("claude-sonnet-4-6"));
         assert!(is_current_gen("claude-haiku-4-5-20251001"));
+        assert!(is_current_gen("claude-fable-5-1"));
         assert!(is_current_gen("claude-fable-5"));
     }
 
