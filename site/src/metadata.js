@@ -2,7 +2,7 @@
 window.WHETSTONE_META = {
   releaseDate: "2026-09-17",
   releaseDateHuman: "SEP 17 2026",
-  sha: "cba6c3e",
+  sha: "cce31ad",
   tagline: "add Tool Search toggle and Headroom rollout/shaper knobs (#97)",
   assets: { commands: 2 },
   modules: [
