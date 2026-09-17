@@ -179,7 +179,7 @@ fn write_seen(project_dir: &Path, models: &[String]) {
 }
 
 /// The model a launch would use today: the project's pin, else the newest
-/// available Sonnet. `None` only when neither is determinable.
+/// available Opus. `None` only when neither is determinable.
 fn effective_model(resolved: &ResolvedSettings) -> Option<String> {
     resolved
         .api_model
