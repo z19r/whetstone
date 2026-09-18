@@ -4,6 +4,16 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.15.3] - 2026-09-18
+
+### Fixed
+
+- fetch tags before computing changelog diff (#131)
+
+### Changed
+
+- bump clap from 4.6.6 to 4.6.7 (#130)
+
 ## [3.15.2] - 2026-09-17
 
 ### Fixed
