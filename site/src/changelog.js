@@ -6,25 +6,9 @@ window.WHETSTONE_CHANGELOG = [
     "date": "2026-09-17",
     "sections": [
       {
-        "name": "added",
-        "bullets": [
-          "add Tool Search toggle and Headroom rollout/shaper knobs (#97)"
-        ]
-      },
-      {
         "name": "fixed",
         "bullets": [
-          "add scroll support and update model defaults to Opus (#125)",
-          "correctly update mise-managed Claude Code installs (#98)"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "bump ureq from 3.4.1 to 3.4.2 (#124)",
-          "bump ureq from 2.12.1 to 3.4.1 (#119)",
-          "bump dirs from 6.0.0 to 7.0.0 (#118)",
-          "bump serde_json from 1.0.149 to 1.0.151 (#116)"
+          "re-release of v3.15.0 (release workflow fix)"
         ]
       }
     ]
@@ -34,25 +18,9 @@ window.WHETSTONE_CHANGELOG = [
     "date": "2026-09-17",
     "sections": [
       {
-        "name": "added",
-        "bullets": [
-          "add Tool Search toggle and Headroom rollout/shaper knobs (#97)"
-        ]
-      },
-      {
         "name": "fixed",
         "bullets": [
-          "add scroll support and update model defaults to Opus (#125)",
-          "correctly update mise-managed Claude Code installs (#98)"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "bump ureq from 3.4.1 to 3.4.2 (#124)",
-          "bump ureq from 2.12.1 to 3.4.1 (#119)",
-          "bump dirs from 6.0.0 to 7.0.0 (#118)",
-          "bump serde_json from 1.0.149 to 1.0.151 (#116)"
+          "re-release of v3.15.0 (release workflow fix)"
         ]
       }
     ]

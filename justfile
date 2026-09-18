@@ -215,6 +215,7 @@ release LEVEL: release-check
         fi
     fi
     git pull --ff-only origin main
+    git fetch --tags origin
     OLD_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     cargo set-version --bump {{ LEVEL }}
     cargo check --quiet
@@ -271,6 +272,12 @@ release LEVEL: release-check
             echo "### Changed"
             echo ""
             for b in "${CHANGED[@]}"; do echo "- $b"; done
+        fi
+        if (( ! ${#ADDED[@]} && ! ${#FIXED[@]} && ! ${#CHANGED[@]} )); then
+            echo ""
+            echo "### Changed"
+            echo ""
+            echo "- version bump only (no conventional commits since ${PREV_TAG})"
         fi
     } > /tmp/whetstone_cl_section
     awk '
