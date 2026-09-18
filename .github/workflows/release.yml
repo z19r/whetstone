@@ -143,6 +143,11 @@ jobs:
     name: Create release
     needs: [check-tag, verify, build, assets]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Sigstore signing for build provenance attestations.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -166,6 +171,13 @@ jobs:
       - name: Generate checksums
         run: sha256sum whetstone-*.tar.gz > SHA256SUMS.txt
 
+      # Attestations must be produced in the same run that built the artifacts,
+      # so this lives here rather than in a standalone workflow.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: whetstone-*.tar.gz
+
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v3
         with:
@@ -180,6 +192,9 @@ jobs:
     name: Verify GitHub release
     needs: [check-tag, release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
     steps:
       - name: Inspect release metadata
         env:
@@ -243,6 +258,20 @@ jobs:
               names = ", ".join(missing_checksums)
               sys.exit(f"missing checksums for: {names}")
           PY2
+
+      - name: Verify artifact attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.check-tag.outputs.tag }}
+        run: |
+          gh release download "$TAG" \
+            --pattern "whetstone-*.tar.gz" \
+            --dir dist
+          for archive in dist/whetstone-*.tar.gz; do
+            echo "Verifying attestation for $(basename "$archive")"
+            gh attestation verify "$archive" --repo "$GH_REPO"
+          done
 
   publish-crate:
     name: Publish to crates.io
