@@ -1,5 +1,7 @@
 # Whetstone
 
+[![Monitored by Cooper&Wright](https://img.shields.io/badge/monitored%20by-Cooper%26Wright-8a6a3b?style=flat-square)](https://cooperwright.com)
+
 A single Rust binary that installs and orchestrates three upstream tools for
 Claude Code (and friends): **Headroom** (context proxy), **RTK** (Bash-output
 hook), and **ICM** (project memory). Idempotent setup, version-pinned manifest,
