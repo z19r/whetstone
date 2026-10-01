@@ -2,6 +2,24 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.16.0",
+    "date": "2026-10-01",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "launch headroom with --no-rate-limit (#138)"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "attest build provenance for release artifacts (#135)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.15.3",
     "date": "2026-09-18",
     "sections": [
@@ -146,36 +164,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "changed",
         "bullets": [
           "use fixed-size arrays for mode/profile consts",
-          "per-config proxy plan + launch-order anchor spec refinement",
-          "per-config headroom proxy reuse design"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.13.0",
-    "date": "2026-08-23",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "kill registered proxies on global uninstall",
-          "per-config proxy selection; drop memory-conflict prompt",
-          "prune + reuse/spawn resolve orchestrator",
-          "launch-order 8787 port anchor"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "tolerate transient probe + surface registry save errors",
-          "remove dead test scaffolding struct",
-          "add PID ownership check to lockfile guard, fix deadline check, and remove unused imports"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
           "per-config proxy plan + launch-order anchor spec refinement",
           "per-config headroom proxy reuse design"
         ]
