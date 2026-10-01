@@ -318,7 +318,7 @@ fn spawn_proxy_detached_pid(port: &str, memory: bool) -> Option<u32> {
     let telemetry_disabled = !headroom_telemetry_enabled();
     let args = build_proxy_args(
         port,
-        headroom_proxy_supports_savings_profile(),
+        headroom_proxy_flag_support(),
         telemetry_disabled,
         memory,
     );
@@ -399,7 +399,7 @@ fn smoke_start_proxy(program: &str, grace: Duration) -> ProxyStartCheck {
     let telemetry_disabled = !headroom_telemetry_enabled();
     let args = build_proxy_args(
         &port,
-        headroom_proxy_supports_savings_profile(),
+        headroom_proxy_flag_support(),
         telemetry_disabled,
         false,
     );
@@ -499,12 +499,12 @@ fn is_startup_noise(line: &str) -> bool {
 
 fn build_proxy_args(
     port: &str,
-    savings_profile: bool,
+    flags: ProxyFlagSupport,
     no_telemetry: bool,
     memory: bool,
 ) -> Vec<&str> {
     let mut args = vec!["proxy", "--port", port];
-    if savings_profile {
+    if flags.savings_profile {
         args.push("--savings-profile");
     }
     if no_telemetry {
@@ -512,6 +512,12 @@ fn build_proxy_args(
     }
     if memory {
         args.push("--memory");
+    }
+    // Headroom throttles requests through the proxy by default. A whetstone
+    // proxy only ever serves local Claude Code sessions, which the upstream
+    // API already rate-limits, so the extra limiter adds nothing but 429s.
+    if flags.no_rate_limit {
+        args.push("--no-rate-limit");
     }
     args
 }
@@ -549,20 +555,39 @@ fn resolve_savings_profile(override_value: Option<String>) -> String {
         .unwrap_or_else(|| DEFAULT_SAVINGS_PROFILE.to_string())
 }
 
-fn headroom_proxy_supports_savings_profile() -> bool {
-    let output = Command::new("headroom")
+/// Which optional `headroom proxy` flags the installed headroom accepts.
+/// Passing a flag an older headroom rejects kills the proxy at startup, so
+/// every optional flag is gated on this probe.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ProxyFlagSupport {
+    savings_profile: bool,
+    no_rate_limit: bool,
+}
+
+/// Probe headroom once per launch and answer for every optional flag at
+/// the same time — one `headroom proxy --help` subprocess, not one per flag.
+fn headroom_proxy_flag_support() -> ProxyFlagSupport {
+    let Some(output) = Command::new("headroom")
         .args(["proxy", "--help"])
         .output()
-        .ok();
-
-    let Some(output) = output else {
-        return false;
+        .ok()
+    else {
+        return ProxyFlagSupport::default();
     };
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    proxy_help_mentions_flag(&stdout, "--savings-profile")
-        || proxy_help_mentions_flag(&stderr, "--savings-profile")
+    let help = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    proxy_flag_support_from_help(&help)
+}
+
+fn proxy_flag_support_from_help(help: &str) -> ProxyFlagSupport {
+    ProxyFlagSupport {
+        savings_profile: proxy_help_mentions_flag(help, "--savings-profile"),
+        no_rate_limit: proxy_help_mentions_flag(help, "--no-rate-limit"),
+    }
 }
 
 fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
@@ -680,6 +705,13 @@ pub fn wrap_proxy(args: &[String], memory: bool) -> ! {
     let mut proxy_args = vec!["proxy".to_string()];
     if memory && !args.iter().any(|a| a == "--memory") {
         proxy_args.push("--memory".into());
+    }
+    // Same reasoning as `build_proxy_args`: no limiter in front of a local
+    // proxy. Skipped when the caller already spelled it out themselves.
+    if headroom_proxy_flag_support().no_rate_limit
+        && !args.iter().any(|a| a == "--no-rate-limit")
+    {
+        proxy_args.push("--no-rate-limit".into());
     }
     proxy_args.extend_from_slice(args);
     exec("headroom", &proxy_args);
@@ -1185,37 +1217,84 @@ mod tests {
         assert!(port > 0);
     }
 
+    // No optional flag survived the help probe.
+    const NO_FLAGS: ProxyFlagSupport = ProxyFlagSupport {
+        savings_profile: false,
+        no_rate_limit: false,
+    };
+
+    // Only `--savings-profile` is supported, so the rate-limit assertions
+    // below isolate one flag at a time.
+    const SAVINGS_ONLY: ProxyFlagSupport = ProxyFlagSupport {
+        savings_profile: true,
+        no_rate_limit: false,
+    };
+
     #[test]
     fn build_proxy_args_without_savings_profile() {
-        let args = build_proxy_args("8787", false, false, false);
+        let args = build_proxy_args("8787", NO_FLAGS, false, false);
         assert_eq!(args, vec!["proxy", "--port", "8787"]);
     }
 
     #[test]
     fn build_proxy_args_with_savings_profile() {
-        let args = build_proxy_args("8787", true, false, false);
+        let args = build_proxy_args("8787", SAVINGS_ONLY, false, false);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--savings-profile"]);
     }
 
     #[test]
     fn build_proxy_args_with_no_telemetry() {
-        let args = build_proxy_args("8787", false, true, false);
+        let args = build_proxy_args("8787", NO_FLAGS, true, false);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--no-telemetry"]);
     }
 
     #[test]
     fn build_proxy_args_with_memory() {
-        let args = build_proxy_args("8787", false, false, true);
+        let args = build_proxy_args("8787", NO_FLAGS, false, true);
         assert_eq!(args, vec!["proxy", "--port", "8787", "--memory"]);
     }
 
     #[test]
     fn build_proxy_args_with_savings_profile_and_memory() {
-        let args = build_proxy_args("8787", true, false, true);
+        let args = build_proxy_args("8787", SAVINGS_ONLY, false, true);
         assert_eq!(
             args,
             vec!["proxy", "--port", "8787", "--savings-profile", "--memory"]
         );
+    }
+
+    #[test]
+    fn build_proxy_args_disables_rate_limiting_when_supported() {
+        let flags = ProxyFlagSupport {
+            savings_profile: false,
+            no_rate_limit: true,
+        };
+        let args = build_proxy_args("8787", flags, false, false);
+        assert_eq!(args, vec!["proxy", "--port", "8787", "--no-rate-limit"]);
+    }
+
+    #[test]
+    fn build_proxy_args_omits_rate_limit_flag_when_unsupported() {
+        let args = build_proxy_args("8787", SAVINGS_ONLY, true, true);
+        assert!(!args.contains(&"--no-rate-limit"));
+    }
+
+    #[test]
+    fn proxy_flag_support_reads_both_flags_from_help() {
+        let help = "  --savings-profile  ...\n  --no-rate-limit  Disable rate limiting\n";
+        assert_eq!(
+            proxy_flag_support_from_help(help),
+            ProxyFlagSupport {
+                savings_profile: true,
+                no_rate_limit: true,
+            }
+        );
+    }
+
+    #[test]
+    fn proxy_flag_support_is_empty_for_an_older_headroom() {
+        let help = "  --port INTEGER  Port bind\n  --no-cache  Disable semantic caching\n";
+        assert_eq!(proxy_flag_support_from_help(help), NO_FLAGS);
     }
 
     #[test]
@@ -1235,7 +1314,7 @@ mod tests {
 
     #[test]
     fn build_proxy_args_with_savings_profile_and_no_telemetry() {
-        let args = build_proxy_args("8787", true, true, false);
+        let args = build_proxy_args("8787", SAVINGS_ONLY, true, false);
         assert_eq!(
             args,
             vec![
