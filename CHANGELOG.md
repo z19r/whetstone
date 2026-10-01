@@ -4,6 +4,16 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.16.0] - 2026-10-01
+
+### Added
+
+- launch headroom with --no-rate-limit (#138)
+
+### Changed
+
+- attest build provenance for release artifacts (#135)
+
 ## [3.15.3] - 2026-09-18
 
 ### Fixed
