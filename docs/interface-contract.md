@@ -54,8 +54,8 @@ headroom wrap [OPTIONS] COMMAND [ARGS]...
 **Drift note (headroom 0.34.0):** `--no-rtk` was removed upstream — passing it
 now aborts the launch with `no such option: --no-rtk`. whetstone no longer
 emits it. `--no-serena` was superseded by `--code-memory none` but survives as
-a hidden alias, so we keep emitting the older spelling for compatibility with
-our 0.21.0 floor.
+a hidden alias on `wrap claude` (verified accepted on 0.40.0, our floor), so we
+keep emitting the older spelling.
 
 **Decision:** whetstone v3's default command becomes `headroom wrap claude
 --model claude-opus-4-7` (or current default). No fallback required against

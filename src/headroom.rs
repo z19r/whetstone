@@ -7,7 +7,7 @@ use std::{fs, io};
 use crate::ui;
 use crate::version;
 
-const MIN_VERSION: &str = "0.21.0";
+const MIN_VERSION: &str = "0.40.0";
 const PYPI_URL: &str = "https://pypi.org/pypi/headroom-ai/json";
 
 #[derive(Deserialize)]
@@ -455,6 +455,19 @@ fn run_uv_install(spec: &str, upgrade: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn min_version_floor_rejects_pre_semantic_cache_releases() {
+        // 0.40.0 is the oldest release whetstone has verified: its proxy keys
+        // the semantic cache on `output_config` (and the rest of the request
+        // shape), so a structured-output reply can't be served from a cache
+        // entry built for a different schema (#137). Older installs are
+        // upgraded rather than passed as healthy.
+        assert!(version::is_older("0.39.9", MIN_VERSION));
+        assert!(version::is_older("0.21.0", MIN_VERSION));
+        assert!(!version::is_older("0.40.0", MIN_VERSION));
+        assert!(!version::is_older("0.41.0", MIN_VERSION));
+    }
 
     #[test]
     fn detects_registered_headroom_mcp() {
