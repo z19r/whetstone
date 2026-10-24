@@ -258,6 +258,7 @@ enum SettingId {
     HeadroomTargetRatio,
     HeadroomBudget,
     HeadroomLogMessages,
+    HeadroomSemanticCache,
     HeadroomRolloutChannel,
     HeadroomOutputShaper,
     ApiModel,
@@ -274,6 +275,7 @@ const SETTINGS: &[SettingId] = &[
     SettingId::HeadroomTargetRatio,
     SettingId::HeadroomBudget,
     SettingId::HeadroomLogMessages,
+    SettingId::HeadroomSemanticCache,
     SettingId::HeadroomRolloutChannel,
     SettingId::HeadroomOutputShaper,
     SettingId::ApiModel,
@@ -300,6 +302,7 @@ fn control_kind(id: SettingId) -> Control {
         | SettingId::HeadroomBeacon
         | SettingId::HeadroomMemory
         | SettingId::HeadroomLogMessages
+        | SettingId::HeadroomSemanticCache
         | SettingId::EnableToolSearch => Control::Bool,
         SettingId::ApiModel
         | SettingId::PermissionMode
@@ -321,6 +324,7 @@ fn label(id: SettingId) -> &'static str {
         SettingId::HeadroomTargetRatio => "Headroom Target Ratio",
         SettingId::HeadroomBudget => "Headroom Budget",
         SettingId::HeadroomLogMessages => "Headroom Log Messages",
+        SettingId::HeadroomSemanticCache => "Headroom Semantic Cache",
         SettingId::HeadroomRolloutChannel => "Headroom Rollout Channel",
         SettingId::HeadroomOutputShaper => "Headroom Output Shaper",
         SettingId::ApiModel => "API Model",
@@ -360,8 +364,22 @@ fn env_knob(id: SettingId) -> Option<(&'static str, EnvKind)> {
         SettingId::HeadroomBeacon => {
             Some(("HEADROOM_BEACON", EnvKind::Toggle("off")))
         }
+        SettingId::HeadroomSemanticCache => {
+            Some(("HEADROOM_CACHE_ENABLED", EnvKind::Toggle("0")))
+        }
         _ => None,
     }
+}
+
+/// Whether a boolean setting is an *opt-out*: the Headroom behaviour is on by
+/// default, and the stored `headroom_env` value is what disables it. For these
+/// the TUI's "On" means *unset*, so the bar never shows "On" while a value is
+/// quietly written (the trap `HEADROOM_BEACON` fell into).
+fn is_opt_out(id: SettingId) -> bool {
+    matches!(
+        id,
+        SettingId::HeadroomBeacon | SettingId::HeadroomSemanticCache
+    )
 }
 
 /// Whether a setting accepts a typed free-text value (enter to edit).
@@ -454,7 +472,8 @@ impl SettingsState {
             | SettingId::HeadroomLogMessages
             | SettingId::HeadroomRolloutChannel
             | SettingId::HeadroomOutputShaper
-            | SettingId::HeadroomBeacon => unreachable!(),
+            | SettingId::HeadroomBeacon
+            | SettingId::HeadroomSemanticCache => unreachable!(),
         }
     }
 
@@ -597,7 +616,8 @@ impl SettingsState {
             | SettingId::HeadroomLogMessages
             | SettingId::HeadroomRolloutChannel
             | SettingId::HeadroomOutputShaper
-            | SettingId::HeadroomBeacon => unreachable!(),
+            | SettingId::HeadroomBeacon
+            | SettingId::HeadroomSemanticCache => unreachable!(),
         }
     }
 
@@ -648,11 +668,12 @@ impl SettingsState {
     }
 
     /// Whether the setting reads as "On" to the user. For most booleans that is
-    /// simply "stored somewhere". Beacon is inverted (opt-out): being *unset*
-    /// leaves the beacon on, and storing `HEADROOM_BEACON=off` turns it off.
+    /// simply "stored somewhere"; for an opt-out ([`is_opt_out`]) it is
+    /// inverted, because the Headroom behaviour is already on and the stored
+    /// value is what turns it off.
     fn value_on(&self, id: SettingId) -> bool {
         let active = self.scope(id) != Scope::Off;
-        if id == SettingId::HeadroomBeacon {
+        if is_opt_out(id) {
             !active
         } else {
             active
@@ -826,6 +847,12 @@ impl SettingsState {
                 "On — Headroom keeps persistent cross-session memory (proxy --memory)."
             } else {
                 "Off — each session starts fresh; no cross-session memory."
+            }
+            .to_string(),
+            SettingId::HeadroomSemanticCache => if self.value_on(id) {
+                "On — Headroom replays a cached response for an identical request (Headroom default; saves tokens)."
+            } else {
+                "Off — every request reaches the model, so a retry regenerates (writes HEADROOM_CACHE_ENABLED=0)."
             }
             .to_string(),
             SettingId::HeadroomLogMessages => if self.value_on(id) {
@@ -1466,6 +1493,83 @@ mod tests {
         s.toggle_scope(id);
         assert_eq!(s.scope(id), Scope::Global);
         assert!(s.global.enable_tool_search);
+    }
+
+    // Same inverted shape as the beacon: Headroom caches by default, so the
+    // TUI reads "On" while unset and writing the value is what turns it off.
+    #[test]
+    fn semantic_cache_is_inverted_opt_out() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomSemanticCache;
+        assert!(s.value_on(id));
+        assert_eq!(s.scope(id), Scope::Off);
+        assert!(s.global.headroom_env.is_empty());
+
+        s.toggle_bool(id);
+        assert!(!s.value_on(id));
+        assert_eq!(s.scope(id), Scope::Global);
+        assert_eq!(
+            s.global
+                .headroom_env
+                .get("HEADROOM_CACHE_ENABLED")
+                .map(String::as_str),
+            Some("0")
+        );
+
+        // Back On clears the key rather than storing a truthy value, so
+        // Headroom's own default is what applies.
+        s.toggle_bool(id);
+        assert!(s.value_on(id));
+        assert!(s.global.headroom_env.is_empty());
+        assert!(s.project.headroom_env.is_empty());
+    }
+
+    #[test]
+    fn semantic_cache_scope_toggle_reaches_project_scope() {
+        let mut s = default_state();
+        let id = SettingId::HeadroomSemanticCache;
+        s.toggle_bool(id); // Off @ Global
+        s.toggle_scope(id);
+        assert_eq!(s.scope(id), Scope::Project);
+        assert_eq!(
+            s.project
+                .headroom_env
+                .get("HEADROOM_CACHE_ENABLED")
+                .map(String::as_str),
+            Some("0")
+        );
+
+        // Turning it back Off clears both maps, so neither layer keeps a
+        // stale opt-out behind the user's back.
+        s.toggle_bool(id);
+        assert_eq!(s.scope(id), Scope::Off);
+        assert!(!s
+            .project
+            .headroom_env
+            .contains_key("HEADROOM_CACHE_ENABLED"));
+        assert!(!s.global.headroom_env.contains_key("HEADROOM_CACHE_ENABLED"));
+    }
+
+    // The key must reach the proxy: whetstone neither owns nor denies it, so
+    // it flows through `headroom_env` and lands in the proxy fingerprint.
+    #[test]
+    fn semantic_cache_key_is_not_reserved() {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("HEADROOM_CACHE_ENABLED".to_string(), "0".to_string());
+        let plan = crate::headroom_env::build_headroom_env(
+            &map,
+            crate::config::ProviderTag::Skip,
+            None,
+            |_| false,
+        );
+        assert!(
+            plan.apply
+                .iter()
+                .any(|(k, v)| k == "HEADROOM_CACHE_ENABLED" && v == "0"),
+            "not applied: {:?}",
+            plan.apply
+        );
+        assert!(plan.ignored.is_empty(), "ignored: {:?}", plan.ignored);
     }
 
     #[test]
