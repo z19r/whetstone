@@ -4,6 +4,21 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.17.0] - 2026-10-24
+
+### Added
+
+- warn on stale model pins; expose Headroom semantic cache toggle (#142)
+
+### Fixed
+
+- default to claude-opus-5-5 and refresh offline roster (#141)
+
+### Changed
+
+- raise version floor to 0.40.0 (#143)
+- bump serde_json from 1.0.151 to 1.0.154 (#140)
+
 ### Changed
 
 - the headroom version floor (`src/headroom.rs::MIN_VERSION`) is now `0.40.0`,
