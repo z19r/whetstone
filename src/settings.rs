@@ -104,7 +104,7 @@ fn is_current_gen(id: &str) -> bool {
         || rest.starts_with("fable-")
 }
 
-fn strip_date_suffix(id: &str) -> Option<&str> {
+pub(crate) fn strip_date_suffix(id: &str) -> Option<&str> {
     if id.len() > 9 {
         let (base, suffix) = id.split_at(id.len() - 9);
         if suffix.starts_with('-')

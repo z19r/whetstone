@@ -14,6 +14,14 @@ All notable changes to whetstone will be documented in this file.
   left behind by an earlier release gets an upgrade offer instead of booting
   silently
 
+### Added
+
+- startup notice when the model about to launch comes from a project or global
+  `api_model` pin that Anthropic's models list has retired or superseded. Names
+  the model, which file the pin lives in, what to move to, and how to change
+  it. Covers the paths the update modal cannot — non-interactive launches,
+  projects with no v3 manifest, dismissed ids, and pins whose family is gone
+
 ## [3.16.0] - 2026-10-01
 
 ### Added
