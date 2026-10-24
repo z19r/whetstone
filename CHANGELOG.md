@@ -6,6 +6,12 @@ All notable changes to whetstone will be documented in this file.
 
 ### Changed
 
+- the headroom version floor (`src/headroom.rs::MIN_VERSION`) is now `0.40.0`,
+  up from `0.21.0`. 0.40.0 is the oldest release whose proxy is known to key
+  the semantic cache on the full request shape — `output_config` included — so
+  a structured-output reply cannot be replayed from an entry built for a
+  different schema (#137). Installs below the floor are upgraded by `whetstone
+  setup` / `install-tools` / `doctor --fix` instead of being reported healthy
 - default model is now `claude-opus-5-5`, and the offline model roster carries
   the current generation only (Opus 5.5/5, Sonnet 5.5/5, Haiku 5.5, Fable
   5.1/5) instead of 4.x releases
