@@ -19,12 +19,19 @@ use crate::config::{
 use crate::memory::MemoryProvider;
 use crate::ui;
 
-const FALLBACK_MODELS: &[&str] = &[
+/// Known-current model roster, used only when the live/cached models list is
+/// unreachable (offline / no credentials). Ordered the same way
+/// [`fetch_models_from_api`] sorts: by family, then newest id first, so index
+/// 0 is the flagship the picker lands on. Deliberately current-generation
+/// only — this list is both the offline picker menu and the floor the
+/// launch-time update prompt compares a stale pin against, so an older
+/// release does not belong here.
+pub(crate) const FALLBACK_MODELS: &[&str] = &[
+    "claude-opus-5-5",
     "claude-opus-5",
-    "claude-opus-4-6",
+    "claude-sonnet-5-5",
     "claude-sonnet-5",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5-20251001",
+    "claude-haiku-5-5",
     "claude-fable-5-1",
     "claude-fable-5",
 ];
@@ -186,6 +193,21 @@ fn load_available_models() -> Vec<String> {
     live_available_models().unwrap_or_else(|| {
         FALLBACK_MODELS.iter().map(|s| s.to_string()).collect()
     })
+}
+
+/// Available models for the launch-time model-update prompt: the live/cached
+/// list when reachable, else the static `FALLBACK_MODELS` floor. The `bool`
+/// says which. Callers persist their "seen" baseline only from a *live* list,
+/// so an offline launch can still offer a newer release of the in-use family
+/// without seeding the brand-new-family signal from a hardcoded roster.
+pub(crate) fn available_models_for_prompt() -> (Vec<String>, bool) {
+    match live_available_models() {
+        Some(live) => (live, true),
+        None => (
+            FALLBACK_MODELS.iter().map(|s| s.to_string()).collect(),
+            false,
+        ),
+    }
 }
 
 /// Newest model in `family` by lexical id (matching the descending sort the
@@ -1897,13 +1919,72 @@ mod tests {
 
     #[test]
     fn is_current_gen_accepts_latest_families() {
+        assert!(is_current_gen("claude-opus-5-5"));
         assert!(is_current_gen("claude-opus-5"));
-        assert!(is_current_gen("claude-opus-4-6"));
+        assert!(is_current_gen("claude-sonnet-5-5"));
         assert!(is_current_gen("claude-sonnet-5"));
-        assert!(is_current_gen("claude-sonnet-4-6"));
-        assert!(is_current_gen("claude-haiku-4-5-20251001"));
+        assert!(is_current_gen("claude-haiku-5-5"));
         assert!(is_current_gen("claude-fable-5-1"));
         assert!(is_current_gen("claude-fable-5"));
+    }
+
+    #[test]
+    fn newest_in_family_prefers_point_release_over_bare_major() {
+        let models = vec![
+            "claude-opus-5".to_string(),
+            "claude-opus-5-5".to_string(),
+            "claude-sonnet-5".to_string(),
+            "claude-sonnet-5-5".to_string(),
+        ];
+        assert_eq!(
+            newest_in_family(&models, "-opus-").as_deref(),
+            Some("claude-opus-5-5")
+        );
+        assert_eq!(
+            newest_in_family(&models, "-sonnet-").as_deref(),
+            Some("claude-sonnet-5-5")
+        );
+    }
+
+    // The offline roster is what a credential-less launch boots from, so it
+    // must lead with the current flagship Opus and hold nothing older than
+    // the current generation.
+    #[test]
+    fn fallback_roster_leads_with_current_flagship_opus() {
+        let models: Vec<String> =
+            FALLBACK_MODELS.iter().map(|s| s.to_string()).collect();
+        assert_eq!(FALLBACK_MODELS[0], crate::wrapper::DEFAULT_MODEL);
+        assert_eq!(
+            newest_in_family(&models, "-opus-").as_deref(),
+            Some(crate::wrapper::DEFAULT_MODEL)
+        );
+    }
+
+    #[test]
+    fn fallback_roster_is_current_generation_only() {
+        for id in FALLBACK_MODELS {
+            assert!(is_current_gen(id), "{id} is not a current family");
+            // `claude-<family>-<major>[-<minor>]` — the third segment is the
+            // generation.
+            let major: u32 = id
+                .split('-')
+                .nth(2)
+                .and_then(|seg| seg.parse().ok())
+                .unwrap_or_else(|| panic!("{id} has no generation segment"));
+            assert!(major >= 5, "{id} predates the current generation");
+        }
+    }
+
+    #[test]
+    fn fallback_roster_is_sorted_like_the_api_list() {
+        let mut sorted: Vec<String> =
+            FALLBACK_MODELS.iter().map(|s| s.to_string()).collect();
+        sorted.sort_by(|a, b| {
+            family_order(a).cmp(&family_order(b)).then(b.cmp(a))
+        });
+        let as_listed: Vec<String> =
+            FALLBACK_MODELS.iter().map(|s| s.to_string()).collect();
+        assert_eq!(as_listed, sorted);
     }
 
     #[test]

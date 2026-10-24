@@ -595,10 +595,12 @@ fn proxy_help_mentions_flag(help_text: &str, flag: &str) -> bool {
 }
 
 // Pinned fallback model — used only when the user hasn't selected one AND we
-// can't reach the models API to detect a newer Sonnet (offline / no
+// can't reach the models API to detect a newer Opus (offline / no
 // ANTHROPIC_API_KEY). If the user (or a wrapping CLI layer) already passes
-// `--model`, we leave it alone.
-pub(crate) const DEFAULT_MODEL: &str = "claude-opus-5";
+// `--model`, we leave it alone. Keep this at the current flagship Opus: it is
+// the model a credential-less launch boots with, so a stale value here is the
+// one way whetstone can quietly start an old model.
+pub(crate) const DEFAULT_MODEL: &str = "claude-opus-5-5";
 
 // Resolve the model to launch with, in priority order:
 //   1. an explicit selection stored in whetstone settings (`api_model`)

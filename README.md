@@ -49,7 +49,7 @@ Full procedure, archive contents, and rollback semantics: [docs/migration.md](do
 - **Hooks are tool-managed.** Whetstone no longer hand-merges `~/.claude/settings.json`. `rtk init --auto-patch` and `icm init` write their own hook entries. `whetstone doctor` reports drift.
 - **Migration is mandatory.** Existing v2 installs must run `whetstone migrate` before any v3 command will configure them.
 - **`config.local.json` replaced by `.claude/whetstone.json`** (schema version, integration version, provider, tool versions, timestamps).
-- **Default model is settings-driven.** `whetstone claude` injects `--model` using, in order: an explicit `api_model` from `whetstone settings`, else the newest available Sonnet (12h-cached models API), else `claude-opus-4-6`. (v3.0.0 dropped the old hardcoded model; #68 restored a settings-driven default.)
+- **Default model is settings-driven.** `whetstone claude` injects `--model` using, in order: an explicit `api_model` from `whetstone settings`, else the newest available Opus (12h-cached models API), else `claude-opus-5-5`. (v3.0.0 dropped the old hardcoded model; #68 restored a settings-driven default.)
 
 Full release notes in [CHANGELOG.md](CHANGELOG.md).
 

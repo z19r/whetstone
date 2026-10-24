@@ -50,7 +50,7 @@ taking precedence over global ones.
 |---------|--------|
 | Headroom Telemetry | Toggle Headroom telemetry |
 | Headroom Memory | Persist the `--memory` flag (Headroom cross-session memory) |
-| API Model | Default model injected into `headroom wrap claude` (otherwise: newest Sonnet, else `claude-opus-4-6`) |
+| API Model | Default model injected into `headroom wrap claude` (otherwise: newest Opus, else `claude-opus-5-5`) |
 | Edit Mode | Claude Code `--permission-mode` injected into `headroom wrap claude` — one of `acceptEdits`, `default`, `plan`, `bypassPermissions`. When **Off**, no flag is injected and Claude Code uses its own default. An explicit `--permission-mode` on the command line always wins |
 | Anthropic API URL | Custom upstream Anthropic API URL for the Headroom proxy (exported as `ANTHROPIC_TARGET_API_URL`) |
 
