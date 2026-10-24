@@ -2,6 +2,46 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.17.0",
+    "date": "2026-10-24",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "warn on stale model pins; expose Headroom semantic cache toggle (#142)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "default to claude-opus-5-5 and refresh offline roster (#141)"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "raise version floor to 0.40.0 (#143)",
+          "bump serde_json from 1.0.151 to 1.0.154 (#140)"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "the headroom version floor (src/headroom.rs::MIN_VERSION) is now 0.40.0, up from 0.21.0.",
+          "default model is now claude-opus-5-5, and the offline model roster carries the current generation only (Opus 5.5/5, Sonnet 5.5/5, Haiku 5.5…",
+          "the launch-time model-update prompt now also runs when the models API is unreachable, comparing the in-use model against that static roster…"
+        ]
+      },
+      {
+        "name": "added",
+        "bullets": [
+          "whetstone settings exposes Headroom Semantic Cache (HEADROOM_CACHE_ENABLED), an opt-out that turns off Headroom's replay of cached response…",
+          "startup notice when the model about to launch comes from a project or global api_model pin that Anthropic's models list has retired or supe…"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.16.0",
     "date": "2026-10-01",
     "sections": [
@@ -124,37 +164,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "point wrap claude at the managed per-config proxy port (#95)",
-          "tolerate transient probe + surface registry save errors",
-          "remove dead test scaffolding struct",
-          "add PID ownership check to lockfile guard, fix deadline check, and remove unused imports"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "use fixed-size arrays for mode/profile consts",
-          "per-config proxy plan + launch-order anchor spec refinement",
-          "per-config headroom proxy reuse design"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.14.0",
-    "date": "2026-08-23",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "add Headroom Savings Profile setting",
-          "kill registered proxies on global uninstall",
-          "per-config proxy selection; drop memory-conflict prompt",
-          "prune + reuse/spawn resolve orchestrator"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
           "tolerate transient probe + surface registry save errors",
           "remove dead test scaffolding struct",
           "add PID ownership check to lockfile guard, fix deadline check, and remove unused imports"
