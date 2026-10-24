@@ -4,6 +4,16 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- default model is now `claude-opus-5-5`, and the offline model roster carries
+  the current generation only (Opus 5.5/5, Sonnet 5.5/5, Haiku 5.5, Fable
+  5.1/5) instead of 4.x releases
+- the launch-time model-update prompt now also runs when the models API is
+  unreachable, comparing the in-use model against that static roster, so a pin
+  left behind by an earlier release gets an upgrade offer instead of booting
+  silently
+
 ## [3.16.0] - 2026-10-01
 
 ### Added

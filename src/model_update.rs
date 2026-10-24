@@ -237,9 +237,10 @@ pub fn maybe_prompt(resolved: &ResolvedSettings) -> ModelDecision {
     let Ok(Some(manifest)) = WhetstoneManifest::load(&manifest_path) else {
         return ModelDecision::NoChange;
     };
-    let Some(available) = crate::settings::live_available_models() else {
-        return ModelDecision::NoChange;
-    };
+    // Offline (or credential-less) launches still compare the in-use model
+    // against the static current-generation roster, so a pin left behind by an
+    // earlier release gets an upgrade offer instead of booting silently.
+    let (available, live) = crate::settings::available_models_for_prompt();
 
     let effective = effective_model(resolved)
         .unwrap_or_else(|| crate::wrapper::DEFAULT_MODEL.to_string());
@@ -248,8 +249,11 @@ pub fn maybe_prompt(resolved: &ResolvedSettings) -> ModelDecision {
         model_offers(&effective, &available, &seen, &manifest.dismissed_models);
 
     // Record the current list as the new baseline whenever it changed (this is
-    // also the first-run seeding that suppresses brand-new-family until later).
-    if seen != available {
+    // also the first-run seeding that suppresses brand-new-family until
+    // later). Only a live list may become the baseline — seeding it from
+    // `FALLBACK_MODELS` would mark families as "seen" that the user has never
+    // actually been offered.
+    if live && seen != available {
         write_seen(&cwd, &available);
     }
 
@@ -542,6 +546,24 @@ mod tests {
             s(&["claude-opus-4-6", "claude-opus-4-8", "claude-fable-5"]);
         let offers = model_offers("claude-opus-4-6", &available, &[], &[]);
         assert_eq!(offers, s(&["claude-opus-4-8"]));
+    }
+
+    // The offline shape: no live list, so `available` is the static roster
+    // and `seen` is empty. A pin left on last generation's flagship must
+    // still draw an upgrade offer rather than booting silently.
+    #[test]
+    fn offline_roster_offers_upgrade_for_stale_opus_pin() {
+        let available = s(crate::settings::FALLBACK_MODELS);
+        let offers = model_offers("claude-opus-5", &available, &[], &[]);
+        assert_eq!(offers, s(&[crate::wrapper::DEFAULT_MODEL]));
+    }
+
+    #[test]
+    fn offline_roster_offers_nothing_for_current_flagship() {
+        let available = s(crate::settings::FALLBACK_MODELS);
+        let offers =
+            model_offers(crate::wrapper::DEFAULT_MODEL, &available, &[], &[]);
+        assert!(offers.is_empty(), "unexpected offers: {offers:?}");
     }
 
     #[test]
