@@ -14,6 +14,18 @@ All notable changes to whetstone will be documented in this file.
   left behind by an earlier release gets an upgrade offer instead of booting
   silently
 
+### Added
+
+- `whetstone settings` exposes **Headroom Semantic Cache**
+  (`HEADROOM_CACHE_ENABLED`), an opt-out that turns off Headroom's replay of
+  cached responses for identical requests, so a retry can produce a fresh
+  generation while debugging model output (#137)
+- startup notice when the model about to launch comes from a project or global
+  `api_model` pin that Anthropic's models list has retired or superseded. Names
+  the model, which file the pin lives in, what to move to, and how to change
+  it. Covers the paths the update modal cannot — non-interactive launches,
+  projects with no v3 manifest, dismissed ids, and pins whose family is gone
+
 ## [3.16.0] - 2026-10-01
 
 ### Added

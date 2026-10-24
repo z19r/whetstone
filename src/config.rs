@@ -160,11 +160,33 @@ impl GlobalSettings {
     }
 }
 
+/// Which settings layer supplied a value, so a message can tell the user
+/// which file to change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinScope {
+    /// `.claude/whetstone.json` in the current project.
+    Project,
+    /// `~/.whetstone/settings.json`.
+    Global,
+}
+
+impl PinScope {
+    /// Human-facing description of where the value lives.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Project => "project .claude/whetstone.json",
+            Self::Global => "global ~/.whetstone/settings.json",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSettings {
     pub headroom_telemetry: bool,
     pub headroom_memory: bool,
     pub api_model: Option<String>,
+    /// Which layer `api_model` came from; `None` when nothing is pinned.
+    pub api_model_scope: Option<PinScope>,
     pub anthropic_api_url: Option<String>,
     pub permission_mode: Option<String>,
     pub savings_profile: Option<String>,
@@ -188,6 +210,11 @@ impl ResolvedSettings {
                 .api_model
                 .clone()
                 .or_else(|| global.api_model.clone()),
+            api_model_scope: match (&project.api_model, &global.api_model) {
+                (Some(_), _) => Some(PinScope::Project),
+                (None, Some(_)) => Some(PinScope::Global),
+                (None, None) => None,
+            },
             anthropic_api_url: project
                 .anthropic_api_url
                 .clone()

@@ -22,7 +22,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::{DefaultTerminal, Frame};
 
-use crate::config::{ResolvedSettings, WhetstoneManifest};
+use crate::config::{PinScope, ResolvedSettings, WhetstoneManifest};
 use crate::settings::family_order;
 
 /// `family_order` value assigned to models we don't recognize; never matches.
@@ -119,6 +119,107 @@ fn model_offers(
         .filter(|m| m != effective && !dismissed.contains(m))
         .filter(|m| deduped.insert(m.clone()))
         .collect()
+}
+
+/// Base model id with any trailing date snapshot removed, so
+/// `claude-opus-4-8-20260501` and `claude-opus-4-8` compare equal.
+fn base_model_id(id: &str) -> &str {
+    crate::settings::strip_date_suffix(id).unwrap_or(id)
+}
+
+/// What a startup notice should say about a pinned model.
+#[derive(Debug, PartialEq, Eq)]
+pub enum PinStatus {
+    /// The models list does not carry this id at all — retired, renamed, or a
+    /// typo. Carries the newest release of its family when there is one to
+    /// move to. Only ever concluded from a *live* list.
+    Unsupported { replacement: Option<String> },
+    /// Still listed, but a newer release of its own family exists.
+    Superseded { newer: String },
+    /// Nothing worth saying.
+    Current,
+}
+
+/// Classify a pinned model against the available roster. `live` says whether
+/// that roster came from the models API: absence only means "retired" when the
+/// list is authoritative, because the static `FALLBACK_MODELS` floor holds the
+/// current generation only and a valid older pin is missing from it by design.
+fn pin_status(pinned: &str, available: &[String], live: bool) -> PinStatus {
+    // A dated snapshot of the pin itself (`claude-opus-4-8-20260501` against
+    // `claude-opus-4-8`) sorts higher but is the same model, so compare base
+    // ids before calling anything an upgrade.
+    let newer = newest_in_family(available, pinned).filter(|newest| {
+        base_model_id(newest) != base_model_id(pinned)
+            && is_model_newer(newest, pinned)
+    });
+
+    let listed = available
+        .iter()
+        .any(|id| base_model_id(id) == base_model_id(pinned));
+    if live && !listed {
+        return PinStatus::Unsupported { replacement: newer };
+    }
+
+    match newer {
+        Some(newer) => PinStatus::Superseded { newer },
+        None => PinStatus::Current,
+    }
+}
+
+/// One-line warning text for a stale pin. Always names the model, the file it
+/// came from, and where to change it.
+fn pin_notice(pinned: &str, scope: PinScope, status: &PinStatus) -> String {
+    let fix = "change it with `whetstone settings` (API Model)";
+    match status {
+        PinStatus::Unsupported { replacement } => {
+            let suggestion = match replacement {
+                Some(newer) => format!("newest in its family is {newer}"),
+                // Unknown or retired family — point at the launch default
+                // rather than inventing a successor.
+                None => format!(
+                    "whetstone's default is {}",
+                    crate::wrapper::DEFAULT_MODEL
+                ),
+            };
+            format!(
+                "Pinned model {pinned} ({}) is no longer in Anthropic's \
+                 models list — {suggestion}; {fix}.",
+                scope.label()
+            )
+        }
+        PinStatus::Superseded { newer } => format!(
+            "Pinned model {pinned} ({}) has been superseded by {newer}; {fix}.",
+            scope.label()
+        ),
+        // Callers filter this out; render something harmless rather than
+        // panicking if one ever doesn't.
+        PinStatus::Current => format!("Pinned model {pinned} is current."),
+    }
+}
+
+/// Warn at launch when the model about to run came from a pin that the models
+/// list has retired or superseded.
+///
+/// Silent unless the launching model *is* the pin: an explicit `--model`, an
+/// unpinned project (the resolved default is current by construction), and a
+/// model the update modal just swapped in all have nothing to report.
+pub fn notify_pinned_model(
+    launching: &str,
+    pinned: Option<&str>,
+    scope: Option<PinScope>,
+    user_set: bool,
+) {
+    if user_set || pinned != Some(launching) {
+        return;
+    }
+    let Some(scope) = scope else {
+        return;
+    };
+    let (available, live) = crate::settings::available_models_for_prompt();
+    let status = pin_status(launching, &available, live);
+    if status != PinStatus::Current {
+        crate::ui::warn(&pin_notice(launching, scope, &status));
+    }
 }
 
 /// Stable hex hash of a project directory, used to name its seen-cache file.
@@ -564,6 +665,118 @@ mod tests {
         let offers =
             model_offers(crate::wrapper::DEFAULT_MODEL, &available, &[], &[]);
         assert!(offers.is_empty(), "unexpected offers: {offers:?}");
+    }
+
+    // ---- pinned-model startup notice ------------------------------------
+
+    #[test]
+    fn pin_status_current_for_newest_in_family() {
+        let available = s(&["claude-opus-5-5", "claude-opus-5"]);
+        assert_eq!(
+            pin_status("claude-opus-5-5", &available, true),
+            PinStatus::Current
+        );
+    }
+
+    #[test]
+    fn pin_status_superseded_when_newer_release_listed() {
+        let available = s(&["claude-opus-5-5", "claude-opus-5"]);
+        assert_eq!(
+            pin_status("claude-opus-5", &available, true),
+            PinStatus::Superseded {
+                newer: "claude-opus-5-5".into()
+            }
+        );
+    }
+
+    #[test]
+    fn pin_status_unsupported_carries_family_replacement() {
+        let available = s(&["claude-opus-5-5", "claude-opus-5"]);
+        assert_eq!(
+            pin_status("claude-opus-4-6", &available, true),
+            PinStatus::Unsupported {
+                replacement: Some("claude-opus-5-5".into())
+            }
+        );
+    }
+
+    // A legacy id still names its family, so the notice can point at that
+    // family's current flagship.
+    #[test]
+    fn pin_status_unsupported_suggests_flagship_for_legacy_id() {
+        let available = s(&["claude-opus-5-5", "claude-sonnet-5-5"]);
+        assert_eq!(
+            pin_status("claude-3-5-sonnet-20241022", &available, true),
+            PinStatus::Unsupported {
+                replacement: Some("claude-sonnet-5-5".into())
+            }
+        );
+    }
+
+    #[test]
+    fn pin_status_unsupported_without_replacement_for_unknown_family() {
+        let available = s(&["claude-opus-5-5", "claude-sonnet-5-5"]);
+        assert_eq!(
+            pin_status("gpt-4o", &available, true),
+            PinStatus::Unsupported { replacement: None }
+        );
+    }
+
+    // The static roster holds the current generation only, so absence from it
+    // proves nothing. An offline launch may still report "superseded", but
+    // never "unsupported" — that would cry wolf over a valid older pin.
+    #[test]
+    fn pin_status_never_unsupported_from_a_non_live_roster() {
+        let available = s(crate::settings::FALLBACK_MODELS);
+        assert_eq!(
+            pin_status("claude-opus-4-6", &available, false),
+            PinStatus::Superseded {
+                newer: crate::wrapper::DEFAULT_MODEL.into()
+            }
+        );
+        // Still a true statement without a live list; only the "not listed"
+        // conclusion needs one.
+        assert_eq!(
+            pin_status("claude-3-5-sonnet-20241022", &available, false),
+            PinStatus::Superseded {
+                newer: "claude-sonnet-5-5".into()
+            }
+        );
+    }
+
+    #[test]
+    fn pin_status_ignores_date_snapshot_when_matching() {
+        let available = s(&["claude-opus-4-8-20260501"]);
+        assert_eq!(
+            pin_status("claude-opus-4-8", &available, true),
+            PinStatus::Current
+        );
+    }
+
+    #[test]
+    fn pin_notice_names_model_scope_and_remedy() {
+        let notice = pin_notice(
+            "claude-opus-5",
+            PinScope::Global,
+            &PinStatus::Superseded {
+                newer: "claude-opus-5-5".into(),
+            },
+        );
+        assert!(notice.contains("claude-opus-5"), "{notice}");
+        assert!(notice.contains("claude-opus-5-5"), "{notice}");
+        assert!(notice.contains("~/.whetstone/settings.json"), "{notice}");
+        assert!(notice.contains("whetstone settings"), "{notice}");
+    }
+
+    #[test]
+    fn pin_notice_falls_back_to_launch_default_for_retired_family() {
+        let notice = pin_notice(
+            "claude-3-5-sonnet-20241022",
+            PinScope::Project,
+            &PinStatus::Unsupported { replacement: None },
+        );
+        assert!(notice.contains(crate::wrapper::DEFAULT_MODEL), "{notice}");
+        assert!(notice.contains(".claude/whetstone.json"), "{notice}");
     }
 
     #[test]

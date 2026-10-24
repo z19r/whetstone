@@ -130,6 +130,18 @@ pub fn wrap_claude(args: &[String], memory_flag: bool) -> ! {
         crate::model_update::maybe_prompt(&resolved)
     };
     let model = choose_model(user_set, model_decision, &fallback);
+
+    // Last word before exec: if the model we're about to launch is a pin the
+    // models list has retired or superseded, say so. This is the path the
+    // modal above can't cover — non-interactive launches, projects with no v3
+    // manifest, dismissed ids, and pins whose family has gone entirely.
+    crate::model_update::notify_pinned_model(
+        &model,
+        resolved.api_model.as_deref(),
+        resolved.api_model_scope,
+        user_set,
+    );
+
     let cmd_args = build_claude_args(
         args,
         selected,
@@ -761,6 +773,7 @@ mod tests {
             headroom_telemetry: false,
             headroom_memory: false,
             api_model: None,
+            api_model_scope: None,
             anthropic_api_url: None,
             permission_mode: None,
             savings_profile: None,
@@ -784,6 +797,7 @@ mod tests {
             headroom_telemetry: false,
             headroom_memory: false,
             api_model: None,
+            api_model_scope: None,
             anthropic_api_url: None,
             permission_mode: None,
             savings_profile: None,
