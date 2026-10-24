@@ -125,6 +125,18 @@ Shaper** (`HEADROOM_OUTPUT_SHAPER`) — each stored as an ordinary `headroom_env
 entry, so they follow the same precedence and become part of the per-config
 proxy fingerprint like any other applied `HEADROOM_*` var.
 
+`whetstone settings` also exposes **Headroom Semantic Cache**
+(`HEADROOM_CACHE_ENABLED`) — Headroom replays a cached response for a
+byte-identical request, which saves tokens but means a retry cannot produce a
+fresh generation. Like **Headroom Beacon** this is an *opt-out*: the TUI reads
+**On** while the key is unset (Headroom's own default), and switching it **Off**
+writes `HEADROOM_CACHE_ENABLED=0`, so the bar never shows "On" while a value is
+quietly stored. It is an ordinary `headroom_env` entry, so it follows the same
+precedence and joins the proxy fingerprint — a session with caching off gets its
+own proxy rather than sharing one that caches. Turn it off when debugging
+model-output quality, where a replayed response masks whether a retry would
+differ.
+
 ## Architecture
 
 ```

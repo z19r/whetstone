@@ -50,6 +50,7 @@ taking precedence over global ones.
 |---------|--------|
 | Headroom Telemetry | Toggle Headroom telemetry |
 | Headroom Memory | Persist the `--memory` flag (Headroom cross-session memory) |
+| Headroom Semantic Cache | Headroom replays a cached response for an identical request. An opt-out: **On** is the unset default; **Off** writes `HEADROOM_CACHE_ENABLED=0` so every request reaches the model and a retry regenerates. Turn off when debugging output quality |
 | API Model | Default model injected into `headroom wrap claude` (otherwise: newest Opus, else `claude-opus-5-5`). A pin that Anthropic's models list has retired or superseded draws a `[WARN]` line at launch naming the model, the file it lives in, and what to move to |
 | Edit Mode | Claude Code `--permission-mode` injected into `headroom wrap claude` — one of `acceptEdits`, `default`, `plan`, `bypassPermissions`. When **Off**, no flag is injected and Claude Code uses its own default. An explicit `--permission-mode` on the command line always wins |
 | Anthropic API URL | Custom upstream Anthropic API URL for the Headroom proxy (exported as `ANTHROPIC_TARGET_API_URL`) |
