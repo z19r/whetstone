@@ -44,7 +44,7 @@ function HeroEyebrow() {
   );
 }
 
-const INSTALL_CMD = 'curl -fsSL https://whetstone.sh | bash';
+const INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/z19r/whetstone/main/install.sh | bash';
 
 // ──────────────────────────────────────────────────────────
 // Variant A — display headline (default)
