@@ -73,6 +73,10 @@ pub enum Command {
     /// Print whetstone version
     Version,
 
+    /// Internal: background update watcher for the session running as PID
+    #[command(hide = true)]
+    UpdateWatch { pid: u32 },
+
     /// Interactive dashboard
     Dashboard,
 
