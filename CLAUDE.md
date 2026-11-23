@@ -114,6 +114,19 @@ On launch, whetstone (`src/model_update.rs`) also warns when the model it is abo
 
 On launch, whetstone (`src/model_update.rs`) checks the 12h-cached Anthropic models list for a model newer than the one this project runs — or a brand-new model family — and shows a full-screen modal offering to pin it as the project default (`api_model`), use it for one session, or dismiss it permanently (recorded in the manifest's top-level `dismissed_models`). The prompt is skipped when non-interactive, offline, not a v3 project, or when `--model` was passed explicitly.
 
+On an interactive launch, whetstone (`src/update_notify.rs`) replaces the
+update banner with a full-screen modal listing outdated components from the
+12h version cache (whetstone, headroom, rtk, claude code, ICM): **update now**
+(runs `whetstone update`, then re-execs the new binary if whetstone itself
+changed), **later**, or **skip these versions** (recorded as `name@version` in
+`~/.cache/whetstone/update-state.json`, so a newer release is offered again).
+It also spawns a hidden `whetstone update-watch <pid>` in its own process
+group; because exec keeps the pid, it lives exactly as long as the session,
+refreshes the cache hourly (cache age dedupes across sessions), and sends one
+desktop notification (`notify-send` / `osascript`) per new version. The watcher
+never installs — swapping headroom/claude under a live session or a shared
+proxy isn't safe — it only says to restart.
+
 whetstone also supports `headroom_env` — a map of any Headroom launch knobs in
 `.claude/whetstone.json` (project) or `~/.whetstone/settings.json` (global),
 with precedence: external `HEADROOM_*` env vars > project map > global map >

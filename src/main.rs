@@ -25,6 +25,7 @@ mod tools;
 mod ui;
 mod uninstall;
 mod update;
+mod update_notify;
 mod version;
 mod wizard;
 mod wrapper;
@@ -43,12 +44,23 @@ fn show_upgrade_banner(cmd: &Option<Command>) {
                 | Command::Stats
                 | Command::Migrate { .. }
                 | Command::InstallTools { .. }
+                | Command::UpdateWatch { .. }
         )
     );
     if skip {
         return;
     }
-    let outdated = update::check_cached_upgrade();
+    let mut outdated = update_notify::pending(update::check_cached_upgrade());
+    let launches_claude = matches!(
+        cmd,
+        None | Some(Command::Claude { .. } | Command::Code { .. })
+    );
+    if launches_claude && ui::is_interactive() {
+        update_notify::prompt_at_launch(&outdated);
+        update_notify::spawn_watcher(std::process::id());
+        // The modal handled these; the banner keeps only the v2 notice.
+        outdated.clear();
+    }
     let v2_project = migrate::detect()
         .map(|d| d.needs_migration())
         .unwrap_or(false);
@@ -158,6 +170,7 @@ fn main() {
                 }
                 wrapper::wrap_rtk(&args);
             }
+            Command::UpdateWatch { pid } => update_notify::run_watcher(pid),
             Command::Version => {
                 let outdated = update::check_cached_upgrade();
                 let is_outdated =

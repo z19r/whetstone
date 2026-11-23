@@ -116,6 +116,40 @@ pub(crate) fn fetch_remote_version() -> Result<String> {
         .context("no valid semver in remote VERSION")
 }
 
+/// Seconds since the version cache was last written; `None` when absent.
+pub fn cache_age_secs() -> Option<u64> {
+    read_cache().map(|c| now_epoch().saturating_sub(c.timestamp))
+}
+
+/// Query every component's latest version and rewrite the cache without
+/// installing anything. Keeps the integration-version fields only
+/// `whetstone update` knows how to compute. Silent: runs in the background
+/// watcher, so a network failure just leaves the old cache in place.
+pub fn refresh_cache() {
+    let Ok(whetstone_latest) = fetch_remote_version() else {
+        return;
+    };
+    let prev = read_cache();
+    write_cache(&VersionCache {
+        whetstone_latest,
+        rtk_current: rtk::installed_version(),
+        rtk_latest: rtk::latest_remote_version(),
+        headroom_current: headroom::installed_version(),
+        headroom_latest: headroom::latest_remote_version(),
+        claude_code_current: claude_code::installed_version(),
+        claude_code_latest: claude_code::latest_npm_version(),
+        icm_current: icm::installed_version(),
+        icm_latest: icm::latest_remote_version(),
+        integration_version_bundled: prev
+            .as_ref()
+            .and_then(|c| c.integration_version_bundled),
+        integration_version_project: prev
+            .as_ref()
+            .and_then(|c| c.integration_version_project),
+        timestamp: now_epoch(),
+    });
+}
+
 pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
     let mut outdated = Vec::new();
 
