@@ -4,6 +4,26 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+## [3.18.0] - 2026-11-24
+
+### Added
+
+- launch modal + background desktop notifier for updates (#153)
+
+### Fixed
+
+- point hero install command at GitHub raw install.sh (#145)
+
+### Changed
+
+- bump rusqlite from 0.41.1 to 0.43.0 (#152)
+- bump ureq from 3.5.1 to 3.5.2 (#151)
+- bump flate2 from 1.1.10 to 1.1.11 (#150)
+- bump ureq from 3.5.0 to 3.5.1 (#149)
+- bump rusqlite from 0.41.0 to 0.41.1 (#148)
+- bump ureq from 3.4.2 to 3.5.0 (#147)
+- bump rusqlite from 0.40.2 to 0.41.0 (#146)
+
 ## [3.17.0] - 2026-10-24
 
 ### Added
