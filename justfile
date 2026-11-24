@@ -329,7 +329,18 @@ release LEVEL: release-check
     git pull --ff-only origin main
 
     echo "Watching release workflow..."
-    gh run watch
+    # `gh run watch` with no id needs a TTY prompt; resolve the run for the merge commit.
+    HEAD_SHA=$(git rev-parse HEAD)
+    RUN_ID=""
+    for i in $(seq 1 30); do
+        RUN_ID=$(gh run list --workflow release.yml --commit "$HEAD_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+        [[ -n "$RUN_ID" ]] && break
+        sleep 2
+    done
+    if [[ -z "$RUN_ID" ]]; then
+        echo "Error: no release workflow run found for $HEAD_SHA"; exit 1
+    fi
+    gh run watch "$RUN_ID" --exit-status --compact
 
     echo ""
     echo "Release v${VERSION} complete."
