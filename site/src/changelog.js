@@ -2,6 +2,33 @@
 // Source of truth: repo-root CHANGELOG.md.
 window.WHETSTONE_CHANGELOG = [
   {
+    "ver": "3.18.0",
+    "date": "2026-11-24",
+    "sections": [
+      {
+        "name": "added",
+        "bullets": [
+          "launch modal + background desktop notifier for updates (#153)"
+        ]
+      },
+      {
+        "name": "fixed",
+        "bullets": [
+          "point hero install command at GitHub raw install.sh (#145)"
+        ]
+      },
+      {
+        "name": "changed",
+        "bullets": [
+          "bump rusqlite from 0.41.1 to 0.43.0 (#152)",
+          "bump ureq from 3.5.1 to 3.5.2 (#151)",
+          "bump flate2 from 1.1.10 to 1.1.11 (#150)",
+          "bump ureq from 3.5.0 to 3.5.1 (#149)"
+        ]
+      }
+    ]
+  },
+  {
     "ver": "3.17.0",
     "date": "2026-10-24",
     "sections": [
@@ -143,38 +170,6 @@ window.WHETSTONE_CHANGELOG = [
         "name": "fixed",
         "bullets": [
           "correctly update mise-managed Claude Code installs (#98)"
-        ]
-      }
-    ]
-  },
-  {
-    "ver": "3.14.1",
-    "date": "2026-08-23",
-    "sections": [
-      {
-        "name": "added",
-        "bullets": [
-          "add Headroom Savings Profile setting",
-          "kill registered proxies on global uninstall",
-          "per-config proxy selection; drop memory-conflict prompt",
-          "prune + reuse/spawn resolve orchestrator"
-        ]
-      },
-      {
-        "name": "fixed",
-        "bullets": [
-          "point wrap claude at the managed per-config proxy port (#95)",
-          "tolerate transient probe + surface registry save errors",
-          "remove dead test scaffolding struct",
-          "add PID ownership check to lockfile guard, fix deadline check, and remove unused imports"
-        ]
-      },
-      {
-        "name": "changed",
-        "bullets": [
-          "use fixed-size arrays for mode/profile consts",
-          "per-config proxy plan + launch-order anchor spec refinement",
-          "per-config headroom proxy reuse design"
         ]
       }
     ]
